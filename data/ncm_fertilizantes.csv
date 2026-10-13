@@ -1,0 +1,43 @@
+ncm,descricao,grupo,sh4,sh6
+31021010,"Ureia, mesmo em solução aquosa, com teor de nitrogênio (azoto) superior a 45 %, em peso, calculado sobre o produto anidro no estado seco",N,3102,310210
+31021090,"Outra ureia, mesmo em solução aquosa",N,3102,310210
+31022100,Sulfato de amônio,N,3102,310221
+31022910,Sulfonitrato de amônio,N,3102,310229
+31022990,"Outros sais duplos e misturas, de sulfato de amônio e nitrato de amônio:",N,3102,310229
+31023000,"Nitrato de amônio, mesmo em solução aquosa",N,3102,310230
+31024000,Misturas de nitrato de amônio com carbonato de cálcio ou com outras matérias inorgânicas desprovidas de poder fertilizante,N,3102,310240
+31025011,"Nitrato de sódio, natural, com teor de nitrogênio (azoto) não superior a 16,3 %, em peso",N,3102,310250
+31025019,"Outros nitratos de sódio, naturais",N,3102,310250
+31025090,Outros nitratos de sódio,N,3102,310250
+31026000,Sais duplos e misturas de nitrato de cálcio e nitrato de amônio,N,3102,310260
+31027000,Cianamida cálcica,N,3102,310270
+31028000,Misturas de ureia com nitrato de amônio em soluções aquosas ou amoniacais,N,3102,310280
+31029000,"Outros adubos ou fertilizantes minerais/químicos, nitrogenados, incluindo as misturas não mencionadas nas subposições precedentes",N,3102,310290
+31031010,"Superfosfatos, com teor de pentóxido de fósforo (P2O5) não superior a 22 %, em peso",P,3103,310310
+31031020,"Superfosfatos, com teor de pentóxido de fósforo (P2O5) superior a 22 % mas não superior a 45 %, em peso",P,3103,310310
+31031030,"Superfosfatos, com teor de pentóxido de fósforo (P2O5) superior a 45 %, em peso",P,3103,310310
+31031100,"Superfosfatos, que contenham, em peso, 35 % ou mais de pentóxido de difósforo (P2O5)",P,3103,310311
+31031900,Outros superfosfatos,P,3103,310319
+31032000,Escórias de desfosforação,P,3103,310320
+31039011,"Hidrogeno-ortofosfato de cálcio, com teor de pentóxido de fósforo (P2O5) não superior a 46 %, em peso",P,3103,310390
+31039019,Outros hidrogenos-ortofosfatos de cálcio,P,3103,310390
+31039090,"Outros adubos ou fertilizantes minerais/químicos, fosfatados",P,3103,310390
+31041000,"Carnalita e outros sais de potássio, naturais, em bruto",K,3104,310410
+31042010,"Cloreto de potássio, com teor de óxido de potássio (K2O) não superior a 60 %, em peso",K,3104,310420
+31042090,Outros cloretos de potássio,K,3104,310420
+31043010,"Sulfato de potássio, com teor de óxido de potássio (K2O) não superior a 52 %, em peso",K,3104,310430
+31043090,Outros sulfatos de potássio,K,3104,310430
+31049010,"Sulfato duplo de potássio e magnésio, com teor de óxido de potássio (K2O) superior a 30 %, em peso",K,3104,310490
+31049090,"Outros adubos ou fertilizantes minerais/químicos, potássicos",K,3104,310490
+31051000,"Produtos do presente Capítulo (adubos ou fertilizantes) apresentados em tabletes ou formas semelhantes, ou ainda em embalagens com peso bruto não superior a 10 kg",NPK,3105,310510
+31052000,"Adubos (fertilizantes) minerais ou químicos, que contenham os três elementos fertilizantes: nitrogênio (azoto), fósforo e potássio",NPK,3105,310520
+31053000,Hidrogeno-ortofosfato de diamônio (fosfato diamônico ou diamoniacal),P,3105,310530
+31053010,"Hidrogeno-ortofosfato de diamônio (fosfato diamônico ou diamoniacal), com teor de arsênio superior ou igual a 6 mg/kg",P,3105,310530
+31053090,Outros hidrogeno-ortofosfato de diamônio (fosfato diamônico ou diamoniacal),P,3105,310530
+31054000,"Diidrogeno-ortofosfato de amônio (fosfato monoamônico ou monoamoniacal), mesmo misturado com hidrogeno-ortofosfato de diamônio (fosfato diamônico ou diamoniacal)",P,3105,310540
+31055100,Adubos ou fertilizantes que contenham nitratos e fosfatos,NPK,3105,310551
+31055900,"Outros adubos/fertilizantes minerais químicos, com nitrogênio e fósforo",NPK,3105,310559
+31056000,"Adubos (fertilizantes) minerais ou químicos, que contenham os dois elementos fertilizantes: fósforo e potássio",NPK,3105,310560
+31059011,"Nitrato de sódio potássico, com teor de nitrogênio (azoto) não superior a 15 %, em peso, e de óxido de potássio (K2O) não superior a 15 %, em peso",NPK,3105,310590
+31059019,Outros nitratos de sódio potássico,NPK,3105,310590
+31059090,Outros adubos/fertilizantes minerais químicos com nitrogênio e potássio,NPK,3105,310590
