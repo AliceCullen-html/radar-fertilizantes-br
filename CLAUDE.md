@@ -1,0 +1,80 @@
+# CLAUDE.md: radar-fertilizantes-br
+
+Radar das importações brasileiras de fertilizantes (capítulo 31, posições 3102 a 3105),
+feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.**
+
+## Regras inegociáveis
+
+### Segurança (repositório público)
+
+- NUNCA escrever chaves, tokens, senhas, URLs privadas ou credenciais em código, config,
+  README, testes ou commits.
+- Qualquer segredo (ex.: `ANTHROPIC_API_KEY`, da fase 5) vem SOMENTE de variável de
+  ambiente. Os nomes ficam em `.env.example`, com valores vazios.
+- `.env`, `.env.*` (exceto `.env.example`), `*.key`, `*.pem` e `secrets/` ficam no
+  `.gitignore`. Não remover essas linhas.
+- Antes de CADA commit, rodar `git diff --cached` e conferir que não há segredos.
+  O pre-commit com gitleaks (`.pre-commit-config.yaml`) bloqueia vazamentos. Se o hook
+  não estiver instalado na sessão, rodar o mesmo comando dele:
+  `gitleaks git --pre-commit --redact --staged --verbose`.
+- Usar apenas Comex Stat e dados abertos do governo. Nunca dados de empresas ou clientes.
+- Toda saída pública (README, dashboard, boletim) cita "Fonte: Comex Stat/MDIC".
+
+### Autoria dos commits
+
+- Commits saem SOMENTE com a identidade git do mantenedor:
+  `Marcus Santos <77951123+AliceCullen-html@users.noreply.github.com>`.
+- NÃO adicionar `Co-Authored-By: Claude`, "Generated with Claude Code", link de sessão
+  nem nenhum trailer ou menção ao Claude em mensagens de commit ou descrições de PR.
+  O `.claude/settings.json` desliga essa atribuição (`includeCoAuthoredBy: false` e
+  `attribution` vazio).
+- Em sessões na nuvem, o git vem configurado como "Claude" e assina os commits com uma
+  chave própria. Antes de commitar, configurar o repositório:
+
+  ```bash
+  git config user.name "Marcus Santos"
+  git config user.email "77951123+AliceCullen-html@users.noreply.github.com"
+  git config commit.gpgsign false
+  ```
+
+- Mensagens de commit em português, no padrão Conventional Commits
+  (`feat:`, `fix:`, `docs:`, `chore:`).
+
+## Como trabalhar aqui
+
+- Python 3.10+. Dependências em `requirements.txt` (requests, pandas, pyarrow); as de
+  desenvolvimento em `requirements-dev.txt`.
+- Testes: `python -m pytest`. Eles não acessam a rede (a API é simulada).
+- Ingestão: `python -m src.ingest --inicio AAAA-MM [--fim AAAA-MM]`. Opções em
+  `python -m src.ingest --help`.
+- Dados brutos: `data/raw/ano=AAAA/importacoes.parquet`. A coluna `ano` fica no caminho,
+  não dentro do arquivo; leia com `src.ingest.ler_raw()`.
+- Não commitar dados grandes: se `data/raw/` passar de ~20 MB, colocá-lo no `.gitignore`
+  e explicar no README como gerar.
+- Roadmap: 1 ingestão (feita) → 2 transform (US$/t, share por origem) → 3 dashboard no
+  GitHub Pages → 4 GitHub Action mensal → 5 boletim com IA opcional. Não adiantar fases
+  sem pedido.
+
+## Fatos da API (verificados em outubro de 2026)
+
+- Base `https://api-comexstat.mdic.gov.br`, sem autenticação. Spec OpenAPI em
+  `/docs/doc.yaml`.
+- `POST /general` recebe `flow`, `monthDetail`, `period {from, to}`,
+  `filters [{filter, values}]`, `details` e `metrics`. Usamos os detalhes
+  `country, ncm, state, via, urf` e as métricas
+  `metricFOB, metricKG, metricCIF, metricFreight, metricInsurance` (CIF, frete e seguro
+  só existem na importação).
+- A resposta traz NOMES de país, UF e via, não códigos. A URF vem como
+  `"0917800 - PORTO DE PARANAGUA"`. Os códigos saem de `/tables/countries`, `/tables/uf`
+  e `/tables/ways`. Da UF guardamos a sigla, porque os ids da API não são os do IBGE.
+- `/tables/ncm?search=3102&add=sh` busca por trecho do código (casa até 61031020), então é
+  preciso filtrar por `headingCode`. A tabela inclui NCMs antigos e cobre a série desde 1997.
+- Rate limit agressivo: HTTP 429 com "tente novamente em 10 segundos" e sem `Retry-After`.
+  O cliente faz pausa de 10 s entre chamadas e backoff exponencial. Uma consulta por ano
+  (~5,3 mil linhas, ~2 s).
+- SSL: a API está atrás da Cloudflare, com certificado Google Trust Services, que o
+  certifi valida. NÃO é ICP-Brasil. A verificação fica sempre ligada.
+  `COMEXSTAT_CA_BUNDLE` soma CAs extras. `--ssl-inseguro` (opt-in) desliga a verificação
+  só depois de uma falha e só para esse host.
+- Grupo dos NCMs: 3102 → N, 3103 → P, 3104 → K, 3105 → NPK, exceto DAP (310530) e
+  MAP (310540), que ficam em P.

@@ -1,0 +1,26 @@
+# --- Segredos: nunca versionar --------------------------------------------------
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+
+# --- Python ---------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# --- Gravação atômica do Parquet (arquivo temporário) ---------------------------
+*.tmp
+
+# --- Editores e sistema ---------------------------------------------------------
+.DS_Store
+.idea/
+.vscode/
+
+# --- Claude Code: configurações locais de cada pessoa ---------------------------
+.claude/settings.local.json
