@@ -746,5 +746,5 @@ def test_paragrafo_que_comeca_com_numero_e_ponto_nao_vira_lista(fatos):
     conteudo, erros = boletim.validar(resposta(), fatos)
     assert erros == []
     conteudo["paragrafos"][0] = "25. Os potássicos vieram de muitos países."
-    meta = {"mock": False, "mes_referencia": "x", "provedor": "p", "modelo": "m", "gerado_em": "g", "dashboard": "d"}
+    meta = {"mock": False, "mes_referencia": "x", "provedor": "p", "modelo": "m", "gerado_em": "g", "dashboard": "d", "fonte": "f", "rodape": "r"}
     assert "\n25\\. Os potássicos" in boletim.markdown(conteudo, meta)
