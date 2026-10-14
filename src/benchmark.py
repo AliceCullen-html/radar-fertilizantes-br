@@ -512,7 +512,9 @@ def ingerir_ptax(
             f"PTAX: o BCB já publicou até {ultimo}, mas não devolveu {', '.join(sem_dado[:12])}."
             " Nada foi gravado; tente de novo mais tarde."
         )
-    junto = pd.concat([gravado[~gravado["mes"].isin(novo["mes"])], novo], ignore_index=True)
+    mantidos = gravado[~gravado["mes"].isin(novo["mes"])]
+    # Sem nada gravado ainda, só o novo: concat com DataFrame vazio é FutureWarning no pandas 2.
+    junto = pd.concat([mantidos, novo], ignore_index=True) if not mantidos.empty else novo
     junto = junto.sort_values("mes", ignore_index=True)[COLUNAS_PTAX]
     _gravar_csv(junto, Path(raw_dir) / config.PTAX_ARQUIVO)
     log.info("PTAX: +%d meses (%s a %s).", len(novo), novo["mes"].min(), novo["mes"].max())
