@@ -1,26 +1,36 @@
-# Fase 4: atualização automática mensal dos dados.
+# Fases 4 e 5: atualização automática mensal dos dados e do boletim com IA.
 #
 # O Comex Stat publica o mês anterior nos primeiros dias úteis. Entre os dias 1 e 15, o
 # workflow roda uma vez por dia:
-#   1. se o mês anterior já está gravado nas duas séries, encerra sem chamar a API;
+#   1. se o mês anterior já está gravado nas duas séries, não chama a API do Comex Stat;
 #   2. senão, roda a ingestão incremental (importação de fertilizantes e exportação de
 #      soja), o transform e os testes;
-#   3. só se a API trouxe mês novo, commita "chore(dados): atualização AAAA-MM" como
-#      github-actions[bot] e publica o dashboard (pages.yml).
-# Se a API falhar ou não devolver algum mês que diz ter publicado, o workflow falha com o
-# erro no log e nada é commitado.
+#   3. se entrou mês novo, ou se o boletim do último mês ainda não existe, gera o boletim
+#      com IA (src/boletim.py);
+#   4. commita o que mudou em data/ e boletins/ como github-actions[bot], com a mensagem
+#      "chore(dados): atualização AAAA-MM", e publica o dashboard (pages.yml).
+# Se a API do Comex Stat falhar ou não devolver algum mês que diz ter publicado, nada é
+# commitado. Se o boletim for reprovado na validação, os dados do mês seguem sem ele.
 #
-# Não usa nenhum segredo. Os privilégios ficam separados por job:
+# Privilégios separados por job, sem pull_request_target e sem acesso de PRs ao secret:
 #   - "atualizar" roda Python e as dependências de terceiros só com permissão de leitura e
-#     entrega data/ como artifact;
-#   - "commitar" é o único com contents: write e só roda git (sem pip nem Python, com hooks
-#     desligados); o GITHUB_TOKEN entra apenas no passo do push.
+#     entrega data/ como artifact; não vê o secret;
+#   - "gerar-boletim" é o ÚNICO job no environment boletim-ia, o único com acesso ao secret:
+#     só leitura, não instala nenhum pacote (o boletim usa só a biblioteca padrão), não
+#     imprime a chave nem as variáveis de ambiente e entrega boletins/ como artifact;
+#   - "commitar" é o único com contents: write, sem acesso ao secret: só roda git (sem pip
+#     nem Python, com hooks desligados) e recusa mudanças fora de data/ e boletins/.
 name: Atualização mensal
 
 on:
   schedule:
     - cron: "17 11 1-15 * *" # dias 1 a 15 de cada mês, 11h17 UTC (8h17 em Brasília)
   workflow_dispatch:
+    inputs:
+      boletim:
+        description: "Gerar (ou refazer) o boletim do mês mais recente com IA"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -40,6 +50,8 @@ jobs:
       contents: read
     outputs:
       mes: ${{ steps.resultado.outputs.mes }}
+      mes_dados: ${{ steps.boletim.outputs.mes_dados }}
+      boletim_pendente: ${{ steps.boletim.outputs.pendente }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -60,7 +72,7 @@ jobs:
           gravado="$(python -m src.ingest --ultimo-gravado)"
           echo "Mês esperado: ${esperado}. Último mês gravado nas duas séries: ${gravado:-nenhum}."
           if [[ -n "${gravado}" && ! "${gravado}" < "${esperado}" ]]; then
-            echo "Dados já atualizados até ${gravado}: nada a fazer até o próximo mês." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "Dados já atualizados até ${gravado}: nada a baixar até o próximo mês." | tee -a "$GITHUB_STEP_SUMMARY"
             echo "falta=false" >> "$GITHUB_OUTPUT"
           else
             echo "falta=true" >> "$GITHUB_OUTPUT"
@@ -105,7 +117,18 @@ jobs:
             echo "Fonte: Comex Stat/MDIC."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Entregar data/ para o commit
+      - name: Conferir o boletim do último mês
+        id: boletim
+        timeout-minutes: 2
+        run: |
+          mes_dados="$(python -m src.ingest --ultimo-gravado)"
+          echo "mes_dados=${mes_dados}" >> "$GITHUB_OUTPUT"
+          if [[ -n "${mes_dados}" && ! -f "boletins/${mes_dados}.md" ]]; then
+            echo "O boletim de ${mes_dados} ainda não existe." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "pendente=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Entregar data/ para o boletim e o commit
         if: steps.resultado.outputs.mes != ''
         uses: actions/upload-artifact@v7
         with:
@@ -117,10 +140,81 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  commitar:
-    name: Commit do mês novo
+  gerar-boletim:
+    name: Gerar o boletim com IA
     needs: atualizar
-    if: needs.atualizar.outputs.mes != ''
+    # Mês novo nos dados, boletim do último mês ainda inexistente, ou pedido manual.
+    if: >-
+      github.ref == 'refs/heads/main' && (
+        needs.atualizar.outputs.mes != '' ||
+        needs.atualizar.outputs.boletim_pendente == 'true' ||
+        (github.event_name == 'workflow_dispatch' && inputs.boletim)
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Único job com acesso ao secret ANTHROPIC_API_KEY (environment boletim-ia).
+    environment: boletim-ia
+    permissions:
+      contents: read
+    outputs:
+      gerado: ${{ steps.gerar.outputs.gerado }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Receber data/ com o mês novo
+        if: needs.atualizar.outputs.mes != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: dados
+          path: data
+      # Sem pip install: src/boletim.py e src/llm.py usam só a biblioteca padrão.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Gerar e validar o boletim
+        id: gerar
+        timeout-minutes: 8
+        env:
+          RADAR_LLM_PROVIDER: ${{ vars.RADAR_LLM_PROVIDER }}
+          RADAR_LLM_MODEL: ${{ vars.RADAR_LLM_MODEL }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          REFAZER: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          # Sem a chave (ex.: um fork que ainda não configurou o environment), o boletim é
+          # pulado com aviso e os dados seguem sendo atualizados. Nada aqui imprime a chave.
+          if [[ "${RADAR_LLM_PROVIDER:-anthropic}" == "anthropic" && -z "${ANTHROPIC_API_KEY}" ]]; then
+            echo "::warning title=Boletim não gerado::Falta o secret ANTHROPIC_API_KEY no environment boletim-ia (veja 'Use com a sua IA' no README)."
+            exit 0
+          fi
+          args=()
+          if [[ "${REFAZER}" == "true" ]]; then
+            args+=(--forcar)
+          fi
+          python -m src.boletim "${args[@]}"
+          if [[ -n "$(git status --porcelain -- boletins)" ]]; then
+            echo "gerado=true" >> "$GITHUB_OUTPUT"
+            python -c "import json; d = json.load(open('boletins/latest.json', encoding='utf-8')); print('### ' + d['titulo'] + '\n\n' + d['lead'] + '\n\nProvedor: ' + d['provedor'] + ' · modelo: ' + d['modelo'])" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Entregar boletins/ para o commit
+        if: steps.gerar.outputs.gerado == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: boletim
+          path: boletins
+          if-no-files-found: error
+          retention-days: 1
+
+  commitar:
+    name: Commit dos dados e do boletim
+    needs: [atualizar, gerar-boletim]
+    # Roda mesmo se o boletim falhar ou for pulado: os dados do mês não ficam presos a ele.
+    if: >-
+      !cancelled() && needs.atualizar.result == 'success' && (
+        needs.atualizar.outputs.mes != '' || needs.gerar-boletim.outputs.gerado == 'true'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -132,28 +226,43 @@ jobs:
         with:
           persist-credentials: false
       - name: Receber data/
+        if: needs.atualizar.outputs.mes != ''
         uses: actions/download-artifact@v8
         with:
           name: dados
           path: data
+      - name: Receber boletins/
+        if: needs.gerar-boletim.outputs.gerado == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: boletim
+          path: boletins
       - name: Commitar e enviar para a main
         id: push
         env:
-          MES: ${{ needs.atualizar.outputs.mes }}
+          MES: ${{ needs.atualizar.outputs.mes || needs.atualizar.outputs.mes_dados }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if [[ ! "${MES}" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]]; then
             echo "::error title=Mês inválido::O job de atualização devolveu '${MES}'."
             exit 1
           fi
-          fora="$(git status --porcelain | grep -vE '^.. data/(raw|raw_soja|processed)/' || true)"
+          fora="$(git status --porcelain | grep -vE '^.. (data/(raw|raw_soja|processed)|boletins)/' || true)"
           if [[ -n "${fora}" ]]; then
-            echo "::error title=Mudança fora de data/::${fora}"
+            echo "::error title=Mudança fora de data/ e boletins/::${fora}"
+            exit 1
+          fi
+          if [[ -f boletins/latest.json ]] && grep -qE '"mock": *true' boletins/latest.json; then
+            echo "::error title=Boletim de exemplo::boletins/latest.json veio do modo --mock; nada foi commitado."
             exit 1
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- data/raw data/raw_soja data/processed
+          git add -- data/raw data/raw_soja data/processed boletins
+          if git diff --cached --quiet; then
+            echo "Nada mudou em data/ nem em boletins/; nada a commitar."
+            exit 0
+          fi
           git -c core.hooksPath=/dev/null commit -m "chore(dados): atualização ${MES}"
           auth="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
           echo "::add-mask::${auth}"
@@ -170,7 +279,7 @@ jobs:
   publicar:
     name: Publicar o dashboard
     needs: commitar
-    if: needs.commitar.outputs.sha != ''
+    if: ${{ !cancelled() && needs.commitar.result == 'success' && needs.commitar.outputs.sha != '' }}
     permissions:
       contents: read
       pages: write
