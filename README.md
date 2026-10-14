@@ -191,29 +191,57 @@ A IA escreve o texto; os números vêm do programa. O passo a passo (`src/boleti
    pode citar números por marcadores, como `{troca_map_ultimo}`. É proibido escrever
    números.
 3. **Validação automática, igual para todos os provedores.** A resposta é reprovada se tiver:
-   - marcador que não existe no pacote, ou dois marcadores colados;
+   - marcador que não existe no pacote, dois marcadores colados, letra ou algarismo colado a
+     um marcador ("l{x}", "{x}O") ou dois números separados só por traço, barra ou
+     dois-pontos;
    - fora dos marcadores, qualquer caractere que não seja letra do português, espaço ou
      pontuação comum (emoji, seta, símbolo, caractere invisível ou combinante, letra de outro
-     alfabeto, "&", "@"), quebra de linha, Markdown, HTML, link ou início de lista;
+     alfabeto, "&", "@"), quebra de linha, Markdown, HTML, link, domínio ("site.xyz"),
+     emoji por código (":rocket:") ou início de lista;
    - fora dos marcadores: dígito (de qualquer escrita, inclusive "²" e "½"), algarismo
      romano, letras no lugar de algarismos ("lOO"), número por extenso ("três", "mil", "zero",
      "meia", "dobrou", "quíntuplo", "vigésimo", "um terço"), nome de mês, período
      ("semestre", "década", "biênio", "mês anterior", "comparação mensal"), contagem ou
      recorde que o pacote não traz ("terceiro mês seguido", "consecutivo", "pela primeira
      vez", "recorde", "nunca antes", "o maior da série"), unidade (%, "por cento", US$, p.p.)
-     ou unidade inventada para um número puro ("USD {hhi_n_ano}");
+     ou unidade inventada para um número puro ("USD {hhi_n_ano}", "Mt", "kt", "euros",
+     "navios"); uma contagem vem sempre com o que ela conta (`{n_origens_k_ano} países`,
+     `{n_rotas_ano} rotas`);
    - **palavra de direção ou comparação** ("subiu", "caiu", "cresceu", "superou", "aquém",
      "alta", "queda", "acima", "abaixo", "maior que", "mais barato", "melhorou"...). A
      direção entra **só** pelos marcadores `_sentido` (alta, queda ou estabilidade) e
      `_posicao` (acima ou abaixo de uma referência), que o programa preenche a partir dos
      dados e que precisam vir colados à própria variação: `{var_x_sentido} de {var_x}` ou
      `{desvio_x} {desvio_x_posicao}`. Toda variação vai com a sua direção, e um sinal (+, −,
-     "menos") antes dela reprova;
+     "menos") antes dela, ou antes de qualquer número, reprova. Uma frase com `_sentido` ou
+     `_posicao` não pode negar nem inverter a direção ("não houve", "reverteu", "longe de"),
+     e o `_sentido` não leva adjetivo de intensidade ("relevante", "leve");
+   - palavra de juízo ou de comparação que a lista de direção não pega ("estável", "elevado",
+     "forte", "significativo", "decresceu", "custou mais", "do que", "poder de compra",
+     "respectivamente"), continuidade ("manteve", "segue", "novamente", "retomada"), recorde
+     ou pico ("pico", "em anos", "desde", "já observado"), "única", "maioria", causa,
+     previsão ou contexto que o pacote não traz ("reflexo", "devido a", "tendência", "deve
+     cair", "estoques", "câmbio", "demanda", "plantio"), região ("Oriente Médio", "Europa"),
+     produto fora do pacote ("sulfato", "nitrato", "DAP") ou nome próprio que não está no
+     pacote (maiúscula fora do início de frase, como "Cade");
    - nome de país, porto, grupo (nitrogenados, fosfatados, potássicos, compostos) ou produto
      (ureia, KCl, MAP) numa frase cujos números não são dele; país ou porto que não está no
-     pacote; valor do período atual posto no período anterior;
-   - relação de troca sem "no porto" no mesmo parágrafo, ou qualquer menção a produtor,
-     agricultor ou fazenda (exceto na forma "não é o preço ao produtor");
+     pacote (também sem acento, em maiúsculas ou por gentílico: "Paranagua", "CHINA",
+     "russos"); valor do período atual posto no período anterior;
+   - **número ligado ao que ele não mede.** Para cada número, o grupo, o produto ou o total
+     ("fertilizantes", "todos os grupos") mencionado mais perto precisa ser o dele, e o país
+     ou porto mais perto também; "principal", "líder", "segunda maior" e "terceira maior"
+     precisam bater com a posição no pacote; o sujeito de uma variação precisa ser a métrica
+     dela (volume, preço, participação ou frete); cada número precisa estar no seu período
+     (mês, acumulado, ano anterior inteiro, série) e cada variação, na sua base
+     (`{mes_ano_anterior}` ou `{periodo_ytd_anterior}`). Por isso a construção "Santos e
+     Paranaguá receberam {a} e {b}" reprova: cada número vem logo depois do seu nome;
+   - "alta concentração" fora de `{hhi_x_ano_posicao} de alta concentração` ou da definição
+     do limiar; "série", "máximo" ou "o maior valor" sem as chaves de máximo e média da série;
+     o maior e o menor frete por rota sem dizer "entre as maiores rotas";
+   - relação de troca (ou o preço FOB da soja junto do CIF de um fertilizante) sem "no porto"
+     no mesmo parágrafo, ou qualquer menção a produtor, agricultor, fazenda, "quem planta",
+     safra, agro ou revenda (exceto na forma "não é o preço ao produtor");
    - um termo de uma lista fixa de recomendação e tom alarmista ("recomendamos", "vale a
      pena", "antecipar as compras", "convém", "disparou", "colapso", "crítico");
    - menos de 6 marcadores citados, ou tamanho acima do limite.
@@ -228,10 +256,12 @@ O que a validação confere é o que está na lista acima; as listas de palavras
 um sinônimo que não esteja nelas passa. O resto é pedido no prompt e não tem como ser
 verificado por um programa: o tom de analista (neutro, sem recomendação de compra e venda e
 sem adjetivos alarmistas, além da lista fixa de termos) e a regra de não citar causas,
-eventos, empresas ou previsões que não estejam no pacote. Quando o boletim cita a relação de
-troca, o programa acrescenta uma nota fixa (no `.md`, no `latest.json` e no card): ela é
-medida no porto e não é o preço pago pelo produtor. Fica registrado no boletim qual provedor
-e qual modelo escreveram o texto.
+eventos, empresas ou previsões que não estejam no pacote, além das listas fixas. Quando o
+boletim cita a relação de troca, o programa acrescenta uma nota fixa (no `.md`, no
+`latest.json` e no card): ela é medida no porto e não é o preço pago pelo produtor. Fica
+registrado no boletim qual provedor e qual modelo escreveram o texto: o modelo configurado,
+ou a versão dele que a API devolver ("gpt-4o" → "gpt-4o-2024-08-06"); qualquer outro nome
+devolvido pela API é ignorado.
 
 O provedor padrão é a Anthropic, com o modelo `claude-sonnet-5-5` e saída JSON restrita por
 schema. Pela tabela de preços do modelo (US$ 2 por milhão de tokens de entrada e US$ 10 de

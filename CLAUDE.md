@@ -98,10 +98,12 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
   `boletim-ia`) e não instala pacotes. A direção NUNCA é escrita pela IA: entra só pelos
   marcadores `_sentido`/`_posicao`, colados à própria variação. Nunca relaxar a validação
   (caracteres fora de letras e pontuação comum, dígito, número por extenso, mês, período,
-  contagem, recorde, unidade ou sinal fora de marcador, palavra de direção, marcador
-  inexistente ou colado, nome de país/porto/grupo/produto/período sem os seus números,
-  troca sem "no porto" ou como preço ao produtor, link, Markdown, lista de termos de tom,
-  tamanho). Nunca usar
+  contagem, recorde, unidade ou sinal fora de marcador, palavra de direção ou de juízo,
+  direção negada, continuidade, causa/previsão/contexto, região, produto ou nome próprio fora
+  do pacote, marcador inexistente ou colado, número ligado ao grupo/produto/total/país/porto/
+  posição/período/métrica de outro, troca sem "no porto" ou como preço ao produtor, link,
+  Markdown, lista de termos de tom, tamanho). Casos ruins e corretos das revisões ficam nos
+  testes; regra nova não pode reprovar o mock em nenhum mês dos dados. Nunca usar
   `pull_request_target`. Boletim do `--mock` vai para `boletins/mock/` (fora do Git) e nunca
   é commitado.
 - Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):
