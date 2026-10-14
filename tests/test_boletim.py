@@ -540,9 +540,10 @@ def test_mock_de_ponta_a_ponta_sem_nenhuma_variavel(tmp_path, ultimo_mes):
     assert boletim.main(["--mock", "--saida", str(tmp_path)]) == 0
     md = (tmp_path / f"{ultimo_mes}.md").read_text(encoding="utf-8")
     latest = json.loads((tmp_path / "latest.json").read_text(encoding="utf-8"))
-    assert boletim.RODAPE in md and "Fonte: Comex Stat/MDIC" in md and "--mock" in md
+    assert latest["rodape"] in md and f"Fonte: {latest['fonte']}" in md and "--mock" in md
     assert latest["mock"] is True and latest["provedor"] == "mock" and latest["arquivo"] == f"boletins/{ultimo_mes}.md"
-    assert latest["rodape"] == boletim.RODAPE and latest["fonte"] == "Comex Stat/MDIC"
+    # Comex Stat sempre; Banco Mundial e BCB quando o texto cita números deles (com Pink Sheet nos dados)
+    assert latest["fonte"].startswith("Comex Stat/MDIC") and latest["rodape"] == boletim.rodape(latest["fonte"].split("; "))
     assert 4 <= len(latest["paragrafos"]) <= 6
     assert not any("{" in t for t in [latest["titulo"], latest["lead"], *latest["paragrafos"]])
 
@@ -639,6 +640,94 @@ def test_boletim_e_llm_nao_importam_dependencias_de_terceiros():
         "assert not proibidos, proibidos\n"
     )
     subprocess.run([sys.executable, "-c", codigo], check=True, cwd=config.RAIZ)
+
+
+# --- Fase 6: benchmark internacional e câmbio --------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def com_benchmark(tmp_path_factory):
+    """Dados processados com a Pink Sheet e a PTAX sintéticas (sem rede) sobre a base real."""
+    base = transform.carregar_base(config.RAW_DIR)
+    soja = ingest.ler_soja(config.RAW_SOJA_DIR)
+    meses = sorted({f"{a}-{m:02d}" for a, m in zip(base["ano"].astype(int), base["mes"].astype(int))})
+    pink = pd.DataFrame({"mes": meses, "ureia": 400.0, "dap": 600.0, "tsp": 500.0, "kcl": 380.0, "rocha_fosfatica": 150.0})
+    ptax = pd.DataFrame({"mes": meses, "brl_por_usd": [4.0 + i / 100 for i in range(len(meses))]})
+    destino = tmp_path_factory.mktemp("com_benchmark")
+    transform.gerar(base, destino, soja, pink, ptax, {"atualizado_em": "2026-10-02"})
+    painel, troca = boletim.carregar(destino)
+    return destino, boletim.montar_fatos(painel, troca)
+
+
+def test_fatos_do_benchmark_e_do_cambio(com_benchmark):
+    _, f = com_benchmark
+    for prod in ("kcl", "ureia", "map"):
+        for chave in (f"benchmark_{prod}_mes", f"base_benchmark_{prod}", f"spread_{prod}_mes", f"spread_{prod}_mes_posicao", f"cif_brl_{prod}_mes"):
+            assert chave in f, chave
+        assert f[f"spread_{prod}_mes_posicao"]["valor"] in ("acima do benchmark", "abaixo do benchmark", "em linha com o benchmark")
+        assert not f[f"spread_{prod}_mes"]["valor"].startswith(("-", "−", "+"))
+        assert "não é ágio" in f[f"spread_{prod}_mes"]["descricao"]
+    assert f["base_benchmark_kcl"]["valor"] == "CFR Brasil (granulado)" and f["base_benchmark_ureia"]["valor"] == "FOB Oriente Médio"
+    assert "referência do MAP por aproximação" in f["benchmark_map_mes"]["descricao"]
+    assert f["cif_brl_kcl_mes"]["valor"].startswith("R$ ") and f["ptax_mes"]["valor"].endswith("por US$")
+    # meses com amostra pequena não entram (no último mês dos dados, o DAP teve poucas toneladas ou não)
+    bm = json.loads((com_benchmark[0] / "dashboard.json").read_text(encoding="utf-8"))["benchmark"]
+    assert ("spread_dap_mes" in f) == (not bm["produtos"]["dap"]["amostra_pequena"][-1] and bm["produtos"]["dap"]["spread_pct"][-1] is not None)
+
+
+def test_variacao_do_spread_so_na_mesma_base(com_benchmark):
+    destino, _ = com_benchmark
+    painel, troca = boletim.carregar(destino)
+    # KCl: 2020-01 tem base CFR Brasil e 2019-01, FOB Vancouver; ureia: 2022-03 contra 2021-03 (Mar Negro)
+    assert "var_spread_kcl" not in boletim.montar_fatos(painel, troca, "2020-12")
+    assert "var_spread_ureia" not in boletim.montar_fatos(painel, troca, "2022-12")
+    assert "var_spread_kcl" in boletim.montar_fatos(painel, troca, "2021-12")
+
+
+@pytest.mark.parametrize(
+    "texto, trecho",
+    [
+        ("O KCl ficou {spread_kcl_mes} do benchmark, de {benchmark_kcl_mes}.", "vai sem sinal"),
+        ("O KCl teve um ágio de {spread_kcl_mes} {spread_kcl_mes_posicao}.", "ágio"),
+        ("O KCl ficou {spread_kcl_mes} {spread_ureia_mes_posicao}.", "colado"),
+        ("O KCl ficou {spread_kcl_mes} {spread_kcl_mes_posicao}, e a ureia, {benchmark_kcl_mes}.", "ureia"),
+        ("O KCl custou {cif_brl_kcl_mes}, ou R$ por tonelada.", "unidade"),
+        ("O câmbio subiu, e a PTAX foi de {ptax_mes}.", "palavra de direção"),
+    ],
+)
+def test_validacao_vale_para_as_chaves_novas(com_benchmark, texto, trecho):
+    _, f = com_benchmark
+    erros = boletim.validar(resposta(paragrafos=[*BASE, texto]), f)[1]
+    assert any(trecho in e for e in erros), erros
+
+
+def test_frase_correta_com_o_benchmark_passa(com_benchmark):
+    _, f = com_benchmark
+    texto = (
+        "Frente ao benchmark do Banco Mundial, de {benchmark_kcl_mes} ({base_benchmark_kcl}), o KCl importado ficou"
+        " {spread_kcl_mes} {spread_kcl_mes_posicao}, e o CIF em reais foi de {cif_brl_kcl_mes} com a PTAX a {ptax_mes}."
+    )
+    conteudo, erros = boletim.validar(resposta(paragrafos=[*BASE, texto]), f)
+    assert erros == []
+    assert boletim.NOTA_BENCHMARK in conteudo["nota"] and boletim.NOTA_PTAX in conteudo["nota"]
+    assert conteudo["fontes"] == ["Comex Stat/MDIC", "Banco Mundial (Pink Sheet)", "BCB/PTAX"]
+
+
+def test_mock_com_benchmark_cita_as_tres_fontes_e_as_notas(com_benchmark, tmp_path):
+    destino, f = com_benchmark
+    assert boletim.main(["--mock", "--dados", str(destino), "--saida", str(tmp_path)]) == 0
+    latest = json.loads((tmp_path / "latest.json").read_text(encoding="utf-8"))
+    md = (tmp_path / f"{f.periodo}.md").read_text(encoding="utf-8")
+    assert latest["fonte"] == "Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX"
+    assert "Banco Mundial (Pink Sheet)" in latest["rodape"] and "BCB (PTAX)" in latest["rodape"]
+    assert boletim.NOTA_BENCHMARK in latest["nota"] and boletim.NOTA_BENCHMARK in md
+    assert "Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX" in md and latest["rodape"] in md
+
+
+def test_sem_citar_o_benchmark_o_rodape_fica_so_com_o_comex(com_benchmark):
+    _, f = com_benchmark
+    conteudo, erros = boletim.validar(resposta(), f)
+    assert erros == [] and conteudo["fontes"] == ["Comex Stat/MDIC"] and boletim.rodape(conteudo["fontes"]) == boletim.RODAPE
 
 
 # --- Cada número ligado ao que ele mede (segunda revisão) ----------------------------------
