@@ -167,6 +167,8 @@ def test_requisicao_ollama_com_host_sem_esquema_e_formato_json():
         ("[::1]", "http://[::1]:11434"),
         ("servidor:8080", "http://servidor:8080"),
         ("https://ollama.exemplo", "https://ollama.exemplo"),  # com esquema, vale a porta do esquema
+        ("127.0.0.1/ollama", "http://127.0.0.1:11434/ollama"),  # atrás de proxy reverso
+        ("::1", "http://[::1]:11434"),
     ],
 )
 def test_ollama_host_sem_porta_usa_11434_como_o_proprio_ollama(host, url):
@@ -240,6 +242,34 @@ def test_chave_com_quebra_de_linha_e_recusada_sem_repetir_o_valor(classe):
         classe(chave)
     assert "caractere inválido" in str(erro.value)
     assert "SEGUNDA-LINHA" not in str(erro.value) and "chave-ficticia" not in str(erro.value)
+
+
+@pytest.mark.parametrize(
+    "base, aceita",
+    [
+        ("https://api.exemplo.com/v1", True),
+        ("http://localhost:8000/v1", True),
+        ("http://127.0.0.1:8000/v1", True),
+        ("http://192.168.0.10:8000/v1", True),
+        ("http://vllm:8000/v1", True),
+        ("http://api.exemplo.com/v1", False),
+        ("http://8.8.8.8/v1", False),
+    ],
+)
+def test_chave_so_vai_por_http_para_servidor_local(base, aceita):
+    if aceita:
+        llm.OpenAICompativel(CHAVE, "m", base_url=base)
+    else:
+        with pytest.raises(llm.ErroConfig, match="https"):
+            llm.OpenAICompativel(CHAVE, "m", base_url=base)
+    llm.OpenAICompativel("", "m", base_url=base)  # sem chave não há o que vazar
+
+
+def test_mensagem_do_provedor_fica_numa_linha_no_log():
+    t = TransporteFalso((400, {"error": {"message": "ruim\n::warning title=x::injetado"}}))
+    with pytest.raises(llm.ErroLLM) as erro:
+        llm.Anthropic(CHAVE, transporte=t).gerar("s", "u")
+    assert "\n" not in str(erro.value) and "\\n::warning" in str(erro.value)
 
 
 def test_cabecalho_invalido_vira_erro_sem_a_mensagem_original():
@@ -326,4 +356,4 @@ def test_modulo_so_usa_biblioteca_padrao():
         if isinstance(n, (ast.Import, ast.ImportFrom))
         for a in (n.names if isinstance(n, ast.Import) else [n])
     }
-    assert modulos <= {"__future__", "http", "json", "logging", "math", "os", "re", "time", "urllib", "collections", "dataclasses"}
+    assert modulos <= {"__future__", "http", "ipaddress", "json", "logging", "math", "os", "re", "time", "urllib", "collections", "dataclasses"}

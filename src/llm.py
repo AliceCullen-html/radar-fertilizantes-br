@@ -20,6 +20,7 @@ redirecionamentos HTTP são recusados (num POST eles levariam a chave para outra
 from __future__ import annotations
 
 import http.client
+import ipaddress
 import json
 import logging
 import math
@@ -95,6 +96,24 @@ def _transporte_urllib(url: str, headers: dict[str, str], corpo: bytes, timeout:
         return erro.code, {k.lower(): v for k, v in (erro.headers or {}).items()}, erro.read() or b""
 
 
+def _uma_linha(texto: str) -> str:
+    """Escapa quebras de linha: no log do Actions, uma linha que começa com '::' vira comando."""
+    return texto.replace("\r", "\\r").replace("\n", "\\n")
+
+
+_SUFIXOS_LOCAIS = (".localhost", ".local", ".lan", ".internal", ".home.arpa")
+
+
+def _host_local(host: str | None) -> bool:
+    """Loopback, rede privada ou nome sem domínio público (localhost, vllm, *.local...)."""
+    if not host:
+        return False
+    try:
+        return not ipaddress.ip_address(host).is_global
+    except ValueError:
+        return "." not in host or host.endswith(_SUFIXOS_LOCAIS)
+
+
 def _conferir_chave(provedor: str, variavel: str, chave: str) -> None:
     """Recusa chave com espaço, quebra de linha ou acento, sem repetir o valor na mensagem."""
     if not re.fullmatch(r"[\x21-\x7e]+", chave):
@@ -152,7 +171,7 @@ class Provedor:
             try:
                 status, cabecalhos, bruto = self._transporte(url, headers, corpo, self._timeout)
             except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as erro:
-                motivo = self._limpar(f"falha de rede ({type(erro).__name__}: {getattr(erro, 'reason', erro)})")
+                motivo = _uma_linha(self._limpar(f"falha de rede ({type(erro).__name__}: {getattr(erro, 'reason', erro)})"))
             except (ValueError, UnicodeError) as erro:
                 # Cabeçalho inválido (ex.: chave com quebra de linha): a mensagem original repetiria a chave.
                 raise ErroLLM(f"{self.nome}: requisição inválida ({type(erro).__name__}) para {onde}.") from None
@@ -167,7 +186,7 @@ class Provedor:
                     return dados
                 if 300 <= status < 400:
                     raise ErroLLM(f"{self.nome}: HTTP {status} em {onde}: redirecionamento recusado (confira a URL do provedor).")
-                detalhe = self._limpar(self._mensagem_de_erro(dados))[:300]
+                detalhe = _uma_linha(self._limpar(self._mensagem_de_erro(dados)))[:300]
                 motivo = f"HTTP {status}" + (f" ({detalhe})" if detalhe else "")
                 if status not in STATUS_REPETIR:
                     raise ErroLLM(f"{self.nome}: {motivo} em {onde}.")
@@ -241,6 +260,9 @@ class OpenAICompativel(Provedor):
             raise ErroConfig("openai: defina OPENAI_API_KEY (ou OPENAI_BASE_URL de um servidor que não exija chave).")
         if chave:
             _conferir_chave("openai", "OPENAI_API_KEY", chave)
+            destino = urlsplit(self.base_url)
+            if destino.scheme == "http" and not _host_local(destino.hostname):
+                raise ErroConfig("openai: com chave, OPENAI_BASE_URL precisa ser https:// (http:// só para servidor local).")
         self._chave = chave or ""
         self._segredos = (self._chave,)
 
@@ -283,14 +305,19 @@ class Ollama(Provedor):
         kwargs.setdefault("timeout", TIMEOUT_OLLAMA_S)
         super().__init__(modelo, **kwargs)
         host = (host or OLLAMA_HOST_PADRAO).strip().rstrip("/")
-        if "://" not in host:  # como o próprio Ollama: host[:porta], com a porta 11434 se faltar
-            host = f"http://{host}"
+        if "://" not in host:  # como o próprio Ollama: host[:porta][/caminho], com a porta 11434 se faltar
+            endereco, barra, caminho = host.partition("/")
             try:
-                sem_porta = urlsplit(host).port is None
+                ipaddress.IPv6Address(endereco)
+                endereco = f"[{endereco}]"  # ::1 sem colchetes, como o Ollama aceita
+            except ValueError:
+                pass
+            try:
+                sem_porta = urlsplit(f"http://{endereco}").port is None
             except ValueError:
                 raise ErroConfig("ollama: OLLAMA_HOST inválido; use host:porta ou http://host:porta.") from None
-            if sem_porta:
-                host = f"{host}:{OLLAMA_PORTA_PADRAO}"
+            porta = f":{OLLAMA_PORTA_PADRAO}" if sem_porta else ""
+            host = f"http://{endereco}{porta}{barra}{caminho}"
         self.host = host
 
     def __repr__(self) -> str:
