@@ -159,6 +159,32 @@ def test_requisicao_ollama_com_host_sem_esquema_e_formato_json():
     assert llm.Ollama("m").host == "http://localhost:11434"
 
 
+@pytest.mark.parametrize(
+    "host, url",
+    [
+        ("0.0.0.0", "http://0.0.0.0:11434"),
+        ("localhost", "http://localhost:11434"),
+        ("[::1]", "http://[::1]:11434"),
+        ("servidor:8080", "http://servidor:8080"),
+        ("https://ollama.exemplo", "https://ollama.exemplo"),  # com esquema, vale a porta do esquema
+    ],
+)
+def test_ollama_host_sem_porta_usa_11434_como_o_proprio_ollama(host, url):
+    assert llm.Ollama("m", host).host == url
+
+
+def test_ollama_pede_contexto_para_o_prompt_inteiro():
+    """Sem options.num_ctx o Ollama usa 4k e corta o começo do prompt, onde ficam as regras."""
+    resposta = (200, {"model": "m", "message": {"content": "{}"}, "done": True})
+    t = TransporteFalso(resposta, resposta)
+    p = llm.Ollama("m", transporte=t)
+    p.gerar("regras", "curto")
+    p.gerar("regras", "x" * 120_000)
+    curto, longo = (c["corpo"]["options"]["num_ctx"] for c in t.chamadas)
+    assert curto == llm.OLLAMA_NUM_CTX_MIN
+    assert longo >= 120_000 // 3 + llm.OLLAMA_RESERVA_SAIDA and longo % 4096 == 0
+
+
 # --- Respostas e erros --------------------------------------------------------------------
 
 
@@ -207,6 +233,79 @@ def test_erro_4xx_nao_repete_e_nao_vaza_a_chave():
     assert len(t.chamadas) == 1
 
 
+@pytest.mark.parametrize("classe", [lambda c: llm.Anthropic(c), lambda c: llm.OpenAICompativel(c, "m")])
+def test_chave_com_quebra_de_linha_e_recusada_sem_repetir_o_valor(classe):
+    chave = "chave-ficticia\nSEGUNDA-LINHA-0123"
+    with pytest.raises(llm.ErroConfig) as erro:
+        classe(chave)
+    assert "caractere inválido" in str(erro.value)
+    assert "SEGUNDA-LINHA" not in str(erro.value) and "chave-ficticia" not in str(erro.value)
+
+
+def test_cabecalho_invalido_vira_erro_sem_a_mensagem_original():
+    """Se o transporte recusar o cabeçalho, a mensagem original (que repete o valor) não sobe."""
+    p = llm.Anthropic(CHAVE, transporte=TransporteFalso(ValueError(f"Invalid header value {CHAVE}")))
+    with pytest.raises(llm.ErroLLM) as erro:
+        p.gerar("s", "u")
+    assert "requisição inválida" in str(erro.value) and CHAVE not in str(erro.value)
+    assert erro.value.__cause__ is None and erro.value.__suppress_context__
+
+
+def test_redirecionamento_e_recusado_sem_nova_tentativa():
+    t = TransporteFalso((302, {}, {"location": "http://outro.exemplo/"}))
+    p = llm.OpenAICompativel(CHAVE, "m", transporte=t, dormir=lambda s: pytest.fail("não deveria esperar"))
+    with pytest.raises(llm.ErroLLM, match="redirecionamento recusado"):
+        p.gerar("s", "u")
+    assert len(t.chamadas) == 1
+
+
+def test_transporte_real_nao_segue_redirecionamento_nem_leva_a_chave(monkeypatch):
+    """Dois servidores locais: A responde 302 para B. B (outra origem) não pode receber nada."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    for nome in ("http_proxy", "HTTP_PROXY", "https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"):
+        monkeypatch.delenv(nome, raising=False)
+    monkeypatch.setenv("no_proxy", "*")
+    recebidos_b = []
+
+    class B(BaseHTTPRequestHandler):
+        def do_GET(self):
+            recebidos_b.append(dict(self.headers))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"choices": [{"message": {"content": "{}"}}]}')
+
+        do_POST = do_GET
+
+        def log_message(self, *args):
+            pass
+
+    servidor_b = ThreadingHTTPServer(("127.0.0.1", 0), B)
+
+    class A(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("content-length", 0)))
+            self.send_response(302)
+            self.send_header("location", f"http://127.0.0.1:{servidor_b.server_port}/outra")
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    servidor_a = ThreadingHTTPServer(("127.0.0.1", 0), A)
+    for servidor in (servidor_a, servidor_b):
+        threading.Thread(target=servidor.serve_forever, daemon=True).start()
+    try:
+        p = llm.OpenAICompativel(CHAVE, "m", base_url=f"http://127.0.0.1:{servidor_a.server_port}/v1", timeout=5)
+        with pytest.raises(llm.ErroLLM, match="redirecionamento recusado"):
+            p.gerar("s", "u")
+    finally:
+        servidor_a.shutdown()
+        servidor_b.shutdown()
+    assert recebidos_b == []
+
+
 def test_openai_resposta_cortada_ou_recusada():
     cortada = (200, {"choices": [{"message": {"content": "{"}, "finish_reason": "length"}]})
     with pytest.raises(llm.ErroLLM, match="cortada"):
@@ -227,4 +326,4 @@ def test_modulo_so_usa_biblioteca_padrao():
         if isinstance(n, (ast.Import, ast.ImportFrom))
         for a in (n.names if isinstance(n, ast.Import) else [n])
     }
-    assert modulos <= {"__future__", "json", "logging", "os", "time", "urllib", "collections", "dataclasses"}
+    assert modulos <= {"__future__", "http", "json", "logging", "math", "os", "re", "time", "urllib", "collections", "dataclasses"}

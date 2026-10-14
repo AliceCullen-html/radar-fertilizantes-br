@@ -5,21 +5,26 @@ O provedor vem de RADAR_LLM_PROVIDER:
 - "anthropic" (padrão): Messages API da Anthropic. Lê só ANTHROPIC_API_KEY.
 - "openai": qualquer API compatível com OpenAI (chat completions). Lê só OPENAI_API_KEY e
   OPENAI_BASE_URL (padrão: https://api.openai.com/v1; num servidor local a chave é opcional).
-- "ollama": servidor local do Ollama, sem chave. Lê só OLLAMA_HOST (padrão: localhost:11434).
+- "ollama": servidor local do Ollama, sem chave. Lê só OLLAMA_HOST (padrão: localhost:11434). O
+  pedido leva options.num_ctx com contexto para o prompt inteiro (no mínimo 16k tokens).
 
 O modelo vem de RADAR_LLM_MODEL. Para "anthropic" o padrão é claude-sonnet-5-5 (ID conferido em
 https://platform.claude.com/docs/en/about-claude/models/overview); "openai" e "ollama" exigem
 o nome do modelo, porque ele depende do servidor.
 
 Só biblioteca padrão (urllib): o job do GitHub Actions que recebe a chave não instala
-dependências de terceiros. A chave nunca vai para log, repr ou mensagem de erro.
+dependências de terceiros. A chave nunca vai para log, repr ou mensagem de erro, e
+redirecionamentos HTTP são recusados (num POST eles levariam a chave para outra origem).
 """
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
+import math
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -41,6 +46,11 @@ ANTHROPIC_MODELO_PADRAO = "claude-sonnet-5-5"
 ANTHROPIC_MAX_TOKENS = 16000
 OPENAI_BASE_PADRAO = "https://api.openai.com/v1"
 OLLAMA_HOST_PADRAO = "http://localhost:11434"
+OLLAMA_PORTA_PADRAO = 11434
+# O Ollama usa 4k de contexto por padrão em máquinas com menos de 24 GiB de VRAM e corta o começo
+# do prompt (as regras). Pedimos contexto para o prompt inteiro mais a resposta.
+OLLAMA_NUM_CTX_MIN = 16384
+OLLAMA_RESERVA_SAIDA = 4096
 
 TIMEOUT_S = 180.0
 TIMEOUT_OLLAMA_S = 600.0  # modelos locais podem ser lentos
@@ -68,13 +78,27 @@ class Resposta:
     modelo: str  # o modelo que a API diz ter usado
 
 
+class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
+    """Não segue redirecionamentos: num POST eles viram GET e levariam a chave para outra origem."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None  # o 3xx volta como HTTPError e vira erro não repetível
+
+
 def _transporte_urllib(url: str, headers: dict[str, str], corpo: bytes, timeout: float):
     pedido = urllib.request.Request(url, data=corpo, headers=headers, method="POST")
+    abridor = urllib.request.build_opener(_SemRedirecionar)
     try:
-        with urllib.request.urlopen(pedido, timeout=timeout) as resp:
+        with abridor.open(pedido, timeout=timeout) as resp:
             return resp.status, {k.lower(): v for k, v in resp.headers.items()}, resp.read()
     except urllib.error.HTTPError as erro:
         return erro.code, {k.lower(): v for k, v in (erro.headers or {}).items()}, erro.read() or b""
+
+
+def _conferir_chave(provedor: str, variavel: str, chave: str) -> None:
+    """Recusa chave com espaço, quebra de linha ou acento, sem repetir o valor na mensagem."""
+    if not re.fullmatch(r"[\x21-\x7e]+", chave):
+        raise ErroConfig(f"{provedor}: {variavel} tem caractere inválido (espaço, quebra de linha ou acento); confira o valor salvo.")
 
 
 class Provedor:
@@ -127,8 +151,11 @@ class Provedor:
             espera = None
             try:
                 status, cabecalhos, bruto = self._transporte(url, headers, corpo, self._timeout)
-            except (urllib.error.URLError, TimeoutError, OSError) as erro:
+            except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as erro:
                 motivo = self._limpar(f"falha de rede ({type(erro).__name__}: {getattr(erro, 'reason', erro)})")
+            except (ValueError, UnicodeError) as erro:
+                # Cabeçalho inválido (ex.: chave com quebra de linha): a mensagem original repetiria a chave.
+                raise ErroLLM(f"{self.nome}: requisição inválida ({type(erro).__name__}) para {onde}.") from None
             else:
                 try:
                     dados = json.loads(bruto.decode("utf-8")) if bruto else {}
@@ -138,6 +165,8 @@ class Provedor:
                     if not isinstance(dados, dict):
                         raise ErroLLM(f"{self.nome}: resposta que não é JSON em {onde}.")
                     return dados
+                if 300 <= status < 400:
+                    raise ErroLLM(f"{self.nome}: HTTP {status} em {onde}: redirecionamento recusado (confira a URL do provedor).")
                 detalhe = self._limpar(self._mensagem_de_erro(dados))[:300]
                 motivo = f"HTTP {status}" + (f" ({detalhe})" if detalhe else "")
                 if status not in STATUS_REPETIR:
@@ -163,6 +192,7 @@ class Anthropic(Provedor):
         super().__init__(modelo, **kwargs)
         if not chave:
             raise ErroConfig("anthropic: defina ANTHROPIC_API_KEY (ou use --mock, que não chama nenhuma API).")
+        _conferir_chave("anthropic", "ANTHROPIC_API_KEY", chave)
         self._chave = chave
         self._segredos = (chave,)
 
@@ -209,6 +239,8 @@ class OpenAICompativel(Provedor):
             raise ErroConfig("openai: OPENAI_BASE_URL precisa começar com http:// ou https://.")
         if not chave and self.base_url == OPENAI_BASE_PADRAO:
             raise ErroConfig("openai: defina OPENAI_API_KEY (ou OPENAI_BASE_URL de um servidor que não exija chave).")
+        if chave:
+            _conferir_chave("openai", "OPENAI_API_KEY", chave)
         self._chave = chave or ""
         self._segredos = (self._chave,)
 
@@ -251,8 +283,14 @@ class Ollama(Provedor):
         kwargs.setdefault("timeout", TIMEOUT_OLLAMA_S)
         super().__init__(modelo, **kwargs)
         host = (host or OLLAMA_HOST_PADRAO).strip().rstrip("/")
-        if "://" not in host:  # o Ollama aceita OLLAMA_HOST como host:porta
+        if "://" not in host:  # como o próprio Ollama: host[:porta], com a porta 11434 se faltar
             host = f"http://{host}"
+            try:
+                sem_porta = urlsplit(host).port is None
+            except ValueError:
+                raise ErroConfig("ollama: OLLAMA_HOST inválido; use host:porta ou http://host:porta.") from None
+            if sem_porta:
+                host = f"{host}:{OLLAMA_PORTA_PADRAO}"
         self.host = host
 
     def __repr__(self) -> str:
@@ -264,6 +302,7 @@ class Ollama(Provedor):
             "messages": [{"role": "system", "content": sistema}, {"role": "user", "content": usuario}],
             "stream": False,
             "format": esquema if esquema is not None else "json",
+            "options": {"num_ctx": num_ctx(sistema + usuario)},
         }
         return f"{self.host}/api/chat", {"content-type": "application/json"}, corpo
 
@@ -274,6 +313,13 @@ class Ollama(Provedor):
         if not texto:
             raise ErroLLM("ollama: resposta sem texto.")
         return Resposta(str(texto), str(dados.get("model") or self.modelo))
+
+
+def num_ctx(prompt: str) -> int:
+    """Contexto pedido ao Ollama: o prompt (estimado em 1 token a cada 3 caracteres) mais a resposta,
+    arredondado para cima em múltiplos de 4096 e nunca abaixo de 16384."""
+    estimado = math.ceil(len(prompt) / 3) + OLLAMA_RESERVA_SAIDA
+    return max(OLLAMA_NUM_CTX_MIN, math.ceil(estimado / 4096) * 4096)
 
 
 def provedor_do_ambiente(env: Mapping[str, str] | None = None, **kwargs) -> Provedor:
