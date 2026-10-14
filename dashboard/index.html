@@ -425,12 +425,15 @@ const MENOS = "−";
 const nulo = (v) => v === null || v === undefined || Number.isNaN(v);
 const toneladas = (t) => (nulo(t) ? "–" : `${fmtCompacto.format(t)} t`);
 const dolares = (v) => (nulo(v) ? "–" : `US$ ${fmtCompacto.format(v)}`);
-const porTonelada = (v) => (nulo(v) ? "–" : `${Math.round(v) < 0 ? MENOS : ""}US$ ${fmt0.format(Math.abs(v))}/t`);
+// Sinal pelo número já arredondado, como o _num do boletim: nunca "−0,0" nem "−US$ 0/t".
+const sinalDe = (v, f, mais = "") => (/[1-9]/.test(f.format(Math.abs(v))) ? (v < 0 ? MENOS : mais) : "");
+const comSinal = (v, f, mais = "") => `${sinalDe(v, f, mais)}${f.format(Math.abs(v))}`;
+const porTonelada = (v) => (nulo(v) ? "–" : `${sinalDe(v, fmt0)}US$ ${fmt0.format(Math.abs(v))}/t`);
 const pct = (v) => (nulo(v) ? "–" : `${fmt1.format(v)}%`);
 function variacao(v, sufixo = "%") {
   if (nulo(v) || !Number.isFinite(v)) return "–";
-  const seta = v > 0.05 ? "▲" : v < -0.05 ? "▼" : "■";
-  const sinal = v > 0 ? "+" : v < 0 ? MENOS : "";
+  const sinal = sinalDe(v, fmt1, "+");
+  const seta = sinal === "+" ? "▲" : sinal === MENOS ? "▼" : "■";
   return `${seta} ${sinal}${fmt1.format(Math.abs(v))}${sufixo}`;
 }
 const variacaoPct = (atual, anterior) => (anterior > 0 && !nulo(atual) ? 100 * (atual / anterior - 1) : null);
@@ -573,8 +576,10 @@ const pluginRotulosFinais = {
         const base = i === 0 ? chart.scales.y.getPixelForValue(0) : chart.getDatasetMeta(i - 1).data[j].y;
         y = (ponto.y + base) / 2;
       }
-      itens.push({ y, alvo: y, rotulo: ds.rotuloFinal, corSerie: ds.borderColor });
+      itens.push({ y, alvo: y, x: ponto.x, rotulo: ds.rotuloFinal, corSerie: ds.borderColor });
     });
+    // A partir da ponta das linhas: com offset no eixo x, o último mês fica antes da borda.
+    const borda = itens.length ? Math.max(...itens.map((it) => it.x)) : right;
     itens.sort((a, b) => a.y - b.y);
     const altura = 14;
     // Rótulos que se sobrepõem formam um grupo centrado na média das pontas das linhas, para o
@@ -609,18 +614,18 @@ const pluginRotulosFinais = {
         ctx.strokeStyle = cor("--texto-3");
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(right + 1, it.alvo);
-        ctx.lineTo(right + 5, y);
+        ctx.moveTo(borda + 1, it.alvo);
+        ctx.lineTo(borda + 5, y);
         ctx.stroke();
       }
       ctx.strokeStyle = it.corSerie;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(right + 6, y);
-      ctx.lineTo(right + 14, y);
+      ctx.moveTo(borda + 6, y);
+      ctx.lineTo(borda + 14, y);
       ctx.stroke();
       ctx.fillStyle = cor("--texto-2");
-      ctx.fillText(it.rotulo, right + 17, y);
+      ctx.fillText(it.rotulo, borda + 17, y);
     }
     ctx.restore();
   },
@@ -1339,7 +1344,7 @@ function desenharBenchmark(indices) {
   document.getElementById("kpis-bm").replaceChildren(
     kpi(`FOB Brasil · ${rotuloMes(p[ate])}`, porTonelada(fobUlt), motivo || `CIF ${porTonelada(valor("cif", ate))} · ${toneladas(t)}`),
     kpi(`Banco Mundial · ${base.base}`, porTonelada(valor("bm", ate)), `${prod.serie}${prod.proxy ? " (referência do MAP)" : ""}${atualizado}`),
-    kpi(`Spread comparável (${base.comparacao})`, nulo(spreadUlt) ? "–" : variacao(spreadUlt), motivo || (nulo(spreadUsd) ? "" : `${spreadUsd >= 0 ? "+" : MENOS}US$ ${fmt0.format(Math.abs(spreadUsd))}/t · custo posto ${porTonelada(valor("custo_posto_usd_t", ate))}`)),
+    kpi(`Spread comparável (${base.comparacao})`, nulo(spreadUlt) ? "–" : variacao(spreadUlt), motivo || (nulo(spreadUsd) ? "" : `${sinalDe(spreadUsd, fmt0, "+")}US$ ${fmt0.format(Math.abs(spreadUsd))}/t · custo posto ${porTonelada(valor("custo_posto_usd_t", ate))}`)),
     kpi("CIF em reais", nulo(fobUlt) ? "–" : reais(valor("cif_brl_t", ate)), nulo(ptax(ate)) ? "sem PTAX do mês" : `PTAX média R$ ${fmt4.format(ptax(ate))}`),
   );
 
@@ -1361,8 +1366,12 @@ function desenharBenchmark(indices) {
     { rotulo: `Banco Mundial: ${bases.join(" → ")}`, corItem: corBm, tipo: "tracejada" },
     ...(marcas.length ? [{ rotulo: "Mudança de base do benchmark", tipo: "quebra" }] : []),
   ]);
+  // Mês comparável entre dois sem linha (amostra pequena ou borda do período) vira um ponto:
+  // sem ele, o mês contado como comparável não apareceria no gráfico.
+  const isolado = (data, j) => !nulo(data[j]) && nulo(data[j - 1]) && nulo(data[j + 1]);
   const linha = (label, data, corLinha, rotuloFinal, tracejado = false) => ({
-    label, data, rotuloFinal, borderColor: corLinha, backgroundColor: corLinha, borderWidth: 2, borderDash: tracejado ? [6, 4] : [], pointRadius: 0,
+    label, data, rotuloFinal, borderColor: corLinha, backgroundColor: corLinha, borderWidth: 2, borderDash: tracejado ? [6, 4] : [],
+    pointRadius: (c) => (isolado(data, c.dataIndex) ? 3 : 0),
     pointHoverRadius: 4, pointHoverBorderWidth: 2, pointHoverBorderColor: cor("--superficie"), tension: 0, spanGaps: false,
   });
   const dicaPrecos = dicaExterna((pontos) => {
@@ -1420,7 +1429,7 @@ function desenharBenchmark(indices) {
             const usd = valor("spread_usd_t", i);
             return {
               titulo: pontos[0].label,
-              linhas: [{ corSerie: corProd, valor: variacao(pontos[0].raw), serie: `${baseDe(i).comparacao} · ${nulo(usd) ? "–" : `${usd >= 0 ? "+" : MENOS}US$ ${fmt0.format(Math.abs(usd))}/t`}` }],
+              linhas: [{ corSerie: corProd, valor: variacao(pontos[0].raw), serie: `${baseDe(i).comparacao} · ${nulo(usd) ? "–" : `${sinalDe(usd, fmt0, "+")}US$ ${fmt0.format(Math.abs(usd))}/t`}` }],
               extras: [`Base: ${baseDe(i).base}`, `Custo posto (CIF − benchmark): ${porTonelada(valor("custo_posto_usd_t", i))}`],
             };
           }),
@@ -1459,7 +1468,7 @@ function desenharBenchmark(indices) {
     plugins: [pluginCruz],
   });
 
-  const n = (v, f) => (nulo(v) ? "–" : f.format(v));
+  const n = (v, f) => (nulo(v) ? "–" : comSinal(v, f).replace(MENOS, "-"));
   tabela("tabela-bm",
     [{ titulo: "Mês" }, { titulo: "Toneladas", num: true }, { titulo: "FOB Brasil US$/t", num: true }, { titulo: "CIF Brasil US$/t", num: true },
       { titulo: "Banco Mundial US$/t", num: true }, { titulo: "Base" }, { titulo: "Spread US$/t", num: true }, { titulo: "Spread %", num: true },
