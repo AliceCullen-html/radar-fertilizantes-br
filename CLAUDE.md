@@ -77,13 +77,15 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
 - Fase 3: `dashboard/index.html` é um HTML único (Chart.js 4.5.1 do jsDelivr, com SRI) que
   lê `dashboard.json`. Para ver localmente: `python -m http.server` na raiz e abrir
   `/dashboard/`. O deploy é feito pelo `.github/workflows/pages.yml` (push na main que mude
-  `dashboard/` ou o `dashboard.json`, ou manual), sem segredos. Pré-requisito: Settings →
+  `dashboard/`, o `dashboard.json` ou o `boletins/latest.json`, ou manual), sem segredos. Pré-requisito: Settings →
   Pages → Source: "GitHub Actions".
 - Fase 4: `.github/workflows/atualizacao.yml` roda nos dias 1 a 15 de cada mês. Se o mês
   anterior já está gravado (`--ultimo-gravado`), encerra sem chamar a API; senão faz a
-  ingestão incremental das duas séries, o transform e os testes e, só se entrou mês novo,
-  commita como github-actions[bot] e chama o `pages.yml` (via `workflow_call`, porque
-  pushes com o GITHUB_TOKEN não disparam outros workflows). Falha da API (ou mês publicado
+  ingestão incremental das duas séries, o transform e os testes e, se entrou mês novo ou se
+  há boletim novo (o do último mês faltava, ou foi refeito por dispatch), commita só `data/`
+  e `boletins/` como github-actions[bot] e chama o `pages.yml` (via `workflow_call`, porque
+  pushes com o GITHUB_TOKEN não disparam outros workflows). Os testes rodam sobre o mês
+  recém-gravado: nunca fixar valores do último mês nos testes com dados versionados. Falha da API (ou mês publicado
   que não vem, mesmo no meio do período) = job vermelho, nada commitado. Privilégios
   separados: o job que roda Python é só leitura e entrega `data/` como artifact; o job do
   commit (único com `contents: write`) só roda git, com hooks desligados, e recusa mudança
@@ -94,7 +96,9 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
   validação igual para todos os provedores → `boletins/AAAA-MM.md` e `latest.json`). Os dois
   usam SÓ a biblioteca padrão: o job `gerar-boletim` é o único com o secret (environment
   `boletim-ia`) e não instala pacotes. Nunca relaxar a validação (dígito, número por
-  extenso, unidade fora de marcador, marcador inexistente, tom, tamanho). Nunca usar
+  extenso, mês por extenso, contagem, unidade ou sinal fora de marcador, marcador
+  inexistente, direção sem variação ou contraditória, troca sem "no porto", caractere
+  invisível ou quebra de linha, lista de termos de tom, tamanho). Nunca usar
   `pull_request_target`. Boletim do `--mock` vai para `boletins/mock/` (fora do Git) e nunca
   é commitado.
 - Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):

@@ -190,24 +190,38 @@ A IA escreve o texto; os números vêm do programa. O passo a passo (`src/boleti
 2. **Marcadores no lugar de números.** A IA devolve JSON com título, lead e parágrafos e só
    pode citar números por marcadores, como `{troca_map_ultimo}`. É proibido escrever
    números.
-3. **Validação automática, igual para todos os provedores.** A resposta é reprovada se tiver
-   marcador que não existe no pacote; qualquer dígito (de qualquer escrita, inclusive "²" e
-   "½"), algarismo romano, número por extenso ("três", "mil", "dobrou", "um terço") ou unidade
-   (%, US$, p.p.) fora dos marcadores; palavra de direção que contradiz a variação citada
-   ("alta de {var_x}" quando a variação é de queda); Markdown ou HTML; recomendação de
-   compra e venda ou termos alarmistas ("disparou", "colapso"); menos de 6 números citados;
-   ou tamanho acima do limite. Se reprovar, a IA recebe os erros e tenta mais uma
-   vez; se reprovar de novo, nada é publicado. Um modelo fraco que inventa número reprova do
-   mesmo jeito em qualquer provedor.
+3. **Validação automática, igual para todos os provedores.** A resposta é reprovada se tiver:
+   - marcador que não existe no pacote;
+   - fora dos marcadores: qualquer dígito (de qualquer escrita, inclusive "²" e "½"),
+     algarismo romano, número por extenso ("três", "mil", "zero", "meia", "dobrou", "um
+     terço"), nome de mês, período ("semestre", "década", "mês anterior"), contagem que o
+     pacote não traz ("terceiro mês seguido", "consecutivo", "pela primeira vez", "recorde"),
+     unidade (%, "por cento", US$, p.p.) ou sinal (+, −) colado num marcador de variação;
+   - palavra de direção que contradiz a variação ("alta de {var_x}" ou "{var_x} maior que"
+     quando a variação é de queda), conferida também no valor que variou ("as compras
+     cresceram para {t_k_mes}") e na posição frente a uma referência (média histórica, limiar
+     do HHI); e palavra de mudança ("subiu", "caiu") numa frase sem nenhuma variação do
+     pacote, onde a direção não teria como ser conferida;
+   - relação de troca sem a ressalva "no porto" no mesmo parágrafo, ou apresentada como
+     preço ao produtor;
+   - quebra de linha, caractere invisível ou de controle, letra fora do alfabeto latino,
+     Markdown ou HTML;
+   - um termo de uma lista fixa de recomendação e tom alarmista ("recomendamos", "vale a
+     pena", "antecipar as compras", "disparou", "colapso", "crítico");
+   - menos de 6 marcadores citados, ou tamanho acima do limite.
+
+   Se reprovar, a IA recebe os erros e tenta mais uma vez; se reprovar de novo, nada é
+   publicado. Um modelo fraco que inventa número reprova do mesmo jeito em qualquer provedor.
 4. **O programa troca os marcadores pelos valores** e grava o boletim, com uma tabela dos
    números citados e o rodapé fixo: "Texto gerado por IA a partir de dados do Comex
    Stat/MDIC; números inseridos e verificados automaticamente."
 
-O tom pedido é de analista de inteligência de mercado: neutro, sem recomendação de compra e
-venda e sem adjetivos alarmistas. A relação de troca sempre aparece como medida no porto,
-não como preço ao produtor. O texto pode relacionar os números entre si, mas não cita
-causas ou eventos que não estejam no pacote. Fica registrado no boletim qual provedor e
-qual modelo escreveram o texto.
+O que a validação confere é o que está na lista acima. O resto é pedido no prompt e não tem
+como ser verificado por um programa: o tom de analista (neutro, sem recomendação de compra
+e venda e sem adjetivos alarmistas, além da lista fixa de termos) e a regra de não citar
+causas, eventos, empresas ou previsões que não estejam no pacote. A relação de troca sempre
+aparece como medida no porto, porque a validação exige a ressalva. Fica registrado no
+boletim qual provedor e qual modelo escreveram o texto.
 
 O provedor padrão é a Anthropic, com o modelo `claude-sonnet-5-5` e saída JSON restrita por
 schema. Pela tabela de preços do modelo (US$ 2 por milhão de tokens de entrada e US$ 10 de
@@ -223,7 +237,12 @@ saída), um boletim custa poucos centavos de dólar, mesmo com a nova tentativa.
 
 Cada provedor lê só as próprias variáveis. Nenhuma é necessária para os testes nem para o
 modo `--mock`, que usa uma resposta fixa de exemplo sem chamar nenhuma API e grava em
-`boletins/mock/`, fora do Git.
+`boletins/mock/`, fora do Git. O cliente HTTP não segue redirecionamentos (num POST eles
+levariam a chave para outro endereço) e recusa chave com espaço ou quebra de linha.
+
+`--mes AAAA-MM` gera o boletim de um mês anterior. Origens, HHI, portos e rotas só entram
+quando o mês é o último do seu ano nos dados (esses blocos do `dashboard.json` cobrem o ano
+todo), e um mês antigo não tira o mais recente do `latest.json`.
 
 ### Use com a sua IA
 
@@ -241,17 +260,24 @@ modo `--mock`, que usa uma resposta fixa de exemplo sem chamar nenhuma API e gra
 3. **Local, com `.env` ou com Ollama, de graça.**
 
    ```bash
-   python -m src.boletim --mock              # formato do boletim, sem IA e sem chave
-   cp .env.example .env                      # preencha a chave do seu provedor
+   python -m src.boletim --mock                         # formato do boletim, sem IA e sem chave
+   cp .env.example .env                                 # preencha a chave do seu provedor
    set -a; . ./.env; set +a
-   python -m src.boletim                     # grava boletins/AAAA-MM.md e latest.json
+   python -m src.boletim --saida boletins/local         # grava boletins/local/AAAA-MM.md e latest.json
    ```
+
+   `boletins/local/` fica fora do Git, como `boletins/mock/`. Sem `--saida`, o programa
+   grava em `boletins/`, onde o boletim oficial do mês já está versionado: ele não refaz o
+   mês sem `--forcar`, e com `--forcar` sobrescreve a sua cópia (para voltar:
+   `git checkout -- boletins`).
 
    Com o [Ollama](https://ollama.com/), sem chave e sem custo: baixe um modelo
    (`ollama pull <modelo>`) e rode
-   `RADAR_LLM_PROVIDER=ollama RADAR_LLM_MODEL=<modelo> python -m src.boletim`. Modelos
-   locais pequenos tendem a reprovar mais na validação, mas a regra é a mesma: número
-   inventado não passa.
+   `RADAR_LLM_PROVIDER=ollama RADAR_LLM_MODEL=<modelo> python -m src.boletim --saida boletins/local`.
+   O pedido já leva contexto para o prompt inteiro (`num_ctx` de pelo menos 16 mil tokens);
+   o modelo precisa caber na sua máquina com esse contexto. `OLLAMA_HOST` aceita `host`,
+   `host:porta` ou a URL completa, com a porta 11434 se faltar. Modelos locais pequenos
+   tendem a reprovar mais na validação, mas a regra é a mesma: número inventado não passa.
 4. **MCP com o Claude Desktop** (fase 6, ainda não implementada): um servidor MCP local
    para consultar os dados do radar direto do Claude Desktop.
 

@@ -27,3 +27,4 @@ venv/
 
 # --- Boletim em modo --mock (exemplo local, nunca publicado) -----------------------
 boletins/mock/
+boletins/local/
