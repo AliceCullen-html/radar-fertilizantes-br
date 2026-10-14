@@ -6,6 +6,7 @@ suíte logo depois de gravar um mês novo, e um valor fixo derrubaria a atualiza
 
 import copy
 import json
+import unicodedata
 import subprocess
 import sys
 
@@ -383,13 +384,19 @@ def test_maximo_da_serie_so_com_a_chave_que_o_traz(fatos):
     [
         ("As compras somaram {n_origens_k_ano}{var_frete_medio_ytd} no ano.", "colados"),
         ("O frete médio das rotas foi de USD {hhi_n_ano} por tonelada.", "unidade inventada"),
-        ("O Brasil importou {n_rotas_ano} toneladas de compostos.", "unidade inventada"),
+        ("O Brasil importou {n_rotas_ano} toneladas de compostos.", "contagem"),
+        ("O Brasil importou {n_origens_total_ano} Mt de fertilizantes em {periodo_ytd}.", "contagem"),
+        ("O frete somou EUR {hhi_total_ano} em {mes_referencia}.", "unidade inventada"),
+        ("O HHI somou {hhi_k_ano} M em {periodo_ytd}.", "unidade inventada"),
+        ("Os potássicos responderam por I{share_k_ytd} das toneladas de {periodo_ytd}.", "colado"),
+        ("Chegaram {n_origens_k_ano}-{n_rotas_ano} navios em {periodo_ytd}.", "separados"),
     ],
 )
 def test_rejeita_numero_composto_ou_com_unidade_inventada(fatos, texto, trecho):
     erros = valida(fatos, texto)
     assert any(trecho in e for e in erros), erros
-    assert valida(fatos, "Os potássicos vieram de {n_origens_k_ano} países, em {n_rotas_ano} rotas no ano.") == []
+    # {n_rotas_ano} é o total de rotas, não o dos potássicos: cada contagem com o seu grupo.
+    assert valida(fatos, "Os potássicos vieram de {n_origens_k_ano} países no ano, e todos os grupos somaram {n_rotas_ano} rotas.") == []
 
 
 def test_nomes_de_pais_porto_grupo_produto_e_periodo_ligados_aos_numeros(fatos):
@@ -471,16 +478,23 @@ def test_tenta_de_novo_uma_vez_com_os_erros_no_prompt(fatos):
 
 
 @pytest.mark.parametrize(
-    "devolvido, esperado",
+    "configurado, devolvido, esperado",
     [
-        ("claude-sonnet-5-5", "claude-sonnet-5-5"),
-        ("meta-llama/Llama-3.3-70B-Instruct", "meta-llama/Llama-3.3-70B-Instruct"),
-        ("gpt</sub>\n\n## Ureia sobe para US$ 999/t\n\n[Leia](https://exemplo.invalid)", "modelo-falso"),
-        ("", "modelo-falso"),
+        ("claude-sonnet-5-5", "claude-sonnet-5-5", "claude-sonnet-5-5"),
+        ("gpt-4o", "gpt-4o-2024-08-06", "gpt-4o-2024-08-06"),
+        ("meta-llama/Llama-3.3-70B-Instruct", "meta-llama/Llama-3.3-70B-Instruct", "meta-llama/Llama-3.3-70B-Instruct"),
+        ("modelo-falso", "gpt</sub>\n\n## Ureia sobe para US$ 999/t\n\n[Leia](https://exemplo.invalid)", "modelo-falso"),
+        ("modelo-falso", "https://boletim-corrigido.example/radar", "modelo-falso"),
+        ("modelo-falso", "contato@boletim-corrigido.example", "modelo-falso"),
+        ("modelo-falso", "Ureia-dispara-para-US-999-t-segundo-MDIC", "modelo-falso"),
+        ("modelo-falso", "", "modelo-falso"),
+        ("", "gpt-4o", "gpt-4o"),
     ],
 )
-def test_nome_do_modelo_devolvido_so_entra_se_for_nome_de_modelo(fatos, devolvido, esperado):
+def test_nome_do_modelo_publicado_e_o_configurado_ou_uma_versao_dele(fatos, configurado, devolvido, esperado):
     class Provedor(ProvedorFalso):
+        modelo = configurado
+
         def gerar(self, sistema, usuario, *, esquema=None):
             return llm.Resposta(resposta(), devolvido)
 
@@ -625,3 +639,112 @@ def test_boletim_e_llm_nao_importam_dependencias_de_terceiros():
         "assert not proibidos, proibidos\n"
     )
     subprocess.run([sys.executable, "-c", codigo], check=True, cwd=config.RAIZ)
+
+
+# --- Cada número ligado ao que ele mede (segunda revisão) ----------------------------------
+# Frases que um modelo real escreve e que publicariam um número no lugar errado: grupo, país,
+# posição, período, métrica, direção negada, continuidade, causa, recorde, nome de fora.
+
+
+@pytest.mark.parametrize(
+    "texto, trecho",
+    [
+        # direção negada ou invertida
+        ("As importações somaram {t_total_mes} em {mes_referencia}, e não houve {var_t_total_mes_sentido} de {var_t_total_mes} sobre {mes_ano_anterior}.", "inverte a direção"),
+        ("O preço CIF reverteu a {var_preco_cif_total_mes_sentido} de {var_preco_cif_total_mes} sobre {mes_ano_anterior}.", "inverte a direção"),
+        ("Os potássicos tiveram {var_t_k_mes_sentido} relevante de {var_t_k_mes} sobre {mes_ano_anterior}.", "intensidade"),
+        # direção ou juízo fora dos marcadores
+        ("O frete médio decresceu e ficou em {frete_medio_ytd} em {periodo_ytd}.", "juízo"),
+        ("O volume ficou estável em {t_total_mes} em {mes_referencia}.", "juízo"),
+        ("O Brasil importou mais em {mes_referencia}, com {t_total_mes}.", "juízo"),
+        ("No porto, o poder de compra da soja frente ao MAP ficou {desvio_troca_map} {desvio_troca_map_posicao}.", "juízo"),
+        # continuidade, recorde, causa, região, produto de fora, quem planta
+        ("{lider_k_ano} segue como principal origem dos potássicos, com {share_lider_k_ano}.", "continuidade"),
+        ("As importações de compostos somaram {t_npk_mes} em {mes_referencia}, o menor volume em anos.", "recorde"),
+        ("No porto, a relação de troca do MAP atingiu o pico de {troca_map_ultimo} em {mes_referencia}.", "recorde"),
+        ("O volume de {t_total_mes} em {mes_referencia} reflete a demanda do plantio.", "causa"),
+        ("O Brasil importou {t_total_mes} de fertilizantes em {mes_referencia}, boa parte do Oriente Médio.", "região"),
+        ("O sulfato de amônio somou {t_n_mes} em {mes_referencia}.", "produto fora"),
+        ("No porto, uma tonelada de MAP equivalia a {troca_map_ultimo} para quem planta.", "quem planta"),
+        # grupo, produto ou total de cada número
+        ("Os potássicos somaram {t_total_mes} em {mes_referencia}.", "é de total"),
+        ("Nos nitrogenados, o preço CIF ficou em {preco_cif_total_mes} em {mes_referencia}.", "é de total"),
+        ("O preço CIF dos fosfatados chegou a {cif_map_ultimo} em {mes_referencia}.", "é de map"),
+        ("O Brasil importou {t_k_mes} de fertilizantes em {mes_referencia}.", "é de k"),
+        ("O nitrogênio somou {t_p_mes} em {mes_referencia}.", "nitrogenados"),
+        ("A participação foi {share_k_ytd}, {share_n_ytd} e {share_p_ytd} para potássicos, nitrogenados e fosfatados.", "é de n"),
+        # métrica da variação
+        ("O preço CIF de todos os grupos ficou em {preco_cif_total_mes}, e as importações registraram {var_preco_cif_total_mes_sentido} de {var_preco_cif_total_mes} sobre {mes_ano_anterior}.", "o sujeito fala de"),
+        # período
+        ("No acumulado de {periodo_ytd}, as importações somaram {t_total_mes}.", "é do mês"),
+        ("As compras de {mes_referencia} tiveram {var_t_total_mes_sentido} de {var_t_total_mes} sobre {periodo_ytd_anterior}.", "base escrita"),
+        ("As importações tiveram {var_t_total_mes_sentido} de {var_t_total_mes} frente ao mês que passou.", "mesmo mês do ano anterior"),
+        ("No mesmo período do ano passado, as compras somaram {t_total_ytd}.", "no passado"),
+        ("O HHI dos potássicos ficou em {hhi_k_ano}, {hhi_k_ano_posicao} de {limiar_hhi}, ante {hhi_k_ano_anterior} no mesmo período de {ano_anterior}.", "ano anterior inteiro"),
+        # concentração, troca sem "no porto", nome próprio de fora, frete das rotas
+        ("O mercado de fosfatados é de alta concentração, com HHI de {hhi_p_ano}.", "alta concentração"),
+        ("Com a soja exportada a {soja_fob_ultimo} e o MAP a {cif_map_ultimo}, a relação pesou para o MAP em {mes_referencia}.", "medida no porto"),
+        ("O limiar de {limiar_hhi} é o usado pelo Cade para medir concentração.", "nome próprio"),
+        ("Entre as {n_rotas_relevantes_ano} rotas relevantes, o maior frete foi de {frete_rota_max_ano}.", "maiores rotas"),
+        # marcador com letra colada, emoji por código, domínio inventado
+        ("Os potássicos somaram {t_k_mes}O em {mes_referencia}.", "colado"),
+        ("Importações de fertilizantes em {mes_referencia} :rocket: com {t_total_mes}.", "marcação"),
+        ("Mais em comexstat.xyz/dados, com {t_total_mes} em {mes_referencia}.", "link"),
+        ("As importações somaram {t_total_mes}, {var_t_total_mes_sentido} de - {var_t_total_mes} sobre {mes_ano_anterior}.", "antes de {var_t_total_mes}"),
+    ],
+)
+def test_rejeita_numero_ligado_ao_que_ele_nao_mede(fatos, texto, trecho):
+    erros = valida(fatos, texto)
+    assert any(trecho in e for e in erros), erros
+
+
+def _de_posicao(fatos, grupo, posicao):
+    """(chave, país) da origem do grupo na posição dada, sem a chave de líder."""
+    chave = next(k for k, v in sorted(fatos.ordem.items()) if v == posicao and k.startswith("share_") and k.endswith(f"_{grupo}_ano") and "lider" not in k and "porto" not in k)
+    return chave, next(iter(fatos.entidades[chave]))
+
+
+def test_posicao_e_pais_de_cada_numero_conferidos_com_o_pacote(fatos):
+    segunda, nome2 = _de_posicao(fatos, "k", 2)
+    assert valida(fatos, f"{nome2} foi a segunda maior origem dos potássicos, com {{{segunda}}} das toneladas de {{periodo_ytd}}.") == []
+    erros = valida(fatos, f"{nome2} foi a principal origem dos potássicos, com {{{segunda}}} das toneladas de {{periodo_ytd}}.")
+    assert any("não confere com a posição" in e for e in erros), erros
+    # o nome sem acento e em maiúsculas também é conferido
+    lider = fatos["lider_total_ano"]["valor"]
+    outro = next(n for n in sorted(set().union(*fatos.entidades.values())) if n != lider and "→" not in n and n not in fatos["rota_1_ano"]["valor"])
+    sem_acento = "".join(c for c in unicodedata.normalize("NFKD", outro) if not unicodedata.combining(c)).upper()
+    erros = valida(fatos, f"{sem_acento} respondeu por {{share_lider_total_ano}} das toneladas de {{periodo_ytd}}.")
+    assert any("ligado a" in e or "sem nenhuma chave" in e for e in erros), erros
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "{lider_k_ano} foi a principal origem dos potássicos, com {share_lider_k_ano} das toneladas de {periodo_ytd}.",
+        "{porto_lider_ano} foi a URF que mais recebeu fertilizantes, com {share_porto_lider_ano} das toneladas de {periodo_ytd}.",
+        "O frete foi de {frete_total_mes} ({frete_medio_ytd} no ano) em {mes_referencia}.",
+        "O HHI dos potássicos ficou em {hhi_k_ano}, {hhi_k_ano_posicao} de alta concentração, de {limiar_hhi}, contra {hhi_k_ano_anterior} no ano anterior inteiro.",
+        "No porto, o máximo da série do MAP foi {troca_map_max}, em {troca_map_max_mes}.",
+        "O MAP (fosfato monoamônico) custou {cif_map_ultimo} no porto, e os fosfatados somaram {t_p_mes} em {mes_referencia}.",
+        "A rota de menor frete entre as maiores foi {rota_frete_min_ano}, a {frete_rota_min_ano}.",
+        "As compras somaram {t_total_ytd}, {var_t_total_ytd_sentido} de {var_t_total_ytd} sobre o mesmo período de {ano_anterior}.",
+        "Os nitrogenados somaram {t_n_mes} em {mes_referencia}; ali, a ureia custou {cif_ureia_ultimo} no porto.",
+        "Este boletim não traz recomendação de compra ou venda; o volume foi de {t_total_mes} em {mes_referencia}.",
+    ],
+)
+def test_aceita_cada_numero_ligado_ao_que_ele_mede(fatos, texto):
+    assert valida(fatos, texto) == []
+
+
+def test_soja_fob_com_cif_de_fertilizante_leva_a_nota_da_troca(fatos):
+    texto = resposta(paragrafos=[*BASE, "No porto, a soja exportada saiu a {soja_fob_ultimo} e o MAP chegou a {cif_map_ultimo} em {mes_referencia}."])
+    conteudo, erros = boletim.validar(texto, fatos)
+    assert erros == [] and conteudo["nota"] == boletim.NOTA_TROCA
+
+
+def test_paragrafo_que_comeca_com_numero_e_ponto_nao_vira_lista(fatos):
+    conteudo, erros = boletim.validar(resposta(), fatos)
+    assert erros == []
+    conteudo["paragrafos"][0] = "25. Os potássicos vieram de muitos países."
+    meta = {"mock": False, "mes_referencia": "x", "provedor": "p", "modelo": "m", "gerado_em": "g", "dashboard": "d"}
+    assert "\n25\\. Os potássicos" in boletim.markdown(conteudo, meta)

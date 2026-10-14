@@ -183,6 +183,7 @@ class Fatos(dict):
         super().__init__(*args, **kwargs)
         self.entidades: dict[str, set[str]] = {}
         self.outros_nomes: set[str] = set()
+        self.ordem: dict[str, int] = {}  # posição (1, 2, 3) da origem ou do porto de cada share
 
     def add(self, chave: str, valor: str | None, descricao: str, entidades: tuple[str, ...] = ()) -> None:
         if valor is None:
@@ -316,6 +317,9 @@ def montar_fatos(painel: dict, troca: list[dict], mes: str | None = None) -> Fat
                     f.add(f"lider_{k}_ano", pais, f"Maior país de origem de {acum}, {nome}", (pais,))
                     f.add(f"share_lider_{k}_ano", fmt_pct(r[3]), f"Participação de {pais}, maior origem, nas toneladas de {acum}, {nome}", (pais,))
                 f.add(f"share_{s_pais}_{k}_ano", fmt_pct(r[3]), f"Participação de {pais} ({ordem} origem) nas toneladas de {acum}, {nome}", (pais,))
+                f.ordem[f"share_{s_pais}_{k}_ano"] = pos + 1
+                if pos == 0:
+                    f.ordem[f"share_lider_{k}_ano"] = 1
                 f.add_var(f"var_share_{s_pais}_{k}_ano", r[5], f"Variação da participação de {pais} sobre {acum_ant}, {nome}", pp=True, entidades=(pais,))
                 f.add_var(f"var_t_{s_pais}_{k}_ano", r[4], f"Variação das toneladas vindas de {pais} sobre {acum_ant}, {nome}", entidades=(pais,))
             a = anual[g]
@@ -335,6 +339,9 @@ def montar_fatos(painel: dict, troca: list[dict], mes: str | None = None) -> Fat
                 f.add("porto_lider_ano", nome_p, f"URF (porto) que mais recebeu fertilizantes de {acum}", (nome_p,))
                 f.add("share_porto_lider_ano", fmt_pct(r[3]), f"Participação de {nome_p} nas toneladas de {acum}", (nome_p,))
             f.add(f"share_porto_{s_p}_ano", fmt_pct(r[3]), f"Participação da URF {nome_p} ({ordem}) nas toneladas de {acum}", (nome_p,))
+            f.ordem[f"share_porto_{s_p}_ano"] = pos + 1
+            if pos == 0:
+                f.ordem["share_porto_lider_ano"] = 1
             f.add_var(f"var_share_porto_{s_p}_ano", r[5], f"Variação da participação de {nome_p} sobre {acum_ant}", pp=True, entidades=(nome_p,))
 
     # --- Rotas país de origem -> URF no acumulado do ano
@@ -432,8 +439,8 @@ Regras invioláveis. Um programa confere a resposta e a reprova se qualquer uma 
 1. Todo número entra SOMENTE como marcador {chave}, com a chave exatamente como está no pacote. O programa troca o marcador pelo valor. Isso vale para anos, meses, percentuais, toneladas, preços, contagens e sacas. Nunca escreva o nome de um mês: use {mes_referencia}, {mes_ano_anterior}, {periodo_ytd} e afins.
 2. Nenhum dígito fora dos marcadores, nem números por extenso (dois, três, dez, mil, milhões, zero, meia, dobro, dobrou, triplicou, metade, um terço...), algarismos romanos ou posições além de "terceiro". Também não escreva contagens, recordes nem períodos que o pacote não traz: "terceiro mês seguido", "consecutivo", "pela primeira vez", "recorde", "inédito", "o maior da série", "nunca antes", semestre, trimestre, década, "comparação mensal", "mês anterior".
 3. Os valores já trazem a unidade (%, t, US$/t, p.p.). Não escreva %, "por cento", US$, "toneladas" ou p.p. junto de um marcador, nem sinal (+, −, "menos") antes de um marcador, nem dois marcadores colados.
-4. A direção entra SÓ pelos marcadores com sufixo _sentido (alta, queda ou estabilidade) e _posicao (acima ou abaixo de uma referência), sempre colados à sua variação: "{var_x_sentido} de {var_x}" ou "{desvio_x} {desvio_x_posicao}". Toda variação (var_) e toda distância (desvio_) vai com o seu _sentido ou _posicao ao lado. Fora dos marcadores, NÃO escreva palavras de direção ou comparação: subiu, caiu, cresceu, recuou, avançou, superou, aumento, redução, alta, queda, acima, abaixo, aquém, maior que, menor que, mais caro, mais barato, melhorou, piorou, favorável e afins.
-5. Use só os fatos do pacote. Não cite causas, eventos, empresas ou previsões que não estejam nele. Ao escrever o nome de um país, porto, grupo (nitrogenados, fosfatados, potássicos, compostos) ou produto (ureia, KCl, MAP), os números da mesma frase precisam ser dele: use as chaves dele. Não cite países ou portos que não estão no pacote. As variações do mês são sobre o mesmo mês do ano anterior ({mes_ano_anterior}).
+4. A direção entra SÓ pelos marcadores com sufixo _sentido (alta, queda ou estabilidade) e _posicao (acima ou abaixo de uma referência), sempre colados à sua variação: "{var_x_sentido} de {var_x}" ou "{desvio_x} {desvio_x_posicao}". Toda variação (var_) e toda distância (desvio_) vai com o seu _sentido ou _posicao ao lado. Fora dos marcadores, NÃO escreva palavras de direção ou comparação: subiu, caiu, cresceu, recuou, avançou, superou, aumento, redução, alta, queda, acima, abaixo, aquém, maior que, menor que, mais caro, mais barato, melhorou, piorou, favorável, estável, elevado, forte, leve, significativo, manteve, segue, novamente, retomada e afins. Nunca negue nem inverta uma direção ("não houve {var_x_sentido}", "reverteu a {var_x_sentido}").
+5. Use só os fatos do pacote. Não cite causas, contexto, eventos, empresas, regiões, previsões, recordes, picos nem continuidade ("manteve a liderança", "segue como principal") que não estejam nele. Ao escrever o nome de um país, porto, grupo (nitrogenados, fosfatados, potássicos, compostos, ou o total dos fertilizantes) ou produto (ureia, KCl, MAP), os números da mesma frase precisam ser dele: use as chaves dele. Ponha cada número logo depois do nome a que ele se refere ("Santos recebeu {a}, e Paranaguá, {b}"), nunca em lista no fim ("Santos e Paranaguá receberam {a} e {b}"). "Principal", "líder", "segunda maior" e "terceira maior" só para a posição que o pacote dá. Cada número no seu período: o do mês com {mes_referencia}, o do acumulado com {periodo_ytd}; as variações do mês são sobre o mesmo mês do ano anterior ({mes_ano_anterior}) e as do acumulado, sobre {periodo_ytd_anterior}. Não cite países ou portos que não estão no pacote.
 6. Tom de analista: neutro e objetivo, sem recomendação de compra ou venda e sem adjetivos alarmistas (como alarmante, explosão, disparada, colapso, catastrófico, crítico, preocupante).
 7. Todo título, lead ou parágrafo que citar a relação de troca (chaves troca_, sacas_, desvio_troca_ e meses_seguidos_troca_) precisa dizer nele mesmo que ela é medida "no porto". Não fale em produtor, agricultor ou fazenda: o programa acrescenta a ressalva de que ela não é o preço ao produtor (se quiser repeti-la, escreva exatamente "não é o preço ao produtor").
 8. Texto simples, cada campo numa linha só: só letras, espaços e pontuação comum. Sem Markdown, HTML, links, emojis, setas, listas, asteriscos, colchetes ou "&".
@@ -491,7 +498,7 @@ MESES_E_PERIODOS = re.compile(
     re.IGNORECASE,
 )
 MES_ANTERIOR = re.compile(
-    r"\bm[eê]s\s+(?:\w+\s+)?(?:anterior|passado|precedente|pr[eé]vio)\b|\b(?:compara[çc][ãa]o|varia[çc][ãa]o)\s+mensal\b|"
+    r"\bm[eê]s\s+(?:\w+\s+)?(?:anterior|passado|precedente|pr[eé]vio)\b|\bm[eê]s\s+que\s+passou\b|\b(?:compara[çc][ãa]o|varia[çc][ãa]o)\s+mensal\b|"
     r"\bna\s+margem\b|\b[uú]ltimos\s+meses\b",
     re.IGNORECASE,
 )
@@ -531,8 +538,8 @@ _DIRECAO = [
 ]
 DIRECAO = re.compile(r"\b(?:" + "|".join(_DIRECAO) + r")\b", re.IGNORECASE)
 UNIDADES = re.compile(r"%|US\$|R\$|\bp\.\s?p\.|\bpor\s*cento\b|\bpontos?\s+percentua\w*", re.IGNORECASE)
-LINKS = re.compile(r"https?:|://|\bwww\.|\S@\S|\.(?:com|br|org|net|gov|io)\b", re.IGNORECASE)
-MARCACAO = re.compile(r"[*#`<>\[\]|_~{}&]|^\s*[-+]\s")
+LINKS = re.compile(r"https?:|://|\bwww\.|\S@\S|\.(?:com|br|org|net|gov|io)\b|\w\.[^\W\d_]{2,}", re.IGNORECASE)
+MARCACAO = re.compile(r"[*#`<>\[\]|_~{}&]|^\s*[-+]\s|:[a-z0-9+-]+:", re.IGNORECASE)
 PROIBIDOS = re.compile(
     r"\b(recomend\w*|aconselh\w*|sugerimos|sugere-se|compre|comprem|venda agora|vender agora|oportunidade de compra|"
     r"vale\s+a\s+pena|antecipar\s+(?:as\s+)?compras|hora\s+de\s+(?:comprar|vender)|"
@@ -548,9 +555,23 @@ AVISO_SEM_RECOMENDACAO = re.compile(
     re.IGNORECASE,
 )
 GRUDADOS = re.compile(r"\}[.,]?\{")
+COLADO_AO_MARCADOR = re.compile(r"[^\W_]\{|\}[^\W_]")
+SEPARADOR_DE_NUMEROS = re.compile(r"^(?:\s+|[-‐‑−–/:'’])$")
 # Marcadores que são só número (HHI, contagens, anos) não levam unidade inventada.
-UNIDADE_DEPOIS = re.compile(r"^\s*(?:de\s+)?(?:t|toneladas?|kg|quilos?|d[oó]lar\w*|usd|reais|sacas?)\b", re.IGNORECASE)
-UNIDADE_ANTES = re.compile(r"(?:\busd|\bd[oó]lar\w*|\$)\s*$", re.IGNORECASE)
+UNIDADE_DEPOIS = re.compile(
+    r"^\s*(?:(?:de\s+)?(?:t|toneladas?|kg|quilos?|d[oó]lar\w*|usd|reais|sacas?)\b|(?P<curta>[^\W\d_]{1,3})\b|"
+    r"(?:euros?|libras?|ienes?|yuans?|rublos?|navios?|cargas?|carregamentos?|embarques?|cont[eê]ineres?|anos?|meses|dias?|"
+    r"semanas?|empresas?|importadores?|vezes|pa[ií]ses|origens|rotas|portos?)\b)",
+    re.IGNORECASE,
+)
+# Palavras curtas que podem vir depois de um número puro ("{hhi_k_ano} no ano"); o resto ("Mt", "kt", "mil") reprova.
+PALAVRAS_CURTAS = {"no", "na", "nos", "nas", "em", "e", "de", "do", "da", "dos", "das", "ao", "à", "o", "a", "os", "as", "ou", "que", "com", "por", "se", "foi", "é", "um", "uma"}
+UNIDADE_ANTES = re.compile(r"(?:\busd|\bd[oó]lar\w*|\$|\beur|\beuros?|\blibras?|\bienes?|\byuans?)\s*$", re.IGNORECASE)
+# Contagens só com o seu substantivo: {n_origens_k_ano} países, {n_rotas_ano} rotas.
+SUBSTANTIVO_DA_CONTAGEM = {
+    "n_origens_": re.compile(r"^\s+(?:pa[ií]ses|origens|fornecedores)\b", re.IGNORECASE),
+    "n_rotas": re.compile(r"^\s+rotas\b", re.IGNORECASE),
+}
 CITA_TROCA = re.compile(r"\brela[çc][ãa]o\s+de\s+troca\b|\bpoder\s+de\s+compra\b", re.IGNORECASE)
 CHAVES_TROCA = re.compile(r"^(troca|sacas|desvio_troca|meses_seguidos_troca)_")
 NO_PORTO = re.compile(r"\bno\s+porto\b", re.IGNORECASE)
@@ -565,14 +586,14 @@ RESSALVA = re.compile(
 FIM_DE_FRASE = re.compile(r"[.!?;]")
 # Grupos e produtos escritos por extenso, e a parte da chave que diz de qual grupo ou produto é.
 GRUPOS_TEXTO = {
-    "n": re.compile(r"\bnitrogenad\w*", re.IGNORECASE),
-    "p": re.compile(r"\bfosfatad\w*", re.IGNORECASE),
+    "n": re.compile(r"\bnitrogenad\w*|\bnitrog[eê]ni\w*", re.IGNORECASE),
+    "p": re.compile(r"\bfosfatad\w*|\bfosfatos?\b(?!\s+(?:mono|di)am)|\bf[oó]sfor\w*", re.IGNORECASE),
     "k": re.compile(r"\bpot[aá]ss\w*", re.IGNORECASE),
     "npk": re.compile(r"\bcompost[oa]s?\b|\bNPK\b"),
 }
 GRUPO_DA_CHAVE = re.compile(r"(?:^|_)(n|p|k|npk|total)_(?:mes|ytd|ano)(?:_|$)")
 PRODUTOS_TEXTO = {
-    "ureia": re.compile(r"\bureia\b", re.IGNORECASE),
+    "ureia": re.compile(r"\bur[eé]ia\b", re.IGNORECASE),
     "kcl": re.compile(r"\bKCl\b|\bcloreto\s+de\s+pot[aá]ssio\b", re.IGNORECASE),
     "map": re.compile(r"\bMAP\b|\bmonoam[ôo]nico\b"),
     "dap": re.compile(r"\bDAP\b|\bdiam[ôo]nico\b"),
@@ -632,14 +653,27 @@ def _direcao_de(chave: str, fatos: Fatos) -> str | None:
     return None
 
 
-def _sinal_antes(prefixo: str) -> str | None:
-    """O sinal colado antes de um marcador ("-{x}", "+ {x}", "menos {x}"), ou None."""
+TRACOS = "-‐‑‒–−˗⁻"
+
+
+def _sinal_antes(prefixo: str, variacao: bool = True) -> str | None:
+    """O sinal antes de um marcador numérico ("-{x}", "- {x}", "+ {x}", "menos {x}"), ou None.
+    O travessão com espaço ("— {x}") é pontuação, e o traço logo depois de outro marcador
+    ("{a}-{b}") é faixa. Numa variação, qualquer outro traço conta como sinal; nos demais
+    números, o traço com espaço só conta depois de uma preposição ("de - {x}")."""
     p = unicodedata.normalize("NFKC", prefixo)
-    if p and (unicodedata.category(p[-1]) in ("Pd", "Sm") or p[-1] in "+±"):
-        return p[-1]  # traço ou sinal colado no marcador
+    if not p:
+        return None
+    if p[-1] in TRACOS or unicodedata.category(p[-1]) == "Sm" or p[-1] in "+±":
+        if len(p) >= 2 and p[-2] == "}" and p[-1] in TRACOS:
+            return None
+        return p[-1]
     sem_espaco = p.rstrip()
-    if sem_espaco and sem_espaco != p and (unicodedata.category(sem_espaco[-1]) == "Sm" or sem_espaco[-1] in "+±"):
-        return sem_espaco[-1]  # "+ {x}"; travessão com espaço é pontuação
+    if sem_espaco and sem_espaco != p:
+        if sem_espaco[-1] in "+±" or unicodedata.category(sem_espaco[-1]) == "Sm":
+            return sem_espaco[-1]
+        if sem_espaco[-1] in TRACOS and (variacao or re.search(rf"\b(?:de|em|a|para|por|com|sobre|entre)\s*[{TRACOS}]$", sem_espaco, re.IGNORECASE)):
+            return sem_espaco[-1]
     achado = re.search(r"\b(menos|mais)\s*$", p, re.IGNORECASE)
     return achado.group(1) if achado else None
 
@@ -691,17 +725,28 @@ def _erros_do_texto(campo: str, texto: str, fatos: Fatos) -> tuple[list[str], in
     if GRUDADOS.search(texto):
         achado = GRUDADOS.search(texto)
         erros.append(f"{campo}: dois marcadores colados em {_trecho(texto, achado.start() - 20, achado.end() + 20)!r}; separe-os com texto")
+    if colado := COLADO_AO_MARCADOR.search(texto):
+        erros.append(f"{campo}: letra ou algarismo colado a um marcador em {_trecho(texto, colado.start(), colado.end())!r}; separe com espaço")
+    marcas = [(m.start(), m.end(), m.group(1)) for m in MARCADOR.finditer(texto) if m.group(1) in fatos]
+    for (_, fim1, k1), (ini2, _, k2) in zip(marcas, marcas[1:]):
+        vao = texto[fim1:ini2]
+        if _numerico(k1, fatos) and _numerico(k2, fatos) and SEPARADOR_DE_NUMEROS.match(vao) and not (k1.startswith("ano_") and k2.startswith("ano_")):
+            erros.append(f"{campo}: dois números separados só por {vao!r} em {{{k1}}}{vao}{{{k2}}}; ligue-os com texto")
     for achado in MARCADOR.finditer(texto):
         chave = achado.group(1)
         if chave not in fatos:
             continue
-        if _direcao_de(chave, fatos) and chave.startswith(("var_", "desvio_")):
-            sinal = _sinal_antes(texto[: achado.start()])
+        if _numerico(chave, fatos):
+            sinal = _sinal_antes(texto[: achado.start()], chave.startswith(("var_", "desvio_")))
             if sinal:
                 erros.append(f"{campo}: '{sinal}' antes de {{{chave}}}; o valor vai sem sinal e a direção vem do seu _sentido ou _posicao")
         if re.fullmatch(r"[\d.]+", fatos[chave]["valor"]):
-            antes, depois = texto[: achado.start()], texto[achado.end() :]
-            if UNIDADE_DEPOIS.match(_apagar_marcadores(depois)) or UNIDADE_ANTES.search(_apagar_marcadores(antes)):
+            antes, depois = _apagar_marcadores(texto[: achado.start()]), _apagar_marcadores(texto[achado.end() :])
+            contagem = next((rx for prefixo, rx in SUBSTANTIVO_DA_CONTAGEM.items() if chave.startswith(prefixo)), None)
+            unidade = None if contagem else UNIDADE_DEPOIS.match(depois)
+            if contagem and not contagem.match(depois):
+                erros.append(f"{campo}: {{{chave}}} é uma contagem; escreva logo depois o que ela conta, como em \"{{{chave}}} {'rotas' if 'rotas' in chave else 'países'}\"")
+            elif (unidade and not (unidade.group("curta") and unidade.group("curta").lower() in PALAVRAS_CURTAS)) or UNIDADE_ANTES.search(antes):
                 erros.append(f"{campo}: unidade inventada junto de {{{chave}}}, que é só um número ({fatos[chave]['valor']})")
     cita_troca = any(CHAVES_TROCA.match(m) for m in marcadores) or CITA_TROCA.search(normal)
     if cita_troca and not NO_PORTO.search(normal):
@@ -715,6 +760,7 @@ def _erros_do_texto(campo: str, texto: str, fatos: Fatos) -> tuple[list[str], in
             break
     erros += _ligacoes(campo, texto, fatos)
     erros += _frases(campo, texto, fatos)
+    erros += _conferencias(campo, texto, fatos)
     return erros, len(marcadores)
 
 
@@ -793,6 +839,454 @@ def _frases(campo: str, texto: str, fatos: Fatos) -> list[str]:
 _NOME_GRUPO = {"n": "nitrogenados", "p": "fosfatados", "k": "potássicos", "npk": "compostos", "total": "todos os grupos"}
 
 
+# --- Conferências de ligação e de conteúdo -------------------------------------------------
+# Cada número ligado ao grupo, produto, país, porto, posição, período e métrica que ele mede, e
+# nada que o pacote não traz: continuidade, recorde, causa, previsão, região, produto de fora,
+# juízo de intensidade ou de concentração, negação de uma direção, nome próprio desconhecido.
+
+CORTE_ORACAO = re.compile(r"[,;:—–()]")
+# Menções de grupo (e do total) e de produto, para ligar cada número à mais próxima.
+MENCOES_GRUPO = {
+    "n": re.compile(r"\bnitrogenad\w*", re.IGNORECASE),
+    "p": re.compile(r"\bfosfatad\w*", re.IGNORECASE),
+    "k": re.compile(r"\bpot[aá]ss\w*", re.IGNORECASE),
+    "npk": re.compile(r"\bcompost[oa]s?\b|\bNPK\b"),
+    "total": re.compile(
+        r"\btodos\s+os\s+grupos\b|\btota(?:l|is)\b|\bconjunto\b|\bfertilizantes\b|\badubos\b"
+        r"|\bimporta[çc][õo]es\s+brasileiras\b|\bo\s+Brasil\s+importou\b",
+        re.IGNORECASE,
+    ),
+}
+MENCOES_PRODUTO = {
+    "ureia": re.compile(r"\bur[eé]ia\b", re.IGNORECASE),
+    "kcl": re.compile(r"\bKCl\b|\bMOP\b|\bcloreto\b", re.IGNORECASE),
+    "map": re.compile(r"\bMAP\b|\bmonoam[ôo]nico\b"),
+}
+PRODUTOS_FORA = re.compile(
+    r"\b(?:superfosfato\s+simples|SSP|sulfat\w*|nitrat\w*|am[ôo]nia\b|DAP\b|diam[ôo]nico|TSP\b|superfosfato\s+triplo)", re.IGNORECASE
+)
+CHAVE_DE_PRODUTO = re.compile(r"^(?:troca|sacas|cif|desvio_troca|meses_seguidos_troca)_(kcl|ureia|map)(?:_|$)")
+CHAVE_DO_TOTAL = re.compile(
+    r"^(?:var_)?(?:frete_(?!rota_)|n_rotas|share_rotas|corte_rotas|frete_rotas|t_rota_|frete_rota_|share_porto|var_share_porto|preco_fob)"
+)
+# Países e portos escritos de outro jeito, e regiões que o pacote não traz.
+APELIDOS = [
+    (re.compile(r"\bbielorr[uú]ss\w*|\bbelarus\w*", re.IGNORECASE), "Belarus"),
+    (re.compile(r"\bholand\w*|\bpa[ií]ses\s+baixos\b|\bneerland\w*", re.IGNORECASE), "Países Baixos (Holanda)"),
+    (re.compile(r"\bqatar\w*|\bcatar\w*", re.IGNORECASE), "Catar"),
+    (re.compile(r"\bkuwait\w*|\bkuweit\w*|\bcoveit\w*", re.IGNORECASE), "Coveite (Kuweit)"),
+    (re.compile(r"\bEUA\b|\bnorte-american\w*|\bamerican[oa]s?\b|\bestadunidens\w*"), "Estados Unidos"),
+    (re.compile(r"\bruss[oa]s?\b", re.IGNORECASE), "Rússia"),
+    (re.compile(r"\bchin[eê]s\w*|\bchinesa\w*", re.IGNORECASE), "China"),
+    (re.compile(r"\bcanadens\w*", re.IGNORECASE), "Canadá"),
+    (re.compile(r"\bmarroquin\w*", re.IGNORECASE), "Marrocos"),
+    (re.compile(r"\beg[ií]pci\w*", re.IGNORECASE), "Egito"),
+    (re.compile(r"\bnigerian\w*", re.IGNORECASE), "Nigéria"),
+    (re.compile(r"\bturcomen\w*", re.IGNORECASE), "Turcomenistão"),
+    (re.compile(r"\bitaqui\b", re.IGNORECASE), "IRF São Luís"),
+]
+REGIOES = re.compile(
+    r"\b(?:Oriente\s+M[eé]dio|Golfo|Mar\s+Negro|Mar\s+Vermelho|B[aá]ltico|Europa|europe[iu]\w*|[AÁ]sia|asi[aá]tic\w*|"
+    r"[AÁ]frica|african\w*|Am[eé]rica\s+do\s+Norte|Am[eé]rica\s+Latina|Suez|Leste\s+Europeu|Ocidente|ocidenta\w*)\b",
+    re.IGNORECASE,
+)
+# Maiúsculas fora do início de frase: só nomes do pacote e estas siglas e palavras.
+MAIUSCULAS_PERMITIDAS = {
+    "Brasil", "Comex", "Stat", "MDIC", "HHI", "CIF", "FOB", "NPK", "KCl", "MAP", "URF", "URFs", "IRF", "ALF", "Porto",
+    "N", "P", "K", "Herfindahl", "Hirschman", "Receita", "Federal",
+}
+# Período: palavras que marcam o mês, o acumulado e o passado.
+PALAVRA_MES = re.compile(r"\b(?:no|do)\s+m[eê]s\b(?!\s+(?:anterior|passado))", re.IGNORECASE)
+PALAVRA_YTD = re.compile(r"\bacumulad\w*|\b(?:no|do)\s+ano\b(?!\s+(?:anterior|passado|inteiro))", re.IGNORECASE)
+MESMO_PERIODO = re.compile(r"\bmesmo\s+per[ií]odo\b|\bigual\s+per[ií]odo\b", re.IGNORECASE)
+PASSADO_ESCRITO = re.compile(r"\b(?:ano|per[ií]odo|exerc[ií]cio|acumulado)\s+(?:\w+\s+)?(?:passado|anterior)\b", re.IGNORECASE)
+COMO_BASE = re.compile(r"\b(?:sobre|frente|ante|contra|rela[çc][ãa]o|compara\w*|versus)\b[^.;!?]{0,40}$", re.IGNORECASE)
+CONTINUIDADE = re.compile(
+    r"\b(?:mant(?:eve|êm|em|inha|inham|iveram|ém|endo|ida|ido|idas|idos)|segue|seguem|seguiu|seguiram|continu\w*|permanec\w*|"
+    r"novamente|de\s+novo|mais\s+uma\s+vez|outra\s+vez|volt(?:a|am|ou|aram)\s+a|retom\w*|revert\w*)\b",
+    re.IGNORECASE,
+)
+RECORDE = re.compile(
+    r"\b(?:nunca|pico|picos|topo|[aá]pice|piso|em\s+anos|h[aá]\s+anos|desde|j[aá]\s+(?:observad|alcan[çc]ad|atingid|verificad|medid)\w*)\b",
+    re.IGNORECASE,
+)
+SUPERLATIVO = re.compile(
+    r"\b[oa]s?\s+(?:maior|menor|mais\s+alt\w*|mais\s+baix\w*)(?:es)?\s+(?:n[ií]ve(?:l|is)|patamar\w*|valor\w*|volume\w*|pre[çc]o\w*|frete\w*|rela[çc][ãa]o|quantidade)\b"
+    r"|\bs[eé]rie\b|\bhist[oó]ria\b|\bm[aá]xim[ao]s?\b|\bm[ií]nim[ao]s?\b",
+    re.IGNORECASE,
+)
+RANKING = re.compile(
+    r"\b(?:principal|principais|l[ií]der\w*|lidera\w*|(?<!segunda\s)(?<!segundo\s)(?<!terceira\s)(?<!terceiro\s)maior\s+(?:origem|fornecedor\w*)|"
+    r"que\s+mais\s+(?:recebeu|vendeu|forneceu|enviou))\b",
+    re.IGNORECASE,
+)
+SEGUNDA = re.compile(r"\bsegund[oa]\s+maior\b|\bsegund[oa]\s+(?:origem|fornecedor\w*|lugar|posi[çc][ãa]o)\b|\bvice\b", re.IGNORECASE)
+TERCEIRA = re.compile(r"\bterceir[oa]\s+maior\b|\bterceir[oa]\s+(?:origem|fornecedor\w*|lugar|posi[çc][ãa]o)\b", re.IGNORECASE)
+QUANTIFICADOR = re.compile(r"\b(?:[uú]nic[oa]s?|maioria|minoria|a\s+maior\s+parte|maior\s+parte\s+d)\b", re.IGNORECASE)
+JUIZO = re.compile(
+    r"\b(?:est[aá]ve(?:l|is)|estabilidade|estabiliz\w*|inalterad\w*|igua(?:l|is)(?!\s+per[ií]odo)|semelhante\w*|similar\w*|praticamente|"
+    r"aquec\w*|esfri\w*|arrefec\w*|elevad[oa]s?|alt[oa]s?(?!\s+concentra)|(?<!pa[ií]ses\s)baix[oa]s?(?!\s+concentra)|car[oa]s?|barat[oa]s?|"
+    r"fortes?|fortemente|frac[oa]s?|firmes?|diversific\w*|mergulh\w*|pression\w*|aprofund\w*|agrav\w*|abrand\w*|intensific\w*|"
+    r"significativ\w*|expressiv\w*|leve|ligeir\w*|modest\w*|acentuad\w*|tant[oa]s?|"
+    r"oneros\w*|custos[oa]s?|em\s+conta|acess[ií]ve\w*|salgad\w*|do\s+que|poder\s+de\s+compra|respectivamente|"
+    r"\w*cresc\w*|decr[eé]scim\w*|(?:a|re)baix(?:a|as|am|ou|aram|ando|ad[oa]s?)|alto|infl(?:ou|aram|a|am|ando|ad[oa]s?)|"
+    r"fortalec\w*|retroced\w*|retrocess\w*|deterior\w*|zer(?:ou|aram|ad[oa]s?|ando|ar)|"
+    r"\w+(?:ou|aram|iu|iram)\s+(?:mais|menos)|"
+    r"(?:custa|custam|custava|compra|compram|paga|pagava|vale|valia|rende)\s+(?:mais|menos))\b",
+    re.IGNORECASE,
+)
+INTENSIDADE_DO_SENTIDO = re.compile(
+    r"\{[a-z0-9_]+_sentido\}\s+(?:relevante|significativ|expressiv|fortes?\b|leve|ligeir|modest|acentuad|marginal|t[ií]mid)", re.IGNORECASE
+)
+NEGACAO = re.compile(
+    r"\b(?:n[ãa]o|nem|sem|nunca|jamais|nenhum\w*|nada|revert\w*|invert\w*|anul\w*|desf(?:ez|izeram|az|azem|eit[oa]s?)|contr[áa]ri\w*|"
+    r"opost\w*|longe\s+de|em\s+vez|ao\s+inv[ée]s|interromp\w*|compens\w*|neutraliz\w*|elimin\w*|apag(?:ou|aram|a|am|ad[oa]s?))\b",
+    re.IGNORECASE,
+)
+RESSALVA_INTEIRA = re.compile(
+    r"\bn[ãa]o\s+(?:é|representa|equivale\s+a|corresponde\s+a|reflete)\s+(?:o\s+)?(?:pre[çc]o|custo)\s+(?:pago\s+)?(?:ao|pelo|do)\s+produtor\b",
+    re.IGNORECASE,
+)
+CAUSA = re.compile(
+    r"\b(?:reflexo\w*|reflet\w*|devid[oa]s?\s+a|por\s+causa|em\s+raz[ãa]o|gra[çc]as\s+a|puxad\w*|impulsionad\w*|"
+    r"em\s+meio\s+a|diante\s+d\w*|motivad\w*|explicad\w*|tend[eê]nci\w*|tende\w*|pr[oó]ximos\s+meses|expectativ\w*|proje[çc]\w*|"
+    r"perspectiv\w*|dev(?:e|em|er[áa]|er[ãa]o)\s+\w+(?:ar|er|ir)|ser[áa]|ser[ãa]o|haver[áa]|\w{2,}(?:ar|er|ir)á|\w{2,}(?:ar|er|ir)ão|"
+    r"san[çc]\w*|guerra\w*|conflit\w*|estoques?|c[âa]mbio\w*|d[óo]lar\w*|petr[óo]leo|g[áa]s\s+natural|plantio\w*|"
+    r"demanda\w*|oferta\w*|clim[aá]\w*|chuvas?|greves?|tarif\w*|embarg\w*)\b",
+    re.IGNORECASE,
+)
+PRODUTOR_AMPLO = re.compile(
+    r"\b(?:quem\s+(?:planta|plantam|produz|produzem|cultiva\w*)|plantador\w*|custo\s+de\s+produ[çc][ãa]o|campo|agro|agroneg[oó]ci\w*|"
+    r"agropecu\w*|safras?|safrinha|cooperativ\w*|revend\w*|distribuidor\w*|interior)\b",
+    re.IGNORECASE,
+)
+CONCENTRACAO = re.compile(
+    r"\balta\s+concentra\w*|\baltamente\s+concentrad\w*|\bconcentrad[oa]s?\b|\bdesconcentr\w*|\bbaixa\s+concentra\w*|\bpouco\s+concentrad\w*",
+    re.IGNORECASE,
+)
+METRICAS = {
+    "volume": re.compile(r"\bimporta[çc][õo]es\b|\bcompras\b|\bvolume\b|\btoneladas\b|\bdesembarques\b", re.IGNORECASE),
+    "preco": re.compile(r"\bpre[çc]o\w*|\bCIF\b|\bFOB\b|\bcusto\b|\bvalor\b", re.IGNORECASE),
+    "share": re.compile(r"\bparticipa[çc][ãa]o\b|\bfatia\b|\bpeso\b", re.IGNORECASE),
+    "frete": re.compile(r"\bfrete\b", re.IGNORECASE),
+}
+CHAVES_FRETE_EXTREMO = {"rota_frete_max_ano", "frete_rota_max_ano", "rota_frete_min_ano", "frete_rota_min_ano"}
+
+
+def _grupo_da_chave(k: str) -> str | None:
+    if CHAVE_DE_PRODUTO.match(k):
+        return None
+    g = GRUPO_DA_CHAVE.search(k)
+    if g:
+        return g.group(1)
+    return "total" if CHAVE_DO_TOTAL.match(k) else None
+
+
+def _produto_da_chave(k: str) -> str | None:
+    m = CHAVE_DE_PRODUTO.match(k)
+    return m.group(1) if m else None
+
+
+def _metrica(k: str) -> str | None:
+    base = k[4:] if k.startswith("var_") else k
+    if base.startswith("t_"):
+        return "volume"
+    if base.startswith(("preco_", "cif_", "soja_fob")):
+        return "preco"
+    if base.startswith("share_"):
+        return "share"
+    if base.startswith("frete_"):
+        return "frete"
+    return None
+
+
+def _classe_periodo(k: str) -> str | None:
+    """De que período é a chave: âncora atual (a_mes, a_ytd) ou passada, variação mensal ou do
+    acumulado, valor do período anterior, valor da série histórica ou valor atual."""
+    if k in ("mes_referencia", "mes_referencia_curto"):
+        return "a_mes"
+    if k in ("periodo_ytd", "ano_referencia"):
+        return "a_ytd"
+    if k in PASSADO:
+        return "a_passado"
+    if k == "var_soja_fob_ano" or (k.startswith("var_") and k.endswith("_mes")):
+        return "var_mes"
+    if k.startswith("var_") and k.endswith(("_ytd", "_ano")):
+        return "var_ytd"
+    if k.startswith("hhi_") and k.endswith("_ano_anterior"):
+        return "prev_full"
+    if re.fullmatch(r"troca_\w+_ano_anterior", k):
+        return "prev_mes"
+    if k.endswith("_ytd_anterior"):
+        return "prev_ytd"
+    if re.fullmatch(r"troca_\w+_(?:media|max|max_mes)|periodo_media_troca|meses_seguidos_\w+", k):
+        return "hist"
+    if k.endswith(("_mes", "_ultimo")) or k.startswith("desvio_troca_"):
+        return "mes"
+    if k.endswith(("_ytd", "_ano")):
+        return "ytd"
+    return None
+
+
+def _dobrar(texto: str) -> str:
+    """Sem acento e em minúsculas, com o mesmo tamanho: 'Paranagua' e 'CHINA' casam com os nomes."""
+    texto = "".join(c for c in unicodedata.normalize("NFKD", texto) if not unicodedata.combining(c))
+    return re.sub(r"\s", " ", texto).casefold()
+
+
+def _mencoes_de_entidade(frase: str, ini: int, texto: str, fatos: Fatos, fim: int) -> list[tuple[int, int, frozenset, str]]:
+    """(início, fim, entidades, origem) dos países e portos citados na frase: por extenso (sem
+    acento e sem caixa), por apelido ou por um marcador de nome ({lider_k_ano}, {rota_1_ano})."""
+    achados = []
+    nomes = (set().union(*fatos.entidades.values()) if fatos.entidades else set()) | fatos.outros_nomes
+    dobrada = _dobrar(frase) if len(_dobrar(frase)) == len(frase) else None  # "ß" muda o tamanho: aí, sem dobrar
+    for nome in nomes:
+        alvo = dobrada if dobrada is not None else frase
+        padrao = re.escape(_dobrar(nome) if dobrada is not None else nome)
+        for m in re.finditer(rf"(?<!\w){padrao}(?!\w)", alvo):
+            achados.append((ini + m.start(), ini + m.end(), frozenset({nome}), "texto"))
+    for rx, nome in APELIDOS:
+        for m in rx.finditer(frase):
+            achados.append((ini + m.start(), ini + m.end(), frozenset({nome}), "apelido"))
+    for m in MARCADOR.finditer(texto):
+        k = m.group(1)
+        if ini <= m.start() < fim and k in fatos.entidades and not _numerico(k, fatos):
+            achados.append((m.start(), m.end(), frozenset(fatos.entidades[k]), "marcador:" + k))
+    achados.sort(key=lambda a: (a[0], -(a[1] - a[0])))
+    saida, fim_anterior = [], -1
+    for a in achados:  # menção contida em outra conta uma vez só
+        if a[0] >= fim_anterior:
+            saida.append(a)
+            fim_anterior = a[1]
+    return saida
+
+
+def _mais_proxima(mencoes, ini_m: int, fim_m: int, limpo: str, preferir_antes: bool = True, fora_da_oracao: bool = False):
+    """A menção anterior mais próxima; sem anterior, a posterior mais próxima na mesma oração."""
+    antes = [m for m in mencoes if m[1] <= ini_m]
+    if antes and preferir_antes:
+        return max(antes, key=lambda m: m[1])
+    depois = [m for m in mencoes if m[0] >= fim_m and not CORTE_ORACAO.search(limpo[fim_m : m[0]])]
+    if depois:
+        return min(depois, key=lambda m: m[0])
+    if antes:
+        return max(antes, key=lambda m: m[1])
+    if fora_da_oracao:
+        depois = [m for m in mencoes if m[0] >= fim_m]
+        return min(depois, key=lambda m: m[0]) if depois else None
+    return None
+
+
+def _conferencias(campo: str, texto: str, fatos: Fatos) -> list[str]:
+    erros = []
+    limpo = _apagar_marcadores(texto)
+    normal = unicodedata.normalize("NFKC", MARCADOR.sub(" ", texto))
+    chaves_campo = [m.group(1) for m in MARCADOR.finditer(texto)]
+    for padrao, motivo in [
+        (CONTINUIDADE, "continuidade ou repetição que o pacote não traz (manteve, segue, novamente, retomada)"),
+        (RECORDE, "recorde, pico ou comparação com anos passados que o pacote não traz"),
+        (QUANTIFICADOR, "'única', 'maioria' ou 'maior parte' não vêm do pacote"),
+        (JUIZO, "palavra de direção, comparação ou juízo fora dos marcadores"),
+        (CAUSA, "causa, previsão ou contexto que o pacote não traz"),
+        (PRODUTOR_AMPLO, "os preços e a relação de troca são no porto, não o custo de quem planta"),
+        (REGIOES, "região ou lugar fora do pacote"),
+        (PRODUTOS_FORA, "produto fora do pacote"),
+    ]:
+        achado = padrao.search(normal)
+        if achado and not (padrao is CONTINUIDADE and any(k.startswith("meses_seguidos_troca_") for k in chaves_campo)):
+            erros.append(f"{campo}: {motivo}: {_trecho(normal, achado.start(), achado.end())!r}")
+    if INTENSIDADE_DO_SENTIDO.search(texto):
+        erros.append(f"{campo}: juízo de intensidade colado ao _sentido; a direção vai sem adjetivo")
+    for m in CONCENTRACAO.finditer(texto):
+        antes = texto[: m.start()]
+        if re.search(r"(?:\{hhi_[a-z]+_ano_posicao\}|\blimiar)\s+de\s+$", antes):
+            continue
+        frase_ini = max([x.end() for x in FIM_DE_FRASE.finditer(limpo[: m.start()])] or [0])
+        proximo = FIM_DE_FRASE.search(limpo, m.end())
+        trecho = texto[frase_ini : proximo.end() if proximo else len(texto)]
+        if "{limiar_hhi}" in trecho and not re.search(r"\{hhi_[a-z]+_ano\}", trecho):
+            continue  # definição do limiar, sem o HHI de nenhum grupo
+        erros.append(f"{campo}: '{m.group(0)}' só como \"{{hhi_x_ano_posicao}} de alta concentração\" ou na definição do limiar")
+        break
+    if "soja_fob_ultimo" in chaves_campo and any(k.startswith("cif_") for k in chaves_campo) and not NO_PORTO.search(normal):
+        erros.append(f"{campo}: soja FOB e fertilizante CIF juntos são a relação de troca; diga, no mesmo campo, que ela é medida no porto")
+    permitidas = set(MAIUSCULAS_PERMITIDAS)
+    for nome in (set().union(*fatos.entidades.values()) if fatos.entidades else set()) | fatos.outros_nomes:
+        permitidas |= set(re.findall(r"[^\W\d_]+", nome))
+    for k in chaves_campo:
+        if k in fatos and not _numerico(k, fatos):
+            permitidas |= set(re.findall(r"[^\W\d_]+", fatos[k]["valor"]))
+    for m in re.finditer(r"(?<![^\W\d_])[A-ZÀ-Ý][^\W\d_]*", normal):
+        antes = normal[: m.start()].rstrip()
+        if antes and antes[-1] not in ".!?;:—–(\"“" and m.group(0) not in permitidas:
+            erros.append(f"{campo}: nome próprio fora do pacote: {_trecho(normal, m.start(), m.end())!r}")
+            break
+
+    mencoes_do_campo: list[tuple[int, int, str]] = []  # grupos e produtos das frases anteriores, para "o grupo", "ali"
+    inicio = 0
+    for fim in [m.end() for m in FIM_DE_FRASE.finditer(limpo)] + [len(limpo)]:
+        frase = limpo[inicio:fim]
+        marcas = [(m.start(), m.end(), m.group(1)) for m in MARCADOR.finditer(texto) if inicio <= m.start() < fim and m.group(1) in fatos]
+        chaves = [k for _, _, k in marcas]
+        trecho = frase.strip()[:70]
+        # Negação de uma direção ("não houve {x_sentido}", "reverteu a {x_sentido}").
+        if any(k.endswith(("_sentido", "_posicao")) for k in chaves):
+            alvo = AVISO_SEM_RECOMENDACAO.sub(" ", RESSALVA_INTEIRA.sub(" ", unicodedata.normalize("NFKC", frase)))
+            if negacao := NEGACAO.search(alvo):
+                erros.append(f"{campo}: '{negacao.group(0)}' numa frase com _sentido ou _posicao inverte a direção dada pelo programa: {trecho!r}")
+        # Grupo ou produto de cada número: a menção mais próxima precisa ser a dele.
+        mencoes = [(inicio + m.start(), inicio + m.end(), "g:" + g) for g, rx in MENCOES_GRUPO.items() for m in rx.finditer(frase)]
+        mencoes += [(inicio + m.start(), inicio + m.end(), "p:" + p) for p, rx in MENCOES_PRODUTO.items() for m in rx.finditer(frase)]
+        mencoes.sort()
+        for s, e, k in marcas:
+            if not _numerico(k, fatos) or k.endswith(("_sentido", "_posicao")):
+                continue
+            g, p = _grupo_da_chave(k), _produto_da_chave(k)
+            if g is None and p is None:
+                continue
+            alvo = "g:" + g if g else "p:" + p
+            prox = _mais_proxima(mencoes, s, e, limpo, fora_da_oracao=(g != "total"))
+            if prox is None:
+                if g == "total":
+                    continue
+                prox = mencoes_do_campo[-1] if mencoes_do_campo else None
+                if prox is None:
+                    erros.append(f"{campo}: {{{k}}} é de {alvo[2:]}, mas a frase não diz de qual grupo ou produto: {trecho!r}")
+                    continue
+            if prox[2] != alvo:
+                erros.append(f"{campo}: {{{k}}} é de {alvo[2:]}, mas está ligado a '{limpo[prox[0]:prox[1]].strip() or prox[2][2:]}' em {trecho!r}")
+        mencoes_do_campo += mencoes
+        # País ou porto de cada número, também pela menção mais próxima.
+        entidades = _mencoes_de_entidade(frase, inicio, texto, fatos, fim)
+        for s, e, k in marcas:
+            if not _numerico(k, fatos) or k not in fatos.entidades:
+                continue
+            prox = _mais_proxima([m for m in entidades if m[0] != s], s, e, limpo)
+            if prox is None:
+                continue
+            dele = fatos.entidades[k]
+            exato = prox[3].startswith("marcador:rota") or k.startswith(("t_rota", "frete_rota"))
+            if not (prox[2] == frozenset(dele) if exato else prox[2] & dele):
+                erros.append(f"{campo}: {{{k}}} é de {'/'.join(sorted(dele))}, mas está ligado a {'/'.join(sorted(prox[2]))} em {trecho!r}")
+        # País, porto ou produto escrito sem nenhuma chave dele na frase.
+        citados = set().union(*(fatos.entidades.get(k, set()) for k in chaves)) if chaves else set()
+        for m in entidades:
+            if m[3] in ("texto", "apelido") and not (m[2] & citados):
+                erros.append(f"{campo}: a frase cita {'/'.join(sorted(m[2]))} sem nenhuma chave de {'/'.join(sorted(m[2]))}: {trecho!r}")
+                break
+        for p, rx in MENCOES_PRODUTO.items():
+            if rx.search(frase) and not any(_produto_da_chave(k) == p for k in chaves):
+                erros.append(f"{campo}: a frase cita {p} sem nenhuma chave de {p}: {trecho!r}")
+        # Posição (principal, segunda, terceira) conferida com a ordem do pacote.
+        for padrao, pos in [(RANKING, 1), (SEGUNDA, 2), (TERCEIRA, 3)]:
+            for m in padrao.finditer(frase):
+                prox = _mais_proxima(entidades, inicio + m.start(), inicio + m.end(), limpo)
+                if prox is None:
+                    continue
+                if prox[3] == "marcador:porto_lider_ano" or prox[3].startswith("marcador:lider_"):
+                    certo = pos == 1
+                elif rota := re.fullmatch(r"marcador:rota_(\d+)_ano", prox[3]):
+                    certo = pos == int(rota.group(1))
+                else:
+                    certo = any(fatos.ordem.get(k) == pos and fatos.entidades.get(k, set()) & prox[2] for k in chaves)
+                if not certo:
+                    erros.append(f"{campo}: '{m.group(0)}' não confere com a posição de {'/'.join(sorted(prox[2]))} no pacote: {trecho!r}")
+        # Série, máximo, mínimo e "o maior valor" só ligados às chaves de máximo e média da série.
+        for m in SUPERLATIVO.finditer(frase):
+            pos_m = inicio + m.start()
+            antes = [(pos_m - e, k) for s, e, k in marcas if _numerico(k, fatos) and e <= pos_m]
+            depois = [(s - pos_m, k) for s, e, k in marcas if _numerico(k, fatos) and s > pos_m]
+            perto = antes or depois
+            if not perto or not CHAVES_HISTORICO.match(min(perto)[1]):
+                erros.append(f"{campo}: '{m.group(0)}' só ligado a {{troca_x_max}}, {{troca_x_max_mes}} ou {{troca_x_media}}: {trecho!r}")
+                break
+        # Métrica de cada variação: o sujeito entre a vírgula anterior e o _sentido.
+        for s, e, k in marcas:
+            if not k.startswith("var_") or k.endswith("_sentido") or (met := _metrica(k)) is None:
+                continue
+            ini_var = min([s] + [s2 for s2, _, k2 in marcas if k2 == k + "_sentido"])
+            corte = max([inicio] + [e2 for _, e2, _ in marcas if e2 <= ini_var] + [inicio + c.end() for c in CORTE_ORACAO.finditer(limpo[inicio:ini_var])])
+            outras = [n for n, rx in METRICAS.items() if n != met and rx.search(limpo[corte:ini_var])]
+            if outras:
+                erros.append(f"{campo}: {{{k}}} é de {met}, mas o sujeito fala de {outras[0]}: {trecho!r}")
+        for k in chaves:
+            if k.startswith("cr3_") and not re.search(r"\b(?:maiores|principais)\s+(?:origens|fornecedores|pa[ií]ses)\b", frase, re.IGNORECASE):
+                erros.append(f"{campo}: {{{k}}} é a soma das maiores origens; diga isso na frase: {trecho!r}")
+        # Frete máximo e mínimo: só entre as maiores rotas listadas no pacote.
+        extremos = CHAVES_FRETE_EXTREMO & set(chaves)
+        if extremos and ({"n_rotas_relevantes_ano", "n_rotas_ano"} & set(chaves) or re.search(r"\brelevantes\b|\btodas\b|\bcom\s+carga\b", frase, re.IGNORECASE)):
+            erros.append(f"{campo}: o maior e o menor frete valem só entre as maiores rotas listadas, não entre todas: {trecho!r}")
+        if extremos and not re.search(r"\bmaiores\b|\blistadas\b|\bde\s+maior\s+volume\b|\bprincipais\b", frase, re.IGNORECASE):
+            erros.append(f"{campo}: o maior e o menor frete valem só entre as maiores rotas; diga 'entre as maiores rotas': {trecho!r}")
+        if re.search(r"\b(?:maior|menor)\s+frete\b", frase, re.IGNORECASE) and not extremos:
+            erros.append(f"{campo}: 'maior frete' e 'menor frete' só com {{rota_frete_max_ano}} ou {{rota_frete_min_ano}}: {trecho!r}")
+        erros += _periodo_da_frase(campo, frase, inicio, limpo, marcas, fatos, trecho)
+        inicio = fim
+    return erros
+
+
+def _periodo_da_frase(campo, frase, inicio, limpo, marcas, fatos, trecho) -> list[str]:
+    """Cada número ligado ao seu período (mês, acumulado, ano anterior inteiro, série) e cada
+    variação à sua base ({mes_ano_anterior} ou {periodo_ytd_anterior})."""
+    erros = []
+    chaves = [k for _, _, k in marcas]
+    ancoras = []
+    for s, e, k in marcas:
+        c = _classe_periodo(k)
+        if c in ("a_mes", "a_ytd"):
+            ancoras.append((s, e, c[2:]))
+        elif c == "a_passado":
+            tipo = {"mes_ano_anterior": "p_mes", "periodo_ytd_anterior": "p_ytd"}.get(k, "p_any")
+            if k == "ano_anterior":
+                antes, depois = limpo[max(inicio, s - 25) : s], limpo[e : e + 10]
+                if re.search(r"(?:mesmo|igual)\s+per[ií]odo\s+de\s+$", antes, re.IGNORECASE):
+                    tipo = "p_ytd"
+                elif re.search(r"mesmo\s+m[eê]s\s+de\s+$", antes, re.IGNORECASE):
+                    tipo = "p_mes"
+                elif re.search(r"(?:todo\s+o\s+ano|ano\s+inteiro)\s+de\s+$", antes, re.IGNORECASE) or re.match(r"\s+inteiro", depois):
+                    tipo = "p_full"
+            ancoras.append((s, e, tipo))
+    for padrao, c in [(PALAVRA_MES, "mes"), (PALAVRA_YTD, "ytd")]:
+        ancoras += [(inicio + m.start(), inicio + m.end(), c) for m in padrao.finditer(frase)]
+    for m in re.finditer(r"\bano\s+anterior\s+inteiro\b|\btodo\s+o\s+ano\s+anterior\b", frase, re.IGNORECASE):
+        ancoras.append((inicio + m.start(), inicio + m.end(), "p_full"))
+    escritos = [(inicio + m.start(), m.group(0)) for m in PASSADO_ESCRITO.finditer(frase)]
+    tem_atual = any(a[2] in ("mes", "ytd") for a in ancoras)
+    tem_passado = any(a[2].startswith("p_") for a in ancoras)
+    compara = any(k.startswith("var_") or (k.endswith("_anterior") and k not in PASSADO) for k in chaves)
+    tem_valor_anterior = any((_classe_periodo(k) or "").startswith("prev_") for k in chaves)
+    for s, e, k in marcas:
+        c = _classe_periodo(k)
+        if c is None or c.startswith("a_") or not _numerico(k, fatos):
+            continue
+        atuais = [a for a in ancoras if a[2] in ("mes", "ytd")]
+        if c in ("mes", "ytd", "var_mes", "var_ytd") and atuais:
+            depois_na_oracao = any(a[0] >= e and not CORTE_ORACAO.search(limpo[e : a[0]]) for a in atuais)
+            prox = _mais_proxima(atuais, s, e, limpo, preferir_antes=not depois_na_oracao)
+            quer = "mes" if c in ("mes", "var_mes") else "ytd"
+            if prox and prox[2] != quer and not any(a[2] == quer for a in atuais if a is not prox and abs(a[0] - s) < 3):
+                erros.append(f"{campo}: {{{k}}} é do {'mês' if quer == 'mes' else 'acumulado'}, mas está ligado a outro período em {trecho!r}")
+        passados = [a for a in ancoras if a[2].startswith("p_")]
+        if c in ("var_mes", "var_ytd") and passados:
+            depois = [a for a in passados if a[0] >= e]
+            base = min(depois, key=lambda a: a[0]) if depois else max(passados, key=lambda a: a[1])
+            quer = "p_mes" if c == "var_mes" else "p_ytd"
+            if base[2] not in (quer, "p_any"):
+                erros.append(f"{campo}: {{{k}}} é sobre {'o mesmo mês' if quer == 'p_mes' else 'o mesmo período'} do ano anterior, não sobre a base escrita: {trecho!r}")
+        if c in ("mes", "ytd", "hist") and (passados or escritos):
+            como_base = all(COMO_BASE.search(limpo[inicio:pos]) for pos in [a[0] for a in passados] + [p for p, _ in escritos])
+            if not (compara and (como_base or tem_valor_anterior)):
+                erros.append(f"{campo}: {{{k}}} é do período atual (ou da série), mas a frase o põe no passado: {trecho!r}")
+        if c == "prev_full" and MESMO_PERIODO.search(frase):
+            erros.append(f"{campo}: {{{k}}} é do ano anterior inteiro, não do mesmo período: {trecho!r}")
+        if tem_atual and tem_passado and tem_valor_anterior and c in ("mes", "ytd", "prev_mes", "prev_ytd", "prev_full"):
+            seguintes = [a for a in ancoras if a[0] >= e and not CORTE_ORACAO.search(limpo[e : a[0]])]
+            prox = min(seguintes, key=lambda a: a[0]) if seguintes else max([a for a in ancoras if a[1] <= s], key=lambda a: a[1], default=None)
+            if prox is not None and c.startswith("prev_") != prox[2].startswith("p_"):
+                erros.append(f"{campo}: {{{k}}} é do {'período anterior' if c.startswith('prev_') else 'período atual'}, mas está ligado ao outro período em {trecho!r}")
+    return erros
+
+
 def substituir(texto: str, fatos: Fatos) -> str:
     return re.sub(r"p\.p\.\.", "p.p.", MARCADOR.sub(lambda m: fatos[m.group(1)]["valor"], texto))
 
@@ -846,7 +1340,8 @@ def validar(resposta: str, fatos: Fatos) -> tuple[dict | None, list[str]]:
     if erros:
         return None, erros
     final["marcadores"] = {m: fatos[m]["valor"] for _, texto in campos for m in MARCADOR.findall(texto)}
-    if any(CHAVES_TROCA.match(m) for m in final["marcadores"]):
+    marcadores = final["marcadores"]
+    if any(CHAVES_TROCA.match(m) for m in marcadores) or ("soja_fob_ultimo" in marcadores and any(m.startswith("cif_") for m in marcadores)):
         final["nota"] = NOTA_TROCA
     return final, []
 
@@ -863,7 +1358,7 @@ class ProvedorMock:
     def gerar(self, sistema: str, usuario: str, *, esquema: dict | None = None) -> llm.Resposta:
         tem_troca = '"troca_map_ultimo"' in usuario
         origem = (
-            "{lider_total_ano} segue como principal origem no ano, com {share_lider_total_ano} das toneladas. Entre as"
+            "{lider_total_ano} foi a principal origem no ano, com {share_lider_total_ano} das toneladas. Entre as"
             " unidades de desembaraço, {porto_lider_ano} recebeu {share_porto_lider_ano} do volume."
             if '"lider_total_ano"' in usuario
             else "O preço médio FOB de todos os grupos foi de {preco_fob_total_mes} em {mes_referencia_curto}, e o frete"
@@ -904,10 +1399,19 @@ class ProvedorMock:
         return llm.Resposta(json.dumps(resposta, ensure_ascii=False), self.modelo)
 
 
-def _nome_do_modelo(*candidatos) -> str:
-    """O nome do modelo vai para o .md e o card sem passar pela validação do texto: só entra se
-    tiver cara de nome de modelo (o devolvido pela API, senão o configurado)."""
-    return next((c for c in candidatos if isinstance(c, str) and MODELO_VALIDO.fullmatch(c)), "não informado")
+def _nome_valido(nome) -> bool:
+    return isinstance(nome, str) and bool(MODELO_VALIDO.fullmatch(nome)) and not re.search(r"://|www\.|@\w+\.\w", nome)
+
+
+def _nome_do_modelo(devolvido, configurado) -> str:
+    """O nome do modelo vai para o .md e o card sem passar pela validação do texto. Publica o
+    configurado; o devolvido pela API só entra se for uma versão dele ("gpt-4o" →
+    "gpt-4o-2024-08-06"), para um gateway não pôr texto ou endereço no lugar do nome."""
+    if not _nome_valido(configurado):
+        return devolvido if _nome_valido(devolvido) else "não informado"
+    if _nome_valido(devolvido) and devolvido.lower().startswith(configurado.lower()):
+        return devolvido
+    return configurado
 
 
 def gerar(fatos: Fatos, provedor) -> dict:
@@ -946,14 +1450,14 @@ def markdown(conteudo: dict, meta: dict) -> str:
         "",
     ]
     for paragrafo in conteudo["paragrafos"]:
-        linhas += [paragrafo, ""]
+        linhas += [re.sub(r"^(\d+)([.)])(?=\s|$)", r"\1\\\2", paragrafo), ""]
     if conteudo.get("nota"):
         linhas += [f"*{conteudo['nota']}*", ""]
     linhas += ["<details>", "<summary>Números citados (inseridos pelo programa a partir do pacote de fatos)</summary>", ""]
     linhas += ["| Marcador | Valor |", "| --- | --- |"]
     linhas += [f"| `{chave}` | {valor} |" for chave, valor in conteudo["marcadores"].items()]
     linhas += ["", "</details>", "", "---", "", f"*{RODAPE}*", ""]
-    linhas += [f"<sub>Provedor: {meta['provedor']} · modelo: {meta['modelo']} · gerado em {meta['gerado_em']} · [dashboard]({meta['dashboard']})</sub>", ""]
+    linhas += [f"<sub>Provedor: {meta['provedor']} · modelo: `{meta['modelo']}` · gerado em {meta['gerado_em']} · [dashboard]({meta['dashboard']})</sub>", ""]
     return "\n".join(linhas)
 
 
