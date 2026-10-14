@@ -160,9 +160,10 @@ dia 15 de cada mês (11h17 UTC):
 entre os últimos meses de cada uma (`--ultimo-gravado`; com `--por-serie`, uma linha por
 série). Como as fontes publicam em dias diferentes, é normal o mês chegar aos poucos. Se
 faltar alguma, nada é commitado e o run fica verde, com um aviso que diz qual série falta e
-até quando ela está gravada; a execução do dia seguinte tenta de novo. A partir do dia 15,
-se ainda faltar, o job `prazo` fica vermelho dizendo qual: a fonte pode ter atrasado ou
-mudado de endereço ou de formato. Quando ela publicar, rode o workflow manualmente.
+até quando ela está gravada; a execução do dia seguinte tenta de novo. Se o Comex Stat já
+publicou o mês, mas foi segurado à espera da Pink Sheet ou da PTAX, o aviso o mostra à
+parte, como retido, e não como atrasado. A partir do dia 15, se ainda faltar, o job `prazo`
+fica vermelho dizendo qual: a fonte pode ter atrasado ou mudado de endereço ou de formato. Quando ela publicar, rode o workflow manualmente.
 
 Se uma fonte falhar, ou disser que publicou um mês que não vem na consulta (o último ou
 qualquer um no meio), o job termina em vermelho, com o erro no log, e nada é commitado: a
@@ -248,8 +249,8 @@ A IA escreve o texto; os números vêm do programa. O passo a passo (`src/boleti
      "forte", "significativo", "decresceu", "custou mais", "do que", "poder de compra",
      "respectivamente"), continuidade ("manteve", "segue", "novamente", "retomada"), recorde
      ou pico ("pico", "em anos", "desde", "já observado"), "única", "maioria", causa,
-     previsão ou contexto que o pacote não traz ("reflexo", "devido a", "tendência", "deve
-     cair", "estoques", "câmbio", "demanda", "plantio"), região ("Oriente Médio", "Europa"),
+     previsão ou contexto que o pacote não traz ("reflexo", "devido a", "por conta de",
+     "influenciou", "tendência", "deve cair", "estoques", "demanda", "plantio"), região ("Oriente Médio", "Europa"),
      produto fora do pacote ("sulfato", "nitrato", "SSP") ou nome próprio que não está no
      pacote (maiúscula fora do início de frase, como "Cade");
    - nome de país, porto, grupo (nitrogenados, fosfatados, potássicos, compostos) ou produto
@@ -273,12 +274,14 @@ A IA escreve o texto; os números vêm do programa. O passo a passo (`src/boleti
    - "ágio", "deságio", "sobrepreço", "subpreço", "prêmio", "desconto", "markup" ou
      "margem", mesmo para negar: o spread contra o benchmark do Banco Mundial não é ágio (veja
      [as limitações](#limitações)); spread junto do preço do Brasil da outra base (o FOB do
-     KCl, que é comparado pelo CIF, por exemplo); benchmark citado sem dizer "benchmark" ou
-     "Banco Mundial", como se fosse o preço pago pelo Brasil; benchmark do MAP sem dizer que
-     ele é o do DAP; "em linha", "alinhado", "próximo do" ou "o mesmo que" fora do marcador
+     KCl, que é comparado pelo CIF, por exemplo, em número ou por extenso, como "desembarcado"
+     ou "com frete e seguro"); spread do ano anterior sem o mês dele (`{mes_ano_anterior}`);
+     benchmark citado sem dizer "benchmark" ou "Banco Mundial" junto dele, ou ligado ao que
+     o Brasil pagou; benchmark do MAP sem dizer que ele é o do DAP; "em linha", "alinhado", "próximo do" ou "o mesmo que" fora do marcador
      de posição; relação de troca em reais ou junto da PTAX (ela é US$ por US$); câmbio,
-     dólar ou PTAX sem `{ptax_mes}` ou `{var_ptax_ano}` na frase, e o real numa frase com a
-     variação da PTAX; unidade repetida depois de um valor que já a traz ("R$ 2.030/t
+     dólar ou PTAX sem `{ptax_mes}` ou `{var_ptax_ano}` na frase; a variação da PTAX sem
+     PTAX, dólar ou câmbio como sujeito, ou com o real (ou "a moeda brasileira") como sujeito;
+     a variação do CIF em reais atribuída ao câmbio; unidade repetida depois de um valor que já a traz ("R$ 2.030/t
      reais");
    - um termo de uma lista fixa de recomendação e tom alarmista ("recomendamos", "vale a
      pena", "antecipar as compras", "convém", "disparou", "colapso", "crítico");
@@ -307,8 +310,8 @@ devolvido pela API é ignorado.
 
 Desde a [fase 6](#brasil-x-mercado-internacional-fase-6), o pacote de fatos traz também,
 para KCl, ureia, MAP, DAP e TSP: o benchmark do mês e a sua base, os preços FOB e CIF do
-Brasil, o spread comparável em % e em US$/t (sem sinal, com a posição "acima" ou "abaixo"
-do benchmark num marcador `_posicao` à parte), o spread do mesmo mês do ano anterior, também
+Brasil, o spread comparável em % e em US$/t (sem sinal, com a posição "acima do", "abaixo
+do" ou "em linha com o" benchmark num marcador `_posicao` à parte), o spread do mesmo mês do ano anterior, também
 sem sinal e com a sua posição (só quando a base do benchmark é a mesma nos dois meses: uma
 "variação do spread" com sinal seria lida como distância maior quando ela diminuiu), a PTAX
 média e o CIF em reais, com a variação anual. Meses de amostra pequena ficam fora do pacote.
@@ -409,7 +412,8 @@ mês, com `mes`, `co_ncm` (12019000), `vl_fob` e `kg_liquido`. Para ler:
 
 A Pink Sheet fica em `data/raw_benchmark/pink_sheet_mensal.csv`, uma linha por mês, com o
 preço em US$ por tonelada métrica, nominal, de `ureia`, `dap`, `tsp`, `kcl` e
-`rocha_fosfatica`, e o `fonte.json` ao lado registra a edição (data de atualização), a URL,
+`rocha_fosfatica`, e o `fonte.json` ao lado registra a edição (data de atualização e a
+última data legível já vista), a URL,
 o sha256 do arquivo baixado e a licença. A PTAX fica em
 `data/raw_cambio/ptax_venda_media_mensal.csv`, com `mes` e `brl_por_usd`. Para ler:
 `from src.benchmark import ler_pink, ler_ptax`.
@@ -560,8 +564,9 @@ CIF em reais (R$/t)        = CIF Brasil × PTAX venda média do mês
   inclusive nos redirecionamentos; corpo lido em blocos com limite de tamanho (20 MB no
   xlsx, também descompactado com teto, e 5 MB na página e no JSON); novas tentativas em
   429, 5xx, falha de rede, corte no meio do corpo e erro TLS transitório, com o Retry-After
-  limitado; a falha de verificação do certificado aborta. Uma edição da Pink Sheet mais
-  antiga que a gravada é recusada.
+  limitado; a falha de verificação do certificado aborta. O redirecionamento é seguido
+  pelo próprio cliente, sem ler o corpo do 3xx. Uma edição da Pink Sheet mais antiga que a
+  gravada é recusada, mesmo depois de uma edição com a data "Updated on" ilegível.
 
 ### Limitações
 

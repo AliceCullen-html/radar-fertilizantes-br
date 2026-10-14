@@ -96,7 +96,8 @@ BCB. **O repositório é PÚBLICO.**
   recém-gravado: nunca fixar valores do último mês nos testes com dados versionados, nem
   supor que as quatro séries terminam no mesmo mês. Mês completo = gravado nas quatro séries
   (Comex Stat de fertilizantes e de soja, Pink Sheet, PTAX); se faltar alguma, nada é
-  commitado e o run fica verde com aviso de qual falta; a partir do dia 15, o job `prazo`
+  commitado e o run fica verde com aviso de qual falta (o Comex Stat segurado em `limite`,
+  já publicado, aparece como retido, não como atrasado); a partir do dia 15, o job `prazo`
   (sem permissões nem checkout) fica vermelho dizendo qual. Falha de uma fonte (ou mês publicado
   que não vem, mesmo no meio do período) = job vermelho, nada commitado. Privilégios
   separados: o job que roda Python é só leitura e entrega `data/` como artifact; o job do
@@ -130,8 +131,10 @@ BCB. **O repositório é PÚBLICO.**
   2020-01, TSP). Amostra pequena: < 10 mil t no mês (`CORTE_AMOSTRA_T`), fora dos gráficos e
   do boletim. CIF R$/t = CIF × PTAX venda média do mês. O spread NÃO é ágio: é referência de
   outro lugar e de outro momento de contrato; dizer isso em toda saída pública que o mostrar.
-  O bloco "benchmark" do JSON leva 6 casas: o dashboard e o boletim arredondam uma vez só,
-  meio para cima (o `_num` do boletim imita o Intl do navegador). O spread vai sempre com o
+  Os blocos "benchmark" e "troca" do JSON levam 6 casas (o boletim recalcula a troca por
+  valor ÷ toneladas, não pelas 2 e 4 casas do CSV): o dashboard e o boletim arredondam uma
+  vez só, meio para cima (o `_num` do boletim imita o Intl do navegador), e o sinal sai do
+  número já arredondado (nunca "−0,0"). O spread vai sempre com o
   preço do Brasil da sua base, e o do ano anterior entra como valor com posição, nunca como
   variação com sinal.
 - Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):
