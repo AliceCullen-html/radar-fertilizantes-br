@@ -160,6 +160,15 @@ th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--gra
 th { position: sticky; top: 0; background: var(--superficie); color: var(--texto-2); font-weight: 600; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
+.boletim .sobretitulo { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--texto-2); letter-spacing: 0.02em; }
+.boletim h2 { font-size: 18px; line-height: 1.3; }
+.boletim .lead { margin: 10px 0 0; font-size: 15px; line-height: 1.5; max-width: 78ch; }
+.boletim .texto p { margin: 10px 0 0; line-height: 1.55; max-width: 78ch; }
+.boletim details summary { cursor: pointer; color: var(--texto-2); font-size: 13px; min-height: 32px; display: inline-flex; align-items: center; margin-top: 6px; }
+.boletim .rodape-boletim { margin: 12px 0 0; color: var(--texto-2); font-size: 12px; max-width: 78ch; }
+.boletim .links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; font-size: 13px; }
+.boletim .selo { display: inline-block; margin-left: 6px; padding: 0 6px; border: 1px solid var(--borda); border-radius: 999px; font-weight: 600; }
+
 .ressalva {
   margin: 10px 0 0; padding: 8px 12px; border-left: 3px solid var(--texto-3); border-radius: 0 8px 8px 0;
   background: var(--lavagem); color: var(--texto-2); font-size: 13px;
@@ -237,6 +246,20 @@ footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
 
   <main id="conteudo">
     <noscript><p class="aviso">Este painel precisa de JavaScript para desenhar os gráficos.</p></noscript>
+
+    <section class="cartao grade boletim oculto" aria-labelledby="titulo-boletim" id="secao-boletim">
+      <div>
+        <p class="sobretitulo" id="sobretitulo-boletim">Boletim do mês</p>
+        <h2 id="titulo-boletim"></h2>
+        <p class="lead" id="lead-boletim"></p>
+        <details>
+          <summary>Ler o boletim completo</summary>
+          <div class="texto" id="texto-boletim"></div>
+        </details>
+        <p class="rodape-boletim" id="rodape-boletim"></p>
+        <div class="links" id="links-boletim"></div>
+      </div>
+    </section>
 
     <section class="cartao kpis grade" aria-labelledby="titulo-kpis">
       <div>
@@ -1326,6 +1349,38 @@ function alternarTema() {
   if (dados) atualizar();
 }
 
+// --- Boletim do mês (fase 5) -----------------------------------------------------------------
+const REPOSITORIO = "https://github.com/AliceCullen-html/radar-fertilizantes-br";
+async function carregarBoletim() {
+  for (const url of ["boletim.json", "../boletins/latest.json"]) {
+    try {
+      const resposta = await fetch(url, { cache: "no-cache" });
+      if (resposta.ok) return await resposta.json();
+    } catch { /* tenta o próximo caminho */ }
+  }
+  return null;
+}
+// Texto vindo do latest.json: sempre por textContent (el/texto), nunca como HTML.
+function desenharBoletim(b) {
+  const secao = document.getElementById("secao-boletim");
+  const valido = b && typeof b.titulo === "string" && typeof b.lead === "string" && Array.isArray(b.paragrafos);
+  secao.classList.toggle("oculto", !valido);
+  if (!valido) return;
+  const sobretitulo = document.getElementById("sobretitulo-boletim");
+  sobretitulo.replaceChildren(`Boletim do mês · ${String(b.mes_referencia ?? "")}`);
+  if (b.mock) sobretitulo.append(el("span", { classe: "selo" }, "exemplo (modo --mock, sem IA)"));
+  texto("titulo-boletim", b.titulo);
+  texto("lead-boletim", b.lead);
+  document.getElementById("texto-boletim").replaceChildren(...b.paragrafos.map((p) => el("p", {}, String(p))));
+  const data = /^\d{4}-\d{2}-\d{2}/.test(b.gerado_em ?? "") ? `${b.gerado_em.slice(8, 10)}/${b.gerado_em.slice(5, 7)}/${b.gerado_em.slice(0, 4)}` : null;
+  const detalhes = [b.modelo ? `modelo ${b.modelo}` : null, data ? `gerado em ${data}` : null].filter(Boolean).join(", ");
+  texto("rodape-boletim", `${b.rodape || "Texto gerado por IA a partir de dados do Comex Stat/MDIC; números inseridos e verificados automaticamente."} Fonte: ${b.fonte || "Comex Stat/MDIC"}.${detalhes ? ` (${detalhes})` : ""}`);
+  const links = [];
+  if (/^boletins\/\d{4}-\d{2}\.md$/.test(b.arquivo ?? "")) links.push(el("a", { href: `${REPOSITORIO}/blob/main/${b.arquivo}` }, "Boletim com os números citados"));
+  links.push(el("a", { href: `${REPOSITORIO}/tree/main/boletins` }, "Histórico de boletins"));
+  document.getElementById("links-boletim").replaceChildren(...links);
+}
+
 // --- Início ---------------------------------------------------------------------------------
 async function carregar() {
   for (const url of ["dashboard.json", "../data/processed/dashboard.json"]) {
@@ -1364,6 +1419,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
   rodape();
+  carregarBoletim().then(desenharBoletim);
   montarFiltros();
   lerUrl();
   atualizar();

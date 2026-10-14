@@ -46,8 +46,8 @@ jobs:
           mkdir -p _site
           cp -R dashboard/. _site/
           cp data/processed/dashboard.json _site/dashboard.json
-          # Boletim do mês (fase 5), se já existir; o dashboard o lê como boletim.json.
-          if [[ -f boletins/latest.json ]]; then cp boletins/latest.json _site/boletim.json; fi
+          # Boletim do mês (fase 5); sem boletim ainda, um {} vazio deixa o card oculto sem erro 404.
+          if [[ -f boletins/latest.json ]]; then cp boletins/latest.json _site/boletim.json; else echo '{}' > _site/boletim.json; fi
           atualizado="$(git log -1 --format=%cs -- data/processed/dashboard.json)"
           sed -i "s|<meta name=\"atualizado\" content=\"\">|<meta name=\"atualizado\" content=\"${atualizado}\">|" _site/index.html
           grep -q "name=\"atualizado\" content=\"${atualizado}\"" _site/index.html
