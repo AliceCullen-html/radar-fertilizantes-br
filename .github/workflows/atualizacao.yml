@@ -5,7 +5,8 @@
 # (Pink Sheet do Banco Mundial) e câmbio (PTAX do BCB, SGS 3698). Um mês só entra quando está
 # COMPLETO, gravado nas quatro séries. Entre os dias 1 e 15, o workflow roda uma vez por dia:
 #   1. se o mês anterior já está gravado nas quatro séries, não chama nenhuma fonte;
-#   2. senão, roda a ingestão incremental das quatro séries, o transform e os testes;
+#   2. senão, roda a ingestão incremental das quatro séries (Pink Sheet e PTAX primeiro; o
+#      Comex Stat só até o menor mês das duas), o transform e os testes;
 #   3. se o último mês completo avançou, ou se o boletim dele ainda não existe, gera o
 #      boletim com IA (src/boletim.py);
 #   4. commita o que mudou em data/ e boletins/ como github-actions[bot], com a mensagem
@@ -94,12 +95,27 @@ jobs:
         timeout-minutes: 30
         run: |
           set -o pipefail
-          # Comex Stat e PTAX: só os meses que ainda não estão gravados. Pink Sheet: o arquivo
-          # inteiro, de novo, com as revisões do Banco Mundial listadas no log.
-          if ! python -m src.ingest --inicio 2015-01 2>&1 | tee "$RUNNER_TEMP/ingest.log"; then
+          log="$RUNNER_TEMP/ingest.log"
+          falhou() {
             echo "::error title=Falha na ingestão::Uma das fontes (API do Comex Stat, Pink Sheet do Banco Mundial ou PTAX do BCB) falhou ou não devolveu algum mês já publicado (detalhes no log deste passo). Nada foi commitado; a próxima execução agendada tenta de novo."
             exit 1
+          }
+          # Pink Sheet (o arquivo inteiro, com as revisões listadas no log) e PTAX (só os meses
+          # que faltam) primeiro. O Comex Stat vai só até o menor mês das duas: um mês do Comex
+          # sem benchmark ou sem câmbio não chega ao dashboard nem ao boletim.
+          python -m src.ingest --inicio 2015-01 --serie benchmark 2>&1 | tee -a "$log" || falhou
+          python -m src.ingest --inicio 2015-01 --serie cambio 2>&1 | tee -a "$log" || falhou
+          pink="$(python -m src.ingest --ultimo-gravado --serie benchmark)"
+          ptax="$(python -m src.ingest --ultimo-gravado --serie cambio)"
+          limite="${pink}"
+          if [[ "${ptax}" < "${limite}" ]]; then limite="${ptax}"; fi
+          if [[ ! "${limite}" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]]; then
+            echo "::error title=Sem Pink Sheet ou PTAX::Não há mês gravado na Pink Sheet (${pink:-nenhum}) ou na PTAX (${ptax:-nenhum}); o Comex Stat não foi baixado."
+            exit 1
           fi
+          echo "Comex Stat até ${limite} (Pink Sheet até ${pink}, PTAX até ${ptax})." | tee -a "$log"
+          python -m src.ingest --inicio 2015-01 --fim "${limite}" --serie fertilizantes 2>&1 | tee -a "$log" || falhou
+          python -m src.ingest --inicio 2015-01 --fim "${limite}" --serie soja 2>&1 | tee -a "$log" || falhou
 
       - name: Transform e testes
         if: steps.checar.outputs.falta == 'true'
@@ -231,6 +247,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           REFAZER: ${{ github.event_name == 'workflow_dispatch' }}
+          MES: ${{ needs.atualizar.outputs.mes || needs.atualizar.outputs.mes_dados }}
         run: |
           # Sem a chave (ex.: um fork que ainda não configurou o environment), o boletim é
           # pulado com aviso e os dados seguem sendo atualizados. Nada aqui imprime a chave.
@@ -238,7 +255,12 @@ jobs:
             echo "::warning title=Boletim não gerado::Falta o secret ANTHROPIC_API_KEY no environment boletim-ia (veja 'Use com a sua IA' no README)."
             exit 0
           fi
-          args=()
+          # O boletim é do último mês completo (gravado nas quatro séries), o mesmo do commit.
+          if [[ ! "${MES}" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]]; then
+            echo "::error title=Mês inválido::O job de atualização devolveu '${MES}'."
+            exit 1
+          fi
+          args=(--mes "${MES}")
           if [[ "${REFAZER}" == "true" ]]; then
             args+=(--forcar)
           fi
@@ -338,7 +360,7 @@ jobs:
           ESPERADO: ${{ needs.atualizar.outputs.esperado }}
           ATRASADAS: ${{ needs.atualizar.outputs.atrasadas }}
         run: |
-          echo "::error title=Fonte sem o mês ${ESPERADO}::Passou o dia 15 e ainda falta ${ESPERADO} em: ${ATRASADAS}. Nenhum mês incompleto foi commitado. Confira se a fonte mudou de endereço ou de formato e, quando ela publicar, rode este workflow manualmente."
+          echo "::error title=Fonte sem o mês ${ESPERADO}::Passou o dia 15 e ainda falta ${ESPERADO} em: ${ATRASADAS}. Nenhum mês incompleto foi commitado. Confira se a fonte mudou de endereço ou de formato e, quando ela publicar, rode este workflow manualmente com a opção boletim desmarcada (o boletim do mês novo é gerado de qualquer jeito; marcada, ela refaz o boletim já publicado)."
           exit 1
 
   # Commits feitos com o GITHUB_TOKEN não disparam outros workflows, então o deploy do
