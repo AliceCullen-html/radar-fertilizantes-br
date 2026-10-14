@@ -930,11 +930,14 @@ MENCOES_PRODUTO = {
     "ureia": re.compile(r"\bur[eé]ia\b", re.IGNORECASE),
     "kcl": re.compile(r"\bKCl\b|\bMOP\b|\bcloreto\b", re.IGNORECASE),
     "map": re.compile(r"\bMAP\b|\bmonoam[ôo]nico\b"),
+    "dap": re.compile(r"\bDAP\b|\bdiam[ôo]nico\b"),
+    "tsp": re.compile(r"\bTSP\b|\bsuperfosfato\s+triplo\b", re.IGNORECASE),
 }
-PRODUTOS_FORA = re.compile(
-    r"\b(?:superfosfato\s+simples|SSP|sulfat\w*|nitrat\w*|am[ôo]nia\b|DAP\b|diam[ôo]nico|TSP\b|superfosfato\s+triplo)", re.IGNORECASE
+PRODUTOS_FORA = re.compile(r"\b(?:superfosfato\s+simples|SSP|sulfat\w*|nitrat\w*|am[ôo]nia\b)", re.IGNORECASE)
+CHAVE_DE_PRODUTO = re.compile(
+    r"^(?:troca|sacas|cif|desvio_troca|meses_seguidos_troca|benchmark|base_benchmark|fob_brasil|cif_brasil|spread|var_spread|cif_brl|var_cif_brl)"
+    r"_(kcl|ureia|map|dap|tsp)(?:_|$)"
 )
-CHAVE_DE_PRODUTO = re.compile(r"^(?:troca|sacas|cif|desvio_troca|meses_seguidos_troca)_(kcl|ureia|map)(?:_|$)")
 CHAVE_DO_TOTAL = re.compile(
     r"^(?:var_)?(?:frete_(?!rota_)|n_rotas|share_rotas|corte_rotas|frete_rotas|t_rota_|frete_rota_|share_porto|var_share_porto|preco_fob)"
 )
@@ -963,6 +966,8 @@ REGIOES = re.compile(
 MAIUSCULAS_PERMITIDAS = {
     "Brasil", "Comex", "Stat", "MDIC", "HHI", "CIF", "FOB", "NPK", "KCl", "MAP", "URF", "URFs", "IRF", "ALF", "Porto",
     "N", "P", "K", "Herfindahl", "Hirschman", "Receita", "Federal",
+    # fase 6: as fontes do benchmark e do câmbio e as siglas das bases
+    "Banco", "Mundial", "Pink", "Sheet", "PTAX", "BCB", "Central", "CFR", "DAP", "TSP",
 }
 # Período: palavras que marcam o mês, o acumulado e o passado.
 PALAVRA_MES = re.compile(r"\b(?:no|do)\s+m[eê]s\b(?!\s+(?:anterior|passado))", re.IGNORECASE)
@@ -1078,8 +1083,8 @@ def _classe_periodo(k: str) -> str | None:
         return "a_ytd"
     if k in PASSADO:
         return "a_passado"
-    if k == "var_soja_fob_ano" or (k.startswith("var_") and k.endswith("_mes")):
-        return "var_mes"
+    if k in ("var_soja_fob_ano", "var_ptax_ano") or k.startswith(("var_spread_", "var_cif_brl_")) or (k.startswith("var_") and k.endswith("_mes")):
+        return "var_mes"  # todas sobre o mesmo mês do ano anterior
     if k.startswith("var_") and k.endswith(("_ytd", "_ano")):
         return "var_ytd"
     if k.startswith("hhi_") and k.endswith("_ano_anterior"):
