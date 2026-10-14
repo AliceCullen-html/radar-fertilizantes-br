@@ -191,23 +191,31 @@ A IA escreve o texto; os números vêm do programa. O passo a passo (`src/boleti
    pode citar números por marcadores, como `{troca_map_ultimo}`. É proibido escrever
    números.
 3. **Validação automática, igual para todos os provedores.** A resposta é reprovada se tiver:
-   - marcador que não existe no pacote;
-   - fora dos marcadores: qualquer dígito (de qualquer escrita, inclusive "²" e "½"),
-     algarismo romano, número por extenso ("três", "mil", "zero", "meia", "dobrou", "um
-     terço"), nome de mês, período ("semestre", "década", "mês anterior"), contagem que o
-     pacote não traz ("terceiro mês seguido", "consecutivo", "pela primeira vez", "recorde"),
-     unidade (%, "por cento", US$, p.p.) ou sinal (+, −) colado num marcador de variação;
-   - palavra de direção que contradiz a variação ("alta de {var_x}" ou "{var_x} maior que"
-     quando a variação é de queda), conferida também no valor que variou ("as compras
-     cresceram para {t_k_mes}") e na posição frente a uma referência (média histórica, limiar
-     do HHI); e palavra de mudança ("subiu", "caiu") numa frase sem nenhuma variação do
-     pacote, onde a direção não teria como ser conferida;
-   - relação de troca sem a ressalva "no porto" no mesmo parágrafo, ou apresentada como
-     preço ao produtor;
-   - quebra de linha, caractere invisível ou de controle, letra fora do alfabeto latino,
-     Markdown ou HTML;
+   - marcador que não existe no pacote, ou dois marcadores colados;
+   - fora dos marcadores, qualquer caractere que não seja letra do português, espaço ou
+     pontuação comum (emoji, seta, símbolo, caractere invisível ou combinante, letra de outro
+     alfabeto, "&", "@"), quebra de linha, Markdown, HTML, link ou início de lista;
+   - fora dos marcadores: dígito (de qualquer escrita, inclusive "²" e "½"), algarismo
+     romano, letras no lugar de algarismos ("lOO"), número por extenso ("três", "mil", "zero",
+     "meia", "dobrou", "quíntuplo", "vigésimo", "um terço"), nome de mês, período
+     ("semestre", "década", "biênio", "mês anterior", "comparação mensal"), contagem ou
+     recorde que o pacote não traz ("terceiro mês seguido", "consecutivo", "pela primeira
+     vez", "recorde", "nunca antes", "o maior da série"), unidade (%, "por cento", US$, p.p.)
+     ou unidade inventada para um número puro ("USD {hhi_n_ano}");
+   - **palavra de direção ou comparação** ("subiu", "caiu", "cresceu", "superou", "aquém",
+     "alta", "queda", "acima", "abaixo", "maior que", "mais barato", "melhorou"...). A
+     direção entra **só** pelos marcadores `_sentido` (alta, queda ou estabilidade) e
+     `_posicao` (acima ou abaixo de uma referência), que o programa preenche a partir dos
+     dados e que precisam vir colados à própria variação: `{var_x_sentido} de {var_x}` ou
+     `{desvio_x} {desvio_x_posicao}`. Toda variação vai com a sua direção, e um sinal (+, −,
+     "menos") antes dela reprova;
+   - nome de país, porto, grupo (nitrogenados, fosfatados, potássicos, compostos) ou produto
+     (ureia, KCl, MAP) numa frase cujos números não são dele; país ou porto que não está no
+     pacote; valor do período atual posto no período anterior;
+   - relação de troca sem "no porto" no mesmo parágrafo, ou qualquer menção a produtor,
+     agricultor ou fazenda (exceto na forma "não é o preço ao produtor");
    - um termo de uma lista fixa de recomendação e tom alarmista ("recomendamos", "vale a
-     pena", "antecipar as compras", "disparou", "colapso", "crítico");
+     pena", "antecipar as compras", "convém", "disparou", "colapso", "crítico");
    - menos de 6 marcadores citados, ou tamanho acima do limite.
 
    Se reprovar, a IA recebe os erros e tenta mais uma vez; se reprovar de novo, nada é
@@ -216,12 +224,14 @@ A IA escreve o texto; os números vêm do programa. O passo a passo (`src/boleti
    números citados e o rodapé fixo: "Texto gerado por IA a partir de dados do Comex
    Stat/MDIC; números inseridos e verificados automaticamente."
 
-O que a validação confere é o que está na lista acima. O resto é pedido no prompt e não tem
-como ser verificado por um programa: o tom de analista (neutro, sem recomendação de compra
-e venda e sem adjetivos alarmistas, além da lista fixa de termos) e a regra de não citar
-causas, eventos, empresas ou previsões que não estejam no pacote. A relação de troca sempre
-aparece como medida no porto, porque a validação exige a ressalva. Fica registrado no
-boletim qual provedor e qual modelo escreveram o texto.
+O que a validação confere é o que está na lista acima; as listas de palavras são fixas, então
+um sinônimo que não esteja nelas passa. O resto é pedido no prompt e não tem como ser
+verificado por um programa: o tom de analista (neutro, sem recomendação de compra e venda e
+sem adjetivos alarmistas, além da lista fixa de termos) e a regra de não citar causas,
+eventos, empresas ou previsões que não estejam no pacote. Quando o boletim cita a relação de
+troca, o programa acrescenta uma nota fixa (no `.md`, no `latest.json` e no card): ela é
+medida no porto e não é o preço pago pelo produtor. Fica registrado no boletim qual provedor
+e qual modelo escreveram o texto.
 
 O provedor padrão é a Anthropic, com o modelo `claude-sonnet-5-5` e saída JSON restrita por
 schema. Pela tabela de preços do modelo (US$ 2 por milhão de tokens de entrada e US$ 10 de
@@ -238,7 +248,8 @@ saída), um boletim custa poucos centavos de dólar, mesmo com a nova tentativa.
 Cada provedor lê só as próprias variáveis. Nenhuma é necessária para os testes nem para o
 modo `--mock`, que usa uma resposta fixa de exemplo sem chamar nenhuma API e grava em
 `boletins/mock/`, fora do Git. O cliente HTTP não segue redirecionamentos (num POST eles
-levariam a chave para outro endereço) e recusa chave com espaço ou quebra de linha.
+levariam a chave para outro endereço), recusa chave com espaço ou quebra de linha e, com
+chave, só aceita `http://` em `OPENAI_BASE_URL` para servidor local.
 
 `--mes AAAA-MM` gera o boletim de um mês anterior. Origens, HHI, portos e rotas só entram
 quando o mês é o último do seu ano nos dados (esses blocos do `dashboard.json` cobrem o ano
@@ -276,7 +287,9 @@ todo), e um mês antigo não tira o mais recente do `latest.json`.
    `RADAR_LLM_PROVIDER=ollama RADAR_LLM_MODEL=<modelo> python -m src.boletim --saida boletins/local`.
    O pedido já leva contexto para o prompt inteiro (`num_ctx` de pelo menos 16 mil tokens);
    o modelo precisa caber na sua máquina com esse contexto. `OLLAMA_HOST` aceita `host`,
-   `host:porta` ou a URL completa, com a porta 11434 se faltar. Modelos locais pequenos
+   `host:porta` ou `host/caminho` (porta 11434 se faltar, como no próprio Ollama) ou a URL
+   completa com a porta (`http://host:11434`); na URL completa sem porta vale a padrão do
+   esquema (80 ou 443). Modelos locais pequenos
    tendem a reprovar mais na validação, mas a regra é a mesma: número inventado não passa.
 4. **MCP com o Claude Desktop** (fase 6, ainda não implementada): um servidor MCP local
    para consultar os dados do radar direto do Claude Desktop.

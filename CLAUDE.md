@@ -95,10 +95,13 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
   (pacote de fatos com valores formatados em pt-BR → IA escreve só com marcadores `{chave}` →
   validação igual para todos os provedores → `boletins/AAAA-MM.md` e `latest.json`). Os dois
   usam SÓ a biblioteca padrão: o job `gerar-boletim` é o único com o secret (environment
-  `boletim-ia`) e não instala pacotes. Nunca relaxar a validação (dígito, número por
-  extenso, mês por extenso, contagem, unidade ou sinal fora de marcador, marcador
-  inexistente, direção sem variação ou contraditória, troca sem "no porto", caractere
-  invisível ou quebra de linha, lista de termos de tom, tamanho). Nunca usar
+  `boletim-ia`) e não instala pacotes. A direção NUNCA é escrita pela IA: entra só pelos
+  marcadores `_sentido`/`_posicao`, colados à própria variação. Nunca relaxar a validação
+  (caracteres fora de letras e pontuação comum, dígito, número por extenso, mês, período,
+  contagem, recorde, unidade ou sinal fora de marcador, palavra de direção, marcador
+  inexistente ou colado, nome de país/porto/grupo/produto/período sem os seus números,
+  troca sem "no porto" ou como preço ao produtor, link, Markdown, lista de termos de tom,
+  tamanho). Nunca usar
   `pull_request_target`. Boletim do `--mock` vai para `boletins/mock/` (fora do Git) e nunca
   é commitado.
 - Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):
