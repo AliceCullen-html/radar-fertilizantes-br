@@ -149,7 +149,8 @@ dia 15 de cada mês (11h17 UTC):
    (`python -m src.ingest --ultimo-gravado`). Se estiver, encerra sem chamar nenhuma fonte:
    na prática, as checagens param assim que o mês novo entra.
 2. Se faltar, roda a ingestão incremental das quatro séries, o `python -m src.transform` e
-   os testes.
+   os testes. A Pink Sheet e a PTAX vêm primeiro, e o Comex Stat só até o menor mês das
+   duas: um mês do Comex sem benchmark ou sem câmbio não chega ao dashboard nem ao boletim.
 3. Se o último mês completo avançou, ou se o boletim dele ainda não existe, gera o
    [boletim com IA](#boletim-mensal-com-ia-fase-5).
 4. Faz um commit `chore(dados): atualização AAAA-MM` como `github-actions[bot]`, só com
@@ -269,8 +270,16 @@ A IA escreve o texto; os números vêm do programa. O passo a passo (`src/boleti
    - relação de troca (ou o preço FOB da soja junto do CIF de um fertilizante) sem "no porto"
      no mesmo parágrafo, ou qualquer menção a produtor, agricultor, fazenda, "quem planta",
      safra, agro ou revenda (exceto na forma "não é o preço ao produtor");
-   - "ágio", "deságio", "sobrepreço" ou "subpreço": o spread contra o benchmark do Banco
-     Mundial não é ágio (veja [as limitações](#limitações));
+   - "ágio", "deságio", "sobrepreço", "subpreço", "prêmio", "desconto", "markup" ou
+     "margem", mesmo para negar: o spread contra o benchmark do Banco Mundial não é ágio (veja
+     [as limitações](#limitações)); spread junto do preço do Brasil da outra base (o FOB do
+     KCl, que é comparado pelo CIF, por exemplo); benchmark citado sem dizer "benchmark" ou
+     "Banco Mundial", como se fosse o preço pago pelo Brasil; benchmark do MAP sem dizer que
+     ele é o do DAP; "em linha", "alinhado", "próximo do" ou "o mesmo que" fora do marcador
+     de posição; relação de troca em reais ou junto da PTAX (ela é US$ por US$); câmbio,
+     dólar ou PTAX sem `{ptax_mes}` ou `{var_ptax_ano}` na frase, e o real numa frase com a
+     variação da PTAX; unidade repetida depois de um valor que já a traz ("R$ 2.030/t
+     reais");
    - um termo de uma lista fixa de recomendação e tom alarmista ("recomendamos", "vale a
      pena", "antecipar as compras", "convém", "disparou", "colapso", "crítico");
    - menos de 6 marcadores citados, ou tamanho acima do limite.
@@ -299,9 +308,11 @@ devolvido pela API é ignorado.
 Desde a [fase 6](#brasil-x-mercado-internacional-fase-6), o pacote de fatos traz também,
 para KCl, ureia, MAP, DAP e TSP: o benchmark do mês e a sua base, os preços FOB e CIF do
 Brasil, o spread comparável em % e em US$/t (sem sinal, com a posição "acima" ou "abaixo"
-do benchmark num marcador `_posicao` à parte), a variação do spread sobre o mesmo mês do ano
-anterior (só quando a base do benchmark é a mesma nos dois meses), a PTAX média e o CIF em
-reais, com a variação anual. Meses de amostra pequena ficam fora do pacote.
+do benchmark num marcador `_posicao` à parte), o spread do mesmo mês do ano anterior, também
+sem sinal e com a sua posição (só quando a base do benchmark é a mesma nos dois meses: uma
+"variação do spread" com sinal seria lida como distância maior quando ela diminuiu), a PTAX
+média e o CIF em reais, com a variação anual. Meses de amostra pequena ficam fora do pacote.
+Os números são arredondados meio para cima, como no dashboard: 396,5 vira 397 nos dois.
 
 O provedor padrão é a Anthropic, com o modelo `claude-sonnet-5-5` e saída JSON restrita por
 schema. Pela tabela de preços do modelo (US$ 2 por milhão de tokens de entrada e US$ 10 de
@@ -540,9 +551,17 @@ CIF em reais (R$/t)        = CIF Brasil × PTAX venda média do mês
   A edição sai no 2º dia útil de cada mês.
 - **Ingestão da PTAX:** série 3698 do SGS do Banco Central (PTAX venda, média mensal, a
   média simples das cotações dos dias úteis), em janelas de 5 anos, só com os meses que
-  faltam. Se o SGS diz que publicou um mês e ele não vem, é erro. A API devolve uma página
-  HTML de erro com status 200 quando falta o cabeçalho `Accept: application/json`; o cliente
-  manda o cabeçalho e recusa resposta que não seja JSON.
+  faltam (em trechos de meses seguidos). Se o SGS diz que publicou um mês e ele não vem, é
+  erro. O firewall do BCB às vezes devolve uma página HTML "Requisição inválida!" com status
+  200; o cliente manda `Accept: application/json`, repete e recusa resposta que não seja
+  JSON.
+- **Cliente das duas fontes:** só https e só os hosts do Banco Mundial e do BCB, conferidos
+  na URL que o requests de fato usa (barra invertida, "@" e caractere de controle reprovam),
+  inclusive nos redirecionamentos; corpo lido em blocos com limite de tamanho (20 MB no
+  xlsx, também descompactado com teto, e 5 MB na página e no JSON); novas tentativas em
+  429, 5xx, falha de rede, corte no meio do corpo e erro TLS transitório, com o Retry-After
+  limitado; a falha de verificação do certificado aborta. Uma edição da Pink Sheet mais
+  antiga que a gravada é recusada.
 
 ### Limitações
 

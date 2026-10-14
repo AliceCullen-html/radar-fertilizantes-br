@@ -88,7 +88,8 @@ BCB. **O repositório é PÚBLICO.**
   Pages → Source: "GitHub Actions".
 - Fase 4: `.github/workflows/atualizacao.yml` roda nos dias 1 a 15 de cada mês. Se o mês
   anterior já está gravado (`--ultimo-gravado`), encerra sem chamar nenhuma fonte; senão faz a
-  ingestão incremental das quatro séries, o transform e os testes e, se o mês completo
+  ingestão incremental das quatro séries (Pink Sheet e PTAX primeiro; o Comex Stat só até o
+  menor mês das duas), o transform e os testes e, se o mês completo
   avançou ou se há boletim novo (o do último mês faltava, ou foi refeito por dispatch), commita só `data/`
   e `boletins/` como github-actions[bot] e chama o `pages.yml` (via `workflow_call`, porque
   pushes com o GITHUB_TOKEN não disparam outros workflows). Os testes rodam sobre o mês
@@ -113,7 +114,9 @@ BCB. **O repositório é PÚBLICO.**
   direção negada, continuidade, causa/previsão/contexto, região, produto ou nome próprio fora
   do pacote, marcador inexistente ou colado, número ligado ao grupo/produto/total/país/porto/
   posição/período/métrica de outro, troca sem "no porto" ou como preço ao produtor, link,
-  Markdown, lista de termos de tom, "ágio"/"sobrepreço", tamanho). Casos ruins e corretos das revisões ficam nos
+  Markdown, lista de termos de tom, "ágio"/"sobrepreço"/"prêmio"/"desconto" mesmo negados,
+  spread com o preço da outra base, benchmark como preço do Brasil, troca em R$ ou com a
+  PTAX, câmbio sem as chaves da PTAX, tamanho). Casos ruins e corretos das revisões ficam nos
   testes; regra nova não pode reprovar o mock em nenhum mês dos dados. Nunca usar
   `pull_request_target`. Boletim do `--mock` vai para `boletins/mock/` (fora do Git) e nunca
   é commitado. Rodapé e fontes do boletim incluem o Banco Mundial e o BCB quando o texto cita
@@ -127,6 +130,10 @@ BCB. **O repositório é PÚBLICO.**
   2020-01, TSP). Amostra pequena: < 10 mil t no mês (`CORTE_AMOSTRA_T`), fora dos gráficos e
   do boletim. CIF R$/t = CIF × PTAX venda média do mês. O spread NÃO é ágio: é referência de
   outro lugar e de outro momento de contrato; dizer isso em toda saída pública que o mostrar.
+  O bloco "benchmark" do JSON leva 6 casas: o dashboard e o boletim arredondam uma vez só,
+  meio para cima (o `_num` do boletim imita o Intl do navegador). O spread vai sempre com o
+  preço do Brasil da sua base, e o do ano anterior entra como valor com posição, nunca como
+  variação com sinal.
 - Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):
   N azul, P laranja, K água, NPK amarelo, "Todos" violeta. Não reordenar.
 - Não commitar dados grandes: se `data/raw/` passar de ~20 MB, colocá-lo no `.gitignore`
@@ -170,8 +177,8 @@ BCB. **O repositório é PÚBLICO.**
   `thedocs.worldbank.org`, num caminho com hash que muda a cada edição; o link sai da página
   `https://www.worldbank.org/en/research/commodity-markets`. Edição no 2º dia útil do mês,
   com o mês anterior. Licença CC BY 4.0. Sem chave.
-- Aba "Monthly Prices": nomes na linha 4 (com espaços e "**" no fim, ex.: "Urea ",
-  "Potassium chloride **"), unidades "($/mt)" na linha 5, períodos "AAAAMmm", faltantes ".."
+- Aba "Monthly Prices": nomes na linha 5 do Excel (com espaços e "**" no fim, ex.: "Urea ",
+  "Potassium chloride **"), unidades "($/mt)" na linha 6, períodos "AAAAMmm", faltantes ".."
   ou "…".
 - Bases: KCl "CFR Brazil, granular" desde 2020-01 (antes FOB Vancouver; trocada
   retroativamente: a edição de out/2021 trazia FOB Vancouver em 2020); ureia FOB Oriente
@@ -182,6 +189,7 @@ BCB. **O repositório é PÚBLICO.**
   `https://api.bcb.gov.br/dados/serie/bcdata.sgs.3698/dados?formato=json&dataInicial=dd/mm/aaaa&dataFinal=dd/mm/aaaa`;
   `/dados/ultimos/1` dá o último mês publicado. Sem chave. Licença ODbL (Portal de Dados
   Abertos do BCB, séries do dólar).
-- Sem o cabeçalho `Accept: application/json`, o BCB devolve uma página HTML "Requisição
-  inválida!" com HTTP 200. Com ele, aceita janelas de 5 anos e data final no futuro.
+- O firewall do BCB às vezes devolve uma página HTML "Requisição inválida!" com HTTP 200
+  (visto em rajadas; a relação com o cabeçalho `Accept` não se confirmou). O cliente manda
+  `Accept: application/json` e repete. O SGS aceita janelas de 5 anos e data final no futuro.
 - TLS: BCB com DigiCert/Thawte; Banco Mundial com Sectigo/GTS. O certifi valida os dois.

@@ -11,8 +11,11 @@ calculado pelo programa, que os troca pelos valores e reprova qualquer número e
 Detalhes no [README](../README.md#como-a-ia-é-usada-e-por-que-ela-não-inventa-números).
 
 Texto gerado por IA a partir de dados do Comex Stat/MDIC; números inseridos e verificados automaticamente.
-Quando um boletim cita o benchmark internacional ou o CIF em reais, o rodapé e as fontes dele
-incluem o Banco Mundial (Pink Sheet, CC BY 4.0) e o BCB (PTAX, ODbL), com notas fixas: o
-benchmark é uma referência de outro lugar e de outro momento de contrato, e o spread não é ágio.
+Quando um boletim cita números do benchmark internacional, o rodapé e as fontes dele incluem o
+Banco Mundial (Pink Sheet), com uma nota fixa: o benchmark é uma referência de outro lugar e de
+outro momento de contrato, e o spread não é ágio (e, para o MAP, a referência é o DAP). Quando
+cita a PTAX ou o CIF em reais, incluem o BCB (PTAX); com o CIF em reais, entra a nota de que ele
+usa a PTAX média do mês. As licenças das fontes (CC BY 4.0 e ODbL) estão no
+[README](../README.md#licenças-das-fontes).
 
 Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX.
