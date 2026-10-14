@@ -578,8 +578,9 @@ const pluginRotulosFinais = {
       }
       itens.push({ y, alvo: y, x: ponto.x, rotulo: ds.rotuloFinal, corSerie: ds.borderColor });
     });
-    // A partir da ponta das linhas: com offset no eixo x, o último mês fica antes da borda.
-    const borda = itens.length ? Math.max(...itens.map((it) => it.x)) : right;
+    // A partir da ponta das linhas quando o eixo x tem offset (o último mês fica antes da borda).
+    // Sem offset, a ponta já é a borda, e um eixo de uma só categoria põe o ponto à esquerda.
+    const borda = itens.length && chart.scales.x.options.offset ? Math.max(...itens.map((it) => it.x)) : right;
     itens.sort((a, b) => a.y - b.y);
     const altura = 14;
     // Rótulos que se sobrepõem formam um grupo centrado na média das pontas das linhas, para o
