@@ -24,3 +24,6 @@ venv/
 
 # --- Claude Code: configurações locais de cada pessoa ---------------------------
 .claude/settings.local.json
+
+# --- Boletim em modo --mock (exemplo local, nunca publicado) -----------------------
+boletins/mock/

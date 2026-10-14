@@ -20,6 +20,8 @@ RAW_ARQUIVO = "importacoes.parquet"
 # Exportação de soja em grão (relação de troca): data/raw_soja/ano=AAAA/exportacoes.parquet
 RAW_SOJA_DIR = DADOS_DIR / "raw_soja"
 RAW_SOJA_ARQUIVO = "exportacoes.parquet"
+# Boletim mensal com IA (fase 5): boletins/AAAA-MM.md e boletins/latest.json
+BOLETINS_DIR = RAIZ / "boletins"
 
 # --- API Comex Stat (dados abertos do MDIC, sem autenticação) --------------------
 # Documentação: https://api-comexstat.mdic.gov.br/docs (spec OpenAPI em /docs/doc.yaml)
