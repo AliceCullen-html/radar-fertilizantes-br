@@ -681,9 +681,9 @@ def test_variacao_do_spread_so_na_mesma_base(com_benchmark):
     destino, _ = com_benchmark
     painel, troca = boletim.carregar(destino)
     # KCl: 2020-01 tem base CFR Brasil e 2019-01, FOB Vancouver; ureia: 2022-03 contra 2021-03 (Mar Negro)
-    assert "var_spread_kcl" not in boletim.montar_fatos(painel, troca, "2020-12")
-    assert "var_spread_ureia" not in boletim.montar_fatos(painel, troca, "2022-12")
-    assert "var_spread_kcl" in boletim.montar_fatos(painel, troca, "2021-12")
+    assert "spread_kcl_ano_anterior" not in boletim.montar_fatos(painel, troca, "2020-12")
+    assert "spread_ureia_ano_anterior" not in boletim.montar_fatos(painel, troca, "2022-12")
+    assert "spread_kcl_ano_anterior" in boletim.montar_fatos(painel, troca, "2021-12")
 
 
 @pytest.mark.parametrize(
@@ -839,3 +839,77 @@ def test_paragrafo_que_comeca_com_numero_e_ponto_nao_vira_lista(fatos):
     conteudo["paragrafos"][0] = "25. Os potássicos vieram de muitos países."
     meta = {"mock": False, "mes_referencia": "x", "provedor": "p", "modelo": "m", "gerado_em": "g", "dashboard": "d", "fonte": "f", "rodape": "r"}
     assert "\n25\\. Os potássicos" in boletim.markdown(conteudo, meta)
+
+
+# --- Benchmark e câmbio: cada número com a sua fonte, base e moeda (revisão da fase 6) ------
+
+
+@pytest.mark.parametrize(
+    "texto, trecho",
+    [
+        # o spread do KCl compara o CIF; o da ureia, o FOB
+        ("O preço FOB do KCl importado, de {fob_brasil_kcl_mes}, ficou {spread_kcl_mes} {spread_kcl_mes_posicao} em {mes_referencia}.", "preço CIF do Brasil"),
+        ("O preço CIF da ureia, de {cif_brasil_ureia_mes}, ficou {spread_ureia_mes} {spread_ureia_mes_posicao} em {mes_referencia}.", "preço FOB do Brasil"),
+        # posição fora do marcador e sinônimos de ágio
+        ("O KCl importado ficou em linha com o benchmark do Banco Mundial, de {benchmark_kcl_mes}, em {mes_referencia}.", "juízo"),
+        ("O KCl ficou próximo do benchmark, de {benchmark_kcl_mes}, com CIF de {cif_brasil_kcl_mes}.", "juízo"),
+        ("O KCl importado teve um prêmio de {spread_kcl_mes} {spread_kcl_mes_posicao} em {mes_referencia}.", "nem para negar"),
+        ("O KCl foi comprado com desconto de {spread_kcl_usd_mes} {spread_kcl_usd_mes_posicao}.", "nem para negar"),
+        ("O Brasil pagou {spread_kcl_usd_mes} a menos pelo KCl, {spread_kcl_usd_mes_posicao}.", "juízo"),
+        # benchmark como preço do Brasil; MAP com preço próprio
+        ("O Brasil pagou {benchmark_kcl_mes} pelo KCl em {mes_referencia}, na base {base_benchmark_kcl}.", "não o que o Brasil pagou"),
+        ("O Banco Mundial cotou o MAP a {benchmark_map_mes} em {mes_referencia}.", "benchmark do MAP é o do DAP"),
+        # troca em reais ou com o câmbio
+        ("No porto, a relação de troca do MAP em reais chegou a {cif_brl_map_mes} em {mes_referencia}.", "US$ por US$"),
+        ("No porto, a relação de troca do KCl equivalia a {troca_kcl_ultimo}, com a PTAX a {ptax_mes}.", "US$ por US$"),
+        # PTAX e real, câmbio sem a PTAX, fonte citada sem as suas chaves
+        ("O real teve {var_ptax_ano_sentido} de {var_ptax_ano} sobre {mes_ano_anterior}.", "não fale do real"),
+        ("O câmbio encareceu o KCl, com CIF em reais de {cif_brl_kcl_mes}.", "câmbio, dólar e PTAX"),
+        ("Na comparação com o benchmark do Banco Mundial, o KCl importado teve CIF de {cif_brasil_kcl_mes} em {mes_referencia}.", "só com as chaves deles"),
+        # grupo do produto, produto trocado, base de outro produto, unidade repetida
+        ("Os nitrogenados ficaram {spread_kcl_mes} {spread_kcl_mes_posicao} em {mes_referencia}.", "nitrogenados"),
+        ("O KCl ficou {spread_ureia_mes} {spread_ureia_mes_posicao}, e a ureia, {spread_kcl_mes} {spread_kcl_mes_posicao}.", "ligado a"),
+        ("O benchmark do MAP tem como base o {base_benchmark_ureia}.", "ligado a"),
+        ("Em reais, a ureia custou {cif_brl_ureia_mes} por tonelada em {mes_referencia}.", "já traz a unidade"),
+    ],
+)
+def test_benchmark_e_cambio_cada_numero_com_a_sua_fonte_base_e_moeda(com_benchmark, texto, trecho):
+    _, f = com_benchmark
+    erros = valida(f, texto)
+    assert any(trecho in e for e in erros), erros
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "O preço CIF do KCl importado, de {cif_brasil_kcl_mes}, ficou {spread_kcl_mes} {spread_kcl_mes_posicao} em {mes_referencia}.",
+        "O preço FOB da ureia importada foi de {fob_brasil_ureia_mes}, {spread_ureia_mes} {spread_ureia_mes_posicao}, de {benchmark_ureia_mes}.",
+        "O MAP é comparado ao DAP do Banco Mundial, de {benchmark_map_mes} em {mes_referencia}.",
+        "O cloreto de potássio importado ficou {spread_kcl_mes} {spread_kcl_mes_posicao}, com benchmark de {benchmark_kcl_mes}.",
+        "Nos potássicos, o KCl ficou {spread_kcl_mes} {spread_kcl_mes_posicao}, e o grupo somou {t_k_mes} no mês.",
+        "Os nitrogenados somaram {t_n_mes}, e o cloreto de potássio ficou {spread_kcl_mes} {spread_kcl_mes_posicao}.",
+        "O dólar médio teve {var_ptax_ano_sentido} de {var_ptax_ano} sobre {mes_ano_anterior}, para {ptax_mes}.",
+        "Em reais, o CIF do KCl foi de {cif_brl_kcl_mes}, {var_cif_brl_kcl_sentido} de {var_cif_brl_kcl} sobre {mes_ano_anterior}, com a PTAX média a {ptax_mes}.",
+        "Nos fosfatados, o MAP ficou {spread_map_mes} {spread_map_mes_posicao} em {mes_referencia}.",
+    ],
+)
+def test_benchmark_e_cambio_frases_corretas_passam(com_benchmark, texto):
+    _, f = com_benchmark
+    assert valida(f, texto) == []
+
+
+def test_spread_do_ano_anterior_vai_com_a_sua_posicao(com_benchmark):
+    destino, _ = com_benchmark
+    painel, troca = boletim.carregar(destino)
+    f = boletim.montar_fatos(painel, troca, "2021-12")
+    assert f["spread_kcl_ano_anterior_posicao"]["valor"] in ("acima do benchmark", "abaixo do benchmark", "em linha com o benchmark")
+    texto = "O KCl ficou {spread_kcl_mes} {spread_kcl_mes_posicao} em {mes_referencia}, ante {spread_kcl_ano_anterior} {spread_kcl_ano_anterior_posicao} em {mes_ano_anterior}."
+    assert valida(f, texto) == []
+
+
+def test_arredondamento_meio_para_cima_igual_ao_dashboard():
+    # o navegador (Intl) arredonda 396,5 para 397; o boletim mostra o mesmo número
+    assert boletim._num(396.5) == "397" and boletim._num(-396.5) == "-397" and boletim._num(8.55, 1) == "8,6"
+    assert boletim.fmt_usd_t(402.5) == "US$ 403/t" and boletim._num(1234567.125, 2) == "1.234.567,13"
+    assert boletim.posicao_benchmark(-0.96) == "abaixo do benchmark"  # sai "1,0%" no texto
+    assert boletim.posicao_benchmark(0.94) == "em linha com o benchmark"

@@ -39,6 +39,7 @@ import re
 import sys
 import unicodedata
 from datetime import datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from . import config, llm
@@ -49,7 +50,7 @@ RODAPE = "Texto gerado por IA a partir de dados do Comex Stat/MDIC; números ins
 FONTE = "Comex Stat/MDIC"
 # Fontes além do Comex Stat, pelo prefixo das chaves citadas no texto.
 FONTE_PINK, FONTE_PTAX = "Banco Mundial (Pink Sheet)", "BCB/PTAX"
-CHAVES_PINK = ("benchmark_", "base_benchmark_", "spread_", "var_spread_")
+CHAVES_PINK = ("benchmark_", "base_benchmark_", "spread_")
 CHAVES_PTAX = ("ptax_", "var_ptax_", "cif_brl_", "var_cif_brl_")
 NOTA_BENCHMARK = (
     "Benchmark: Pink Sheet do Banco Mundial (CC BY 4.0), preço num porto de referência ou no destino e num"
@@ -95,9 +96,18 @@ class ErroBoletim(RuntimeError):
 # --- Formatação pt-BR ------------------------------------------------------------------------
 
 
+def _arredondar(valor: float, casas: int = 0) -> Decimal:
+    """Meio para cima, a partir do número como o JSON o grava (repr), como faz o Intl do
+    navegador: o boletim e o dashboard mostram o mesmo número (396,5 vira 397 nos dois)."""
+    absoluto = Decimal(repr(abs(float(valor)))).quantize(Decimal(1).scaleb(-casas), rounding=ROUND_HALF_UP)
+    return -absoluto if valor < 0 else absoluto
+
+
 def _num(valor: float, casas: int = 0) -> str:
-    texto = f"{valor:,.{casas}f}"
-    return texto.replace(",", "\0").replace(".", ",").replace("\0", ".")
+    numero = _arredondar(valor, casas)
+    texto = f"{abs(numero):,.{casas}f}"
+    sinal = "-" if numero < 0 else ""
+    return sinal + texto.replace(",", "\0").replace(".", ",").replace("\0", ".")
 
 
 def fmt_t(t: float) -> str:
@@ -153,6 +163,8 @@ def posicao(desvio_pct: float) -> str:
 
 
 def posicao_benchmark(spread_pct: float) -> str:
+    """Pelo valor já arredondado a uma casa, o mesmo que vai no texto: "1,0%" nunca sai "em linha"."""
+    spread_pct = float(_arredondar(spread_pct, 1))
     if abs(spread_pct) < 1:
         return "em linha com o benchmark"
     return "acima do benchmark" if spread_pct > 0 else "abaixo do benchmark"
@@ -205,6 +217,7 @@ class Fatos(dict):
         self.entidades: dict[str, set[str]] = {}
         self.outros_nomes: set[str] = set()
         self.ordem: dict[str, int] = {}  # posição (1, 2, 3) da origem ou do porto de cada share
+        self.lado_brasil: dict[str, str] = {}  # produto -> "FOB" ou "CIF": o preço do Brasil comparável ao benchmark
 
     def add(self, chave: str, valor: str | None, descricao: str, entidades: tuple[str, ...] = ()) -> None:
         if valor is None:
@@ -462,23 +475,25 @@ def _fatos_benchmark(f: Fatos, bm: dict | None, mes: str) -> None:
     if ptax:
         f.add("ptax_mes", f"R$ {_num(ptax, 4)} por US$", f"PTAX venda média de {mes_extenso(mes)} (BCB, SGS 3698)")
         if ia is not None and bm["ptax"][ia]:
-            f.add_var("var_ptax_ano", _var_pct(ptax, bm["ptax"][ia]), f"Variação da PTAX média de {mes_extenso(mes)} sobre {mes_extenso(anterior)}")
+            f.add_var("var_ptax_ano", _var_pct(ptax, bm["ptax"][ia]), f"Variação da PTAX média de {mes_extenso(mes)} sobre {mes_extenso(anterior)} (alta = dólar mais caro em reais)")
     for prod, d in bm["produtos"].items():
         if d["amostra_pequena"][i] or d["bm"][i] is None or d["spread_pct"][i] is None:
             continue  # sem importação, amostra pequena ou sem benchmark: nada a comparar
         base = [b for b in d["bases"] if b["desde"] <= mes][-1]
         nome = d["nome"] if prod != "ureia" else "ureia"
         lado_brasil = "FOB" if base["comparacao"] == "FOB×FOB" else "CIF"
+        comparacao = base["comparacao"].replace("×", " contra ")
+        f.lado_brasil[prod] = lado_brasil
         ref = f"{d['serie']}, Banco Mundial, {base['base']}" + ("; referência do MAP por aproximação, o Banco Mundial não publica MAP" if d["proxy"] else "")
         ressalva = "Referência de outro lugar e de outro momento de contrato: o spread mistura origem, frete, prazo e defasagem, não é ágio."
         f.add(f"benchmark_{prod}_mes", fmt_usd_t(d["bm"][i]), f"Benchmark de {nome} em {mes_extenso(mes)} ({ref})")
-        f.add(f"base_benchmark_{prod}", base["base"], f"Base do benchmark de {nome} em {mes_extenso(mes)} (comparação {base['comparacao']})")
+        f.add(f"base_benchmark_{prod}", base["base"], f"Base do benchmark de {nome} em {mes_extenso(mes)} (comparação {comparacao}; o preço do Brasil comparável é o {lado_brasil})")
         if d["fob"][i] is not None:
             f.add(f"fob_brasil_{prod}_mes", fmt_usd_t(d["fob"][i]), f"Preço FOB implícito de {nome} importado pelo Brasil em {mes_extenso(mes)}")
         if d["cif"][i] is not None:
             f.add(f"cif_brasil_{prod}_mes", fmt_usd_t(d["cif"][i]), f"Preço CIF implícito de {nome} importado pelo Brasil em {mes_extenso(mes)}")
         lado = posicao_benchmark(d["spread_pct"][i])
-        sobre = f"preço {lado_brasil} de {nome} importado pelo Brasil frente ao benchmark ({ref}) em {mes_extenso(mes)}, comparação {base['comparacao']}"
+        sobre = f"preço {lado_brasil} de {nome} importado pelo Brasil frente ao benchmark ({ref}) em {mes_extenso(mes)}, comparação {comparacao}"
         f.add(f"spread_{prod}_mes", fmt_pct(abs(d["spread_pct"][i])), f"Distância, em % do benchmark, do {sobre} (sem sinal; a posição vai em spread_{prod}_mes_posicao, colado a ele). {ressalva}")
         f.add(f"spread_{prod}_mes_posicao", lado, f"Posição do preço de {nome} do Brasil frente ao benchmark em {mes_extenso(mes)}")
         if d["spread_usd_t"][i] is not None:
@@ -487,7 +502,10 @@ def _fatos_benchmark(f: Fatos, bm: dict | None, mes: str) -> None:
         if ia is not None and not d["amostra_pequena"][ia] and d["spread_pct"][ia] is not None:
             base_ant = [b for b in d["bases"] if b["desde"] <= anterior]
             if base_ant and base_ant[-1]["base"] == base["base"]:  # só na mesma base do benchmark
-                f.add_var(f"var_spread_{prod}", d["spread_pct"][i] - d["spread_pct"][ia], f"Variação do spread de {nome} sobre {mes_extenso(anterior)}, em pontos percentuais (alta: o Brasil ficou mais caro em relação ao benchmark)", pp=True)
+                # O spread do ano anterior com a sua própria posição, e não uma variação: "alta"
+                # do spread com sinal seria lida como distância maior quando ela diminuiu.
+                f.add(f"spread_{prod}_ano_anterior", fmt_pct(abs(d["spread_pct"][ia])), f"A mesma distância em {mes_extenso(anterior)}, na mesma base (sem sinal; a posição vai em spread_{prod}_ano_anterior_posicao, colado a ele)")
+                f.add(f"spread_{prod}_ano_anterior_posicao", posicao_benchmark(d["spread_pct"][ia]), f"Posição do preço de {nome} do Brasil frente ao benchmark em {mes_extenso(anterior)}")
         if d["cif_brl_t"][i] is not None:
             f.add(f"cif_brl_{prod}_mes", fmt_brl_t(d["cif_brl_t"][i]), f"Preço CIF de {nome} em reais por tonelada em {mes_extenso(mes)} (CIF em US$ × PTAX média do mês)")
             if ia is not None and d["cif_brl_t"][ia] and not d["amostra_pequena"][ia]:
@@ -505,7 +523,7 @@ Regras invioláveis. Um programa confere a resposta e a reprova se qualquer uma 
 2. Nenhum dígito fora dos marcadores, nem números por extenso (dois, três, dez, mil, milhões, zero, meia, dobro, dobrou, triplicou, metade, um terço...), algarismos romanos ou posições além de "terceiro". Também não escreva contagens, recordes nem períodos que o pacote não traz: "terceiro mês seguido", "consecutivo", "pela primeira vez", "recorde", "inédito", "o maior da série", "nunca antes", semestre, trimestre, década, "comparação mensal", "mês anterior".
 3. Os valores já trazem a unidade (%, t, US$/t, p.p.). Não escreva %, "por cento", US$, "toneladas" ou p.p. junto de um marcador, nem sinal (+, −, "menos") antes de um marcador, nem dois marcadores colados.
 4. A direção entra SÓ pelos marcadores com sufixo _sentido (alta, queda ou estabilidade) e _posicao (acima ou abaixo de uma referência), sempre colados à sua variação: "{var_x_sentido} de {var_x}" ou "{desvio_x} {desvio_x_posicao}". Toda variação (var_) e toda distância (desvio_ e spread_) vai com o seu _sentido ou _posicao ao lado. Fora dos marcadores, NÃO escreva palavras de direção ou comparação: subiu, caiu, cresceu, recuou, avançou, superou, aumento, redução, alta, queda, acima, abaixo, aquém, maior que, menor que, mais caro, mais barato, melhorou, piorou, favorável, estável, elevado, forte, leve, significativo, manteve, segue, novamente, retomada e afins. Nunca negue nem inverta uma direção ("não houve {var_x_sentido}", "reverteu a {var_x_sentido}").
-5. Use só os fatos do pacote. Não cite causas, contexto, eventos, empresas, regiões, previsões, recordes, picos nem continuidade ("manteve a liderança", "segue como principal") que não estejam nele. Ao escrever o nome de um país, porto, grupo (nitrogenados, fosfatados, potássicos, compostos, ou o total dos fertilizantes) ou produto (ureia, KCl, MAP), os números da mesma frase precisam ser dele: use as chaves dele. Ponha cada número logo depois do nome a que ele se refere ("Santos recebeu {a}, e Paranaguá, {b}"), nunca em lista no fim ("Santos e Paranaguá receberam {a} e {b}"). "Principal", "líder", "segunda maior" e "terceira maior" só para a posição que o pacote dá. Cada número no seu período: o do mês com {mes_referencia}, o do acumulado com {periodo_ytd}; as variações do mês são sobre o mesmo mês do ano anterior ({mes_ano_anterior}) e as do acumulado, sobre {periodo_ytd_anterior}. Não cite países ou portos que não estão no pacote. O spread compara o preço do Brasil com o benchmark do Banco Mundial, uma referência de outro lugar e de outro momento de contrato: não o chame de ágio nem explique a comparação do MAP com o DAP; o programa acrescenta as notas de método.
+5. Use só os fatos do pacote. Não cite causas, contexto, eventos, empresas, regiões, previsões, recordes, picos nem continuidade ("manteve a liderança", "segue como principal") que não estejam nele. Ao escrever o nome de um país, porto, grupo (nitrogenados, fosfatados, potássicos, compostos, ou o total dos fertilizantes) ou produto (ureia, KCl, MAP), os números da mesma frase precisam ser dele: use as chaves dele. Ponha cada número logo depois do nome a que ele se refere ("Santos recebeu {a}, e Paranaguá, {b}"), nunca em lista no fim ("Santos e Paranaguá receberam {a} e {b}"). "Principal", "líder", "segunda maior" e "terceira maior" só para a posição que o pacote dá. Cada número no seu período: o do mês com {mes_referencia}, o do acumulado com {periodo_ytd}; as variações do mês são sobre o mesmo mês do ano anterior ({mes_ano_anterior}) e as do acumulado, sobre {periodo_ytd_anterior}. Não cite países ou portos que não estão no pacote. O spread compara o preço do Brasil com o benchmark do Banco Mundial, uma referência de outro lugar e de outro momento de contrato: não escreva ágio, prêmio, desconto, sobrepreço nem margem, nem para negar; o programa acrescenta as notas de método. O benchmark é o preço de referência do Banco Mundial, não o que o Brasil pagou: diga "benchmark" ou "Banco Mundial" na frase que o cita e, para o MAP, diga que a referência é o DAP. Cada spread vai com o preço do Brasil da sua base (o FOB ou o CIF que a descrição de base_benchmark_ indica), nunca com o outro. Não escreva "série". Câmbio, dólar e PTAX só na frase com {ptax_mes} ou {var_ptax_ano} (alta = dólar mais caro em reais; não fale do real). A relação de troca é US$ por US$: nunca a ponha em reais nem junto da PTAX.
 6. Tom de analista: neutro e objetivo, sem recomendação de compra ou venda e sem adjetivos alarmistas (como alarmante, explosão, disparada, colapso, catastrófico, crítico, preocupante).
 7. Todo título, lead ou parágrafo que citar a relação de troca (chaves troca_, sacas_, desvio_troca_ e meses_seguidos_troca_) precisa dizer nele mesmo que ela é medida "no porto". Não fale em produtor, agricultor ou fazenda: o programa acrescenta a ressalva de que ela não é o preço ao produtor (se quiser repeti-la, escreva exatamente "não é o preço ao produtor").
 8. Texto simples, cada campo numa linha só: só letras, espaços e pontuação comum. Sem Markdown, HTML, links, emojis, setas, listas, asteriscos, colchetes ou "&".
@@ -637,7 +655,11 @@ SUBSTANTIVO_DA_CONTAGEM = {
     "n_origens_": re.compile(r"^\s+(?:pa[ií]ses|origens|fornecedores)\b", re.IGNORECASE),
     "n_rotas": re.compile(r"^\s+rotas\b", re.IGNORECASE),
 }
-AGIO = re.compile(r"\b(?:des)?[áa]gios?\b|\bsobrepre[çc]os?\b|\bsubpre[çc]os?\b", re.IGNORECASE)
+AGIO = re.compile(
+    r"\b(?:des)?[áa]gios?\b|\bsobre-?pre[çc]os?\b|\bsub-?pre[çc]os?\b|\bpr[êe]mios?\b|\bpremiums?\b|\bdescontos?\b|\bmark-?ups?\b|"
+    r"\bsobre-?custos?\b|\bsobretaxas?\b|\bsobrevalor\w*|\boverprice\w*|\bmarge(?:m|ns)\b|\bspread\s+de\s+compra\b",
+    re.IGNORECASE,
+)
 CITA_TROCA = re.compile(r"\brela[çc][ãa]o\s+de\s+troca\b|\bpoder\s+de\s+compra\b", re.IGNORECASE)
 CHAVES_TROCA = re.compile(r"^(troca|sacas|desvio_troca|meses_seguidos_troca)_")
 NO_PORTO = re.compile(r"\bno\s+porto\b", re.IGNORECASE)
@@ -654,7 +676,7 @@ FIM_DE_FRASE = re.compile(r"[.!?;]")
 GRUPOS_TEXTO = {
     "n": re.compile(r"\bnitrogenad\w*|\bnitrog[eê]ni\w*", re.IGNORECASE),
     "p": re.compile(r"\bfosfatad\w*|\bfosfatos?\b(?!\s+(?:mono|di)am)|\bf[oó]sfor\w*", re.IGNORECASE),
-    "k": re.compile(r"\bpot[aá]ss\w*", re.IGNORECASE),
+    "k": re.compile(r"(?<!cloreto\sde\s)\bpot[aá]ss\w*", re.IGNORECASE),
     "npk": re.compile(r"\bcompost[oa]s?\b|\bNPK\b"),
 }
 GRUPO_DA_CHAVE = re.compile(r"(?:^|_)(n|p|k|npk|total)_(?:mes|ytd|ano)(?:_|$)")
@@ -778,7 +800,7 @@ def _erros_do_texto(campo: str, texto: str, fatos: Fatos) -> tuple[list[str], in
         (LINKS, "link, endereço ou menção"),
         (MARCACAO, "caractere de marcação, '&' ou início de lista"),
         (PROIBIDOS, "termo proibido (recomendação ou tom alarmista)"),
-        (AGIO, "o spread mistura origem, frete, prazo de contrato e defasagem: não o chame de ágio"),
+        (AGIO, "o spread mistura origem, frete, prazo de contrato e defasagem: não escreva ágio, prêmio, desconto ou sobrepreço, nem para negar"),
     ]:
         alvo = AVISO_SEM_RECOMENDACAO.sub(" ", normal) if padrao is PROIBIDOS else normal
         achado = padrao.search(alvo)
@@ -830,6 +852,7 @@ def _erros_do_texto(campo: str, texto: str, fatos: Fatos) -> tuple[list[str], in
     erros += _ligacoes(campo, texto, fatos)
     erros += _frases(campo, texto, fatos)
     erros += _conferencias(campo, texto, fatos)
+    erros += _conferencias_benchmark(campo, texto, fatos)
     return erros, len(marcadores)
 
 
@@ -882,14 +905,18 @@ def _frases(campo: str, texto: str, fatos: Fatos) -> list[str]:
         # grupos
         grupos_chaves = {g.group(1) for k in chaves if (g := GRUPO_DA_CHAVE.search(k))}
         grupos_texto = {g for g, rx in GRUPOS_TEXTO.items() if rx.search(frase)}
-        if numeros and grupos_chaves - {"total"}:
-            for g in sorted(grupos_texto - grupos_chaves):
+        # na ida, o produto conta pelo seu grupo: "os nitrogenados ficaram {spread_kcl_mes}" reprova
+        grupos_dos_numeros = grupos_chaves | {GRUPO_DO_PRODUTO[p.group(1)] for k in chaves if (p := PRODUTO_DA_CHAVE.search(k))}
+        if numeros and grupos_dos_numeros - {"total"}:
+            for g in sorted(grupos_texto - grupos_dos_numeros):
                 erros.append(f"{campo}: a frase fala dos {_NOME_GRUPO[g]}, mas nenhum número dela é dos {_NOME_GRUPO[g]} em {trecho!r}")
             if grupos_texto:
                 for g in sorted(grupos_chaves - grupos_texto - {"total"}):
                     erros.append(f"{campo}: {_NOME_GRUPO[g]} ganham números de outro grupo em {trecho!r}; cada grupo com as suas chaves")
         # produtos
         produtos_chaves = {g.group(1) for k in chaves if (g := PRODUTO_DA_CHAVE.search(k))}
+        if PROXY_DO_MAP & set(chaves):
+            produtos_chaves.add("dap")  # o benchmark do MAP é o do DAP: a frase precisa dizer isso
         for prod, rx in PRODUTOS_TEXTO.items():
             if numeros and rx.search(frase) and prod not in produtos_chaves:
                 erros.append(f"{campo}: a frase fala de {prod.upper() if prod != 'ureia' else 'ureia'}, mas nenhum número dela é desse produto em {trecho!r}")
@@ -906,6 +933,9 @@ def _frases(campo: str, texto: str, fatos: Fatos) -> list[str]:
 
 
 _NOME_GRUPO = {"n": "nitrogenados", "p": "fosfatados", "k": "potássicos", "npk": "compostos", "total": "todos os grupos"}
+GRUPO_DO_PRODUTO = {"kcl": "k", "ureia": "n", "map": "p", "dap": "p", "tsp": "p"}
+# O MAP é comparado com o DAP do Banco Mundial: essas chaves vão junto da palavra DAP.
+PROXY_DO_MAP = {"benchmark_map_mes", "base_benchmark_map"}
 
 
 # --- Conferências de ligação e de conteúdo -------------------------------------------------
@@ -918,7 +948,7 @@ CORTE_ORACAO = re.compile(r"[,;:—–()]")
 MENCOES_GRUPO = {
     "n": re.compile(r"\bnitrogenad\w*", re.IGNORECASE),
     "p": re.compile(r"\bfosfatad\w*", re.IGNORECASE),
-    "k": re.compile(r"\bpot[aá]ss\w*", re.IGNORECASE),
+    "k": re.compile(r"(?<!cloreto\sde\s)\bpot[aá]ss\w*", re.IGNORECASE),
     "npk": re.compile(r"\bcompost[oa]s?\b|\bNPK\b"),
     "total": re.compile(
         r"\btodos\s+os\s+grupos\b|\btota(?:l|is)\b|\bconjunto\b|\bfertilizantes\b|\badubos\b"
@@ -999,6 +1029,7 @@ TERCEIRA = re.compile(r"\bterceir[oa]\s+maior\b|\bterceir[oa]\s+(?:origem|fornec
 QUANTIFICADOR = re.compile(r"\b(?:[uú]nic[oa]s?|maioria|minoria|a\s+maior\s+parte|maior\s+parte\s+d)\b", re.IGNORECASE)
 JUIZO = re.compile(
     r"\b(?:est[aá]ve(?:l|is)|estabilidade|estabiliz\w*|inalterad\w*|igua(?:l|is)(?!\s+per[ií]odo)|semelhante\w*|similar\w*|praticamente|"
+    r"em\s+linha|alinhad\w*|pr[oó]xim[oa]s?\s+(?:a|ao|à|aos|às|do|da|dos|das|de)\b|[oa]s?\s+mesm[oa]s?\s+que|a\s+(?:mais|menos)\b(?!\s+recente)|"
     r"aquec\w*|esfri\w*|arrefec\w*|elevad[oa]s?|alt[oa]s?(?!\s+concentra)|(?<!pa[ií]ses\s)baix[oa]s?(?!\s+concentra)|car[oa]s?|barat[oa]s?|"
     r"fortes?|fortemente|frac[oa]s?|firmes?|diversific\w*|mergulh\w*|pression\w*|aprofund\w*|agrav\w*|abrand\w*|intensific\w*|"
     r"significativ\w*|expressiv\w*|leve|ligeir\w*|modest\w*|acentuad\w*|tant[oa]s?|"
@@ -1025,7 +1056,7 @@ CAUSA = re.compile(
     r"\b(?:reflexo\w*|reflet\w*|devid[oa]s?\s+a|por\s+causa|em\s+raz[ãa]o|gra[çc]as\s+a|puxad\w*|impulsionad\w*|"
     r"em\s+meio\s+a|diante\s+d\w*|motivad\w*|explicad\w*|tend[eê]nci\w*|tende\w*|pr[oó]ximos\s+meses|expectativ\w*|proje[çc]\w*|"
     r"perspectiv\w*|dev(?:e|em|er[áa]|er[ãa]o)\s+\w+(?:ar|er|ir)|ser[áa]|ser[ãa]o|haver[áa]|\w{2,}(?:ar|er|ir)á|\w{2,}(?:ar|er|ir)ão|"
-    r"san[çc]\w*|guerra\w*|conflit\w*|estoques?|c[âa]mbio\w*|d[óo]lar\w*|petr[óo]leo|g[áa]s\s+natural|plantio\w*|"
+    r"san[çc]\w*|guerra\w*|conflit\w*|estoques?|petr[óo]leo|g[áa]s\s+natural|plantio\w*|"
     r"demanda\w*|oferta\w*|clim[aá]\w*|chuvas?|greves?|tarif\w*|embarg\w*)\b",
     re.IGNORECASE,
 )
@@ -1044,6 +1075,7 @@ METRICAS = {
     "share": re.compile(r"\bparticipa[çc][ãa]o\b|\bfatia\b|\bpeso\b", re.IGNORECASE),
     "frete": re.compile(r"\bfrete\b", re.IGNORECASE),
 }
+ANAFORA_DE_GRUPO = re.compile(r"\b(?:o|do|no|ao|nesse|neste|desse|deste|naquele)\s+grupo\b", re.IGNORECASE)
 CHAVES_FRETE_EXTREMO = {"rota_frete_max_ano", "frete_rota_max_ano", "rota_frete_min_ano", "frete_rota_min_ano"}
 
 
@@ -1089,7 +1121,7 @@ def _classe_periodo(k: str) -> str | None:
         return "var_ytd"
     if k.startswith("hhi_") and k.endswith("_ano_anterior"):
         return "prev_full"
-    if re.fullmatch(r"troca_\w+_ano_anterior", k):
+    if re.fullmatch(r"(?:troca|spread)_\w+_ano_anterior", k):
         return "prev_mes"
     if k.endswith("_ytd_anterior"):
         return "prev_ytd"
@@ -1211,15 +1243,21 @@ def _conferencias(campo: str, texto: str, fatos: Fatos) -> list[str]:
         # Grupo ou produto de cada número: a menção mais próxima precisa ser a dele.
         mencoes = [(inicio + m.start(), inicio + m.end(), "g:" + g) for g, rx in MENCOES_GRUPO.items() for m in rx.finditer(frase)]
         mencoes += [(inicio + m.start(), inicio + m.end(), "p:" + p) for p, rx in MENCOES_PRODUTO.items() for m in rx.finditer(frase)]
+        for m in ANAFORA_DE_GRUPO.finditer(frase):  # "o grupo", "nesse grupo": o último grupo citado
+            anteriores = [x for x in mencoes_do_campo + mencoes if x[2].startswith("g:") and x[1] <= inicio + m.start()]
+            if anteriores:
+                mencoes.append((inicio + m.start(), inicio + m.end(), max(anteriores, key=lambda x: x[1])[2]))
         mencoes.sort()
         for s, e, k in marcas:
-            if not _numerico(k, fatos) or k.endswith(("_sentido", "_posicao")):
+            if k.endswith(("_sentido", "_posicao")):
                 continue
             g, p = _grupo_da_chave(k), _produto_da_chave(k)
-            if g is None and p is None:
+            if (g is None and p is None) or (g is not None and not _numerico(k, fatos)):
                 continue
             alvo = "g:" + g if g else "p:" + p
             prox = _mais_proxima(mencoes, s, e, limpo, fora_da_oracao=(g != "total"))
+            if prox is not None and k in PROXY_DO_MAP and prox[2] == "p:dap":
+                continue
             if prox is None:
                 if g == "total":
                     continue
@@ -1249,7 +1287,7 @@ def _conferencias(campo: str, texto: str, fatos: Fatos) -> list[str]:
                 erros.append(f"{campo}: a frase cita {'/'.join(sorted(m[2]))} sem nenhuma chave de {'/'.join(sorted(m[2]))}: {trecho!r}")
                 break
         for p, rx in MENCOES_PRODUTO.items():
-            if rx.search(frase) and not any(_produto_da_chave(k) == p for k in chaves):
+            if rx.search(frase) and not any(_produto_da_chave(k) == p for k in chaves) and not (p == "dap" and PROXY_DO_MAP & set(chaves)):
                 erros.append(f"{campo}: a frase cita {p} sem nenhuma chave de {p}: {trecho!r}")
         # Posição (principal, segunda, terceira) conferida com a ordem do pacote.
         for padrao, pos in [(RANKING, 1), (SEGUNDA, 2), (TERCEIRA, 3)]:
@@ -1296,6 +1334,57 @@ def _conferencias(campo: str, texto: str, fatos: Fatos) -> list[str]:
             erros.append(f"{campo}: 'maior frete' e 'menor frete' só com {{rota_frete_max_ano}} ou {{rota_frete_min_ano}}: {trecho!r}")
         erros += _periodo_da_frase(campo, frase, inicio, limpo, marcas, fatos, trecho)
         inicio = fim
+    return erros
+
+
+CITA_BENCHMARK = re.compile(r"\bbenchmark\w*|\bBanco\s+Mundial\b|\bPink\s+Sheet\b|\bspreads?\b|\brefer[êe]ncia\s+internacional\b", re.IGNORECASE)
+NOMEIA_BENCHMARK = re.compile(r"\bbenchmark\w*|\bBanco\s+Mundial\b|\bPink\s+Sheet\b|\brefer[êe]ncia\b", re.IGNORECASE)
+CITA_CAMBIO = re.compile(r"\bPTAX\b|\bBanco\s+Central\b|\bBCB\b|\bc[âa]mbio\w*|\bd[óo]lar\w*", re.IGNORECASE)
+REAL_MOEDA = re.compile(r"\breal\b|\breais\b", re.IGNORECASE)
+CAMBIO_NA_TROCA = re.compile(r"\breais\b|\bPTAX\b|\bc[âa]mbio\w*|\bd[óo]lar\w*", re.IGNORECASE)
+# Valor que já traz a unidade (US$/t, R$/t, %, t) não leva outra depois.
+UNIDADE_REPETIDA = re.compile(r"^\s*(?:reais|d[óo]lar\w*|por\s+tonelada|toneladas?|por\s*cento|pontos?\s+percentua\w*)\b", re.IGNORECASE)
+CHAVES_DO_CAMBIO = {"ptax_mes", "var_ptax_ano"}
+
+
+def _conferencias_benchmark(campo: str, texto: str, fatos: Fatos) -> list[str]:
+    """Benchmark, spread, PTAX e CIF em reais: cada número com a sua fonte, base e moeda."""
+    erros = []
+    for m in MARCADOR.finditer(texto):
+        k = m.group(1)
+        if _numerico(k, fatos) and re.search(r"[^\d.,\s]", fatos[k]["valor"]) and UNIDADE_REPETIDA.match(_apagar_marcadores(texto[m.end() :])):
+            erros.append(f"{campo}: {{{k}}} já traz a unidade ({fatos[k]['valor']}); não repita a unidade depois dele")
+    limpo = _apagar_marcadores(texto)
+    inicio = 0
+    for fim in [m.end() for m in FIM_DE_FRASE.finditer(limpo)] + [len(limpo)]:
+        frase = unicodedata.normalize("NFKC", limpo[inicio:fim])
+        chaves = [m.group(1) for m in MARCADOR.finditer(texto) if inicio <= m.start() < fim and m.group(1) in fatos]
+        trecho = frase.strip()[:70]
+        inicio = fim
+        da_pink = [k for k in chaves if k.startswith(CHAVES_PINK)]
+        for prod, lado in fatos.lado_brasil.items():
+            if not any(k.startswith(f"spread_{prod}_") for k in chaves):
+                continue
+            outro = "FOB" if lado == "CIF" else "CIF"
+            if f"{'fob' if outro == 'FOB' else 'cif'}_brasil_{prod}_mes" in chaves or (
+                re.search(rf"\b{outro}\b", frase) and not any(k.startswith("cif_brl_") for k in chaves)
+            ):
+                erros.append(f"{campo}: o spread de {prod} compara o preço {lado} do Brasil com o benchmark; não o ponha junto do preço {outro}: {trecho!r}")
+        nomeia = NOMEIA_BENCHMARK.search(frase) or any(k.startswith("spread_") and k.endswith("_posicao") for k in chaves)  # "acima do benchmark"
+        if any(k.startswith(("benchmark_", "base_benchmark_")) for k in chaves) and not nomeia:
+            erros.append(f"{campo}: o benchmark é o preço de referência do Banco Mundial, não o que o Brasil pagou; diga 'benchmark' ou 'Banco Mundial' na frase: {trecho!r}")
+        if PROXY_DO_MAP & set(chaves) and not re.search(r"\bDAP\b", frase):
+            erros.append(f"{campo}: o Banco Mundial não publica MAP; o benchmark do MAP é o do DAP, e a frase precisa dizer isso: {trecho!r}")
+        if CITA_BENCHMARK.search(frase) and not da_pink:
+            erros.append(f"{campo}: benchmark, Banco Mundial e spread só com as chaves deles na mesma frase: {trecho!r}")
+        if CITA_CAMBIO.search(frase) and not CHAVES_DO_CAMBIO & set(chaves):
+            erros.append(f"{campo}: câmbio, dólar e PTAX só com {{ptax_mes}} ou {{var_ptax_ano}} na mesma frase: {trecho!r}")
+        if "var_ptax_ano" in chaves and REAL_MOEDA.search(frase):
+            erros.append(f"{campo}: {{var_ptax_ano}} é a variação do dólar em reais (alta = dólar mais caro); não fale do real nessa frase: {trecho!r}")
+        if (CITA_TROCA.search(frase) or any(CHAVES_TROCA.match(k) for k in chaves)) and (
+            any(k.startswith(CHAVES_PTAX) for k in chaves) or CAMBIO_NA_TROCA.search(frase)
+        ):
+            erros.append(f"{campo}: a relação de troca é US$ por US$ e não muda com o câmbio; não a ponha em reais nem junto da PTAX: {trecho!r}")
     return erros
 
 
@@ -1416,13 +1505,14 @@ def validar(resposta: str, fatos: Fatos) -> tuple[dict | None, list[str]]:
     final["marcadores"] = {m: fatos[m]["valor"] for _, texto in campos for m in MARCADOR.findall(texto)}
     citadas = list(final["marcadores"])
     notas = []
-    if any(CHAVES_TROCA.match(m) for m in citadas) or ("soja_fob_ultimo" in citadas and any(m.startswith("cif_") and not m.startswith("cif_brl_") for m in citadas)):
+    cita_troca = any(CITA_TROCA.search(MARCADOR.sub(" ", texto)) for _, texto in campos)
+    if cita_troca or any(CHAVES_TROCA.match(m) for m in citadas) or ("soja_fob_ultimo" in citadas and any(m.startswith("cif_") and not m.startswith("cif_brl_") for m in citadas)):
         notas.append(NOTA_TROCA)
     if any(m.startswith(CHAVES_PINK) for m in citadas):
         notas.append(NOTA_BENCHMARK)
         if any(PRODUTO_DA_CHAVE.search(m) and PRODUTO_DA_CHAVE.search(m).group(1) == "map" for m in citadas if m.startswith(CHAVES_PINK)):
             notas.append(NOTA_MAP)
-    if any(m.startswith(CHAVES_PTAX) for m in citadas):
+    if any(m.startswith(("cif_brl_", "var_cif_brl_")) for m in citadas):
         notas.append(NOTA_PTAX)
     if notas:
         final["nota"] = " ".join(notas)
