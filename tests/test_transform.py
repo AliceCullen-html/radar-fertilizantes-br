@@ -222,6 +222,11 @@ def test_gerar_grava_as_tabelas_e_um_dashboard_json_valido(tmp_path, monkeypatch
     assert painel["meta"]["fonte"] == "Comex Stat/MDIC"
     assert painel["meta"]["periodo"] == {"inicio": "2024-01", "fim": "2025-12"}
     assert len(painel["mensal"]["periodos"]) == 24 and len(painel["mensal"]["K"]["preco_fob"]) == 24
+    # valores somáveis por mês: o dashboard calcula US$/t de qualquer recorte a partir deles
+    for grupo in [*transform.GRUPOS, transform.TOTAL]:
+        assert {"t", "fob_musd", "cif_musd", "frete_musd"} <= set(painel["mensal"][grupo])
+    k = painel["mensal"]["K"]
+    assert k["frete_musd"][0] * 1e6 / k["t"][0] == pytest.approx(k["frete"][0], abs=0.1)
     assert painel["anual"]["anos"] == [2024, 2025] and painel["anual"]["n_meses"] == [12, 12]
     ranking = painel["origens"]["dados"]["2025"]["TOTAL"]
     assert [linha_[1] for linha_ in ranking] == ["Rússia", "Outros"]

@@ -1,0 +1,1046 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radar das importações de fertilizantes</title>
+<meta name="description" content="Importações brasileiras de fertilizantes (N, P, K e NPK) desde 2015: volumes, origens, portos, preços e concentração de fornecedores. Fonte: Comex Stat/MDIC.">
+<meta name="color-scheme" content="light dark">
+<!-- Preenchido pelo workflow de deploy com a data do último commit que alterou os dados. -->
+<meta name="atualizado" content="">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Radar das importações de fertilizantes">
+<meta property="og:description" content="Volumes, origens, portos, preços e concentração das importações brasileiras de fertilizantes desde 2015. Fonte: Comex Stat/MDIC.">
+<meta property="og:url" content="https://alicecullen-html.github.io/radar-fertilizantes-br/">
+<meta property="og:image" content="https://alicecullen-html.github.io/radar-fertilizantes-br/preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='7' width='3' height='8' rx='1' fill='%232a78d6'/%3E%3Crect x='6' y='3' width='3' height='12' rx='1' fill='%23eb6834'/%3E%3Crect x='11' y='9' width='3' height='6' rx='1' fill='%231baf7a'/%3E%3C/svg%3E">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous" defer></script>
+<style>
+:root {
+  color-scheme: light;
+  --pagina: #f9f9f7;
+  --superficie: #fcfcfb;
+  --texto: #0b0b0b;
+  --texto-2: #52514e;
+  --texto-3: #898781;
+  --grade: #e1e0d9;
+  --eixo: #c3c2b7;
+  --borda: rgba(11, 11, 11, 0.10);
+  --lavagem: rgba(11, 11, 11, 0.05);
+  --g-n: #2a78d6;
+  --g-p: #eb6834;
+  --g-k: #1baf7a;
+  --g-npk: #eda100;
+  --g-total: #6250d6;
+  --cif: #898781;
+  --outros: #b4b2aa;
+  --foco: #2a78d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --pagina: #0d0d0d;
+    --superficie: #1a1a19;
+    --texto: #f0efec;
+    --texto-2: #c3c2b7;
+    --texto-3: #898781;
+    --grade: #2c2c2a;
+    --eixo: #383835;
+    --borda: rgba(255, 255, 255, 0.10);
+    --lavagem: rgba(255, 255, 255, 0.06);
+    --g-n: #3987e5;
+    --g-p: #d95926;
+    --g-k: #199e70;
+    --g-npk: #c98500;
+    --g-total: #9085e9;
+    --cif: #898781;
+    --outros: #5c5b56;
+    --foco: #3987e5;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --pagina: #0d0d0d;
+  --superficie: #1a1a19;
+  --texto: #f0efec;
+  --texto-2: #c3c2b7;
+  --texto-3: #898781;
+  --grade: #2c2c2a;
+  --eixo: #383835;
+  --borda: rgba(255, 255, 255, 0.10);
+  --lavagem: rgba(255, 255, 255, 0.06);
+  --g-n: #3987e5;
+  --g-p: #d95926;
+  --g-k: #199e70;
+  --g-npk: #c98500;
+  --g-total: #9085e9;
+  --cif: #898781;
+  --outros: #5c5b56;
+  --foco: #3987e5;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--pagina); }
+body {
+  margin: 0;
+  background: var(--pagina);
+  color: var(--texto);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+a { color: inherit; text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--foco); outline-offset: 2px; }
+.pagina { max-width: 1200px; margin: 0 auto; padding: 16px; }
+
+header.topo { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; margin: 8px 0 16px; }
+header.topo h1 { font-size: 20px; line-height: 1.2; margin: 0 0 4px; font-weight: 650; letter-spacing: -0.01em; }
+header.topo p { margin: 0; color: var(--texto-2); }
+.botao-tema {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px;
+  border: 1px solid var(--borda); border-radius: 999px; background: var(--superficie); color: var(--texto-2);
+  font: inherit; cursor: pointer;
+}
+.botao-tema:hover { background: var(--lavagem); }
+.botao-tema svg { width: 16px; height: 16px; }
+
+.filtros { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; margin-bottom: 16px; }
+.filtro { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.filtro > .rotulo { font-size: 12px; color: var(--texto-2); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px;
+  border: 1px solid var(--borda); border-radius: 999px; background: var(--superficie); color: var(--texto);
+  font: inherit; cursor: pointer; white-space: nowrap;
+}
+.chip:hover { background: var(--lavagem); }
+.chip[aria-pressed="true"] { border-color: var(--texto); box-shadow: inset 0 0 0 1px var(--texto); font-weight: 600; }
+.chip .ponto { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.intervalo { display: flex; gap: 8px; flex-wrap: wrap; }
+.intervalo label { display: inline-flex; align-items: center; gap: 6px; color: var(--texto-2); font-size: 13px; }
+.intervalo select {
+  min-height: 36px; padding: 0 8px; border: 1px solid var(--borda); border-radius: 8px;
+  background: var(--superficie); color: var(--texto); font: inherit;
+}
+
+.cartao { background: var(--superficie); border: 1px solid var(--borda); border-radius: 12px; padding: 16px; min-width: 0; }
+.cartao h2 { font-size: 15px; font-weight: 650; margin: 0; }
+.cartao .nota { margin: 2px 0 0; color: var(--texto-2); font-size: 13px; }
+.grade { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px; }
+@media (min-width: 900px) { .grade.duas { grid-template-columns: 1fr 1fr; } }
+
+.kpis .cabecalho { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; align-items: baseline; }
+.kpi-bloco { margin-top: 14px; }
+.kpi-bloco > h3 { font-size: 12px; font-weight: 600; color: var(--texto-2); margin: 0 0 8px; text-transform: none; }
+.kpi-linha { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 720px) { .kpi-linha { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.kpi { border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.kpi .rotulo { font-size: 12px; color: var(--texto-2); }
+.kpi .valor { font-size: 22px; font-weight: 650; line-height: 1.2; margin-top: 2px; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.kpi .delta { font-size: 12px; color: var(--texto-2); margin-top: 2px; }
+
+.legenda { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 12px; color: var(--texto-2); }
+.legenda li { display: inline-flex; align-items: center; gap: 6px; }
+.legenda .chave-area { width: 12px; height: 12px; border-radius: 3px; }
+.legenda .chave-linha { width: 14px; height: 2px; border-radius: 1px; }
+.legenda .chave-limiar { width: 14px; height: 0; border-top: 2px dashed var(--texto-3); }
+
+.grafico { position: relative; width: 100%; margin-top: 12px; }
+.grafico canvas { display: block; }
+.alto-300 { height: 300px; }
+.alto-260 { height: 260px; }
+@media (max-width: 600px) { .alto-300 { height: 260px; } .alto-260 { height: 230px; } }
+
+details.tabela { margin-top: 10px; }
+details.tabela summary { cursor: pointer; color: var(--texto-2); font-size: 13px; min-height: 32px; display: inline-flex; align-items: center; }
+.rolagem { overflow-x: auto; max-height: 360px; overflow-y: auto; margin-top: 6px; border: 1px solid var(--borda); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--grade); white-space: nowrap; }
+th { position: sticky; top: 0; background: var(--superficie); color: var(--texto-2); font-weight: 600; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.aviso { padding: 16px; border: 1px solid var(--borda); border-radius: 12px; background: var(--superficie); }
+
+footer.rodape { color: var(--texto-2); font-size: 12px; padding: 8px 0 24px; display: grid; gap: 4px; }
+footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
+
+.dica {
+  position: fixed; z-index: 10; pointer-events: none; max-width: min(320px, calc(100vw - 16px));
+  background: var(--superficie); color: var(--texto); border: 1px solid var(--borda); border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); padding: 8px 10px; font-size: 12px;
+}
+.dica .titulo { color: var(--texto-2); margin-bottom: 4px; }
+.dica .linha { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.dica .linha strong { font-weight: 650; }
+.dica .linha span.serie { color: var(--texto-2); }
+.dica .chave { width: 12px; height: 2px; border-radius: 1px; flex: none; }
+.dica .extra { color: var(--texto-2); margin-top: 2px; white-space: normal; }
+.oculto { display: none !important; }
+@media (min-width: 720px) { header.topo h1 { font-size: 24px; } }
+</style>
+</head>
+<body>
+<div class="pagina">
+  <header class="topo">
+    <div>
+      <h1>Radar das importações de fertilizantes</h1>
+      <p>Brasil · adubos minerais e químicos (NCM 3102 a 3105) · Fonte: Comex Stat/MDIC</p>
+    </div>
+    <button class="botao-tema" id="botao-tema" type="button" aria-label="Alternar tema claro ou escuro">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1.5v11a5.5 5.5 0 0 1 0-11Z"/></svg>
+      <span id="rotulo-tema">Tema</span>
+    </button>
+  </header>
+
+  <nav class="filtros" aria-label="Filtros">
+    <div class="filtro">
+      <span class="rotulo" id="rotulo-grupo">Grupo</span>
+      <div class="chips" id="filtro-grupo" role="group" aria-labelledby="rotulo-grupo"></div>
+    </div>
+    <div class="filtro">
+      <span class="rotulo" id="rotulo-periodo">Período</span>
+      <div class="chips" id="filtro-periodo" role="group" aria-labelledby="rotulo-periodo"></div>
+    </div>
+    <div class="filtro">
+      <span class="rotulo">Intervalo</span>
+      <div class="intervalo">
+        <label>De <select id="filtro-de"></select></label>
+        <label>Até <select id="filtro-ate"></select></label>
+      </div>
+    </div>
+  </nav>
+
+  <main id="conteudo">
+    <noscript><p class="aviso">Este painel precisa de JavaScript para desenhar os gráficos.</p></noscript>
+
+    <section class="cartao kpis grade" aria-labelledby="titulo-kpis">
+      <div>
+        <div class="cabecalho">
+          <h2 id="titulo-kpis">Resumo</h2>
+          <p class="nota" id="nota-kpis"></p>
+        </div>
+        <div class="kpi-bloco">
+          <h3 id="titulo-mes">Mês</h3>
+          <div class="kpi-linha" id="kpis-mes"></div>
+        </div>
+        <div class="kpi-bloco">
+          <h3 id="titulo-acumulado">Acumulado no ano</h3>
+          <div class="kpi-linha" id="kpis-acumulado"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cartao grade" aria-labelledby="titulo-toneladas">
+      <div>
+        <h2 id="titulo-toneladas">Toneladas importadas por mês</h2>
+        <p class="nota" id="nota-toneladas"></p>
+        <ul class="legenda" id="legenda-toneladas"></ul>
+        <div class="grafico alto-300"><canvas id="grafico-toneladas" role="img"></canvas></div>
+        <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-toneladas"></div></details>
+      </div>
+    </section>
+
+    <div class="grade duas">
+      <section class="cartao" aria-labelledby="titulo-origens">
+        <h2 id="titulo-origens">Share por país de origem</h2>
+        <p class="nota" id="nota-origens"></p>
+        <div class="grafico" id="caixa-origens"><canvas id="grafico-origens" role="img"></canvas></div>
+        <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-origens"></div></details>
+      </section>
+      <section class="cartao" aria-labelledby="titulo-portos">
+        <h2 id="titulo-portos">Ranking de portos (URF)</h2>
+        <p class="nota" id="nota-portos"></p>
+        <div class="grafico" id="caixa-portos"><canvas id="grafico-portos" role="img"></canvas></div>
+        <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-portos"></div></details>
+      </section>
+    </div>
+
+    <div class="grade duas">
+      <section class="cartao" aria-labelledby="titulo-precos">
+        <h2 id="titulo-precos">Preço implícito: FOB x CIF</h2>
+        <p class="nota" id="nota-precos"></p>
+        <ul class="legenda" id="legenda-precos"></ul>
+        <div class="grafico alto-260"><canvas id="grafico-precos" role="img"></canvas></div>
+        <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-precos"></div></details>
+      </section>
+      <section class="cartao" aria-labelledby="titulo-frete">
+        <h2 id="titulo-frete">Frete por tonelada</h2>
+        <p class="nota" id="nota-frete"></p>
+        <div class="grafico alto-260"><canvas id="grafico-frete" role="img"></canvas></div>
+        <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-frete"></div></details>
+      </section>
+    </div>
+
+    <section class="cartao grade" aria-labelledby="titulo-hhi">
+      <div>
+        <h2 id="titulo-hhi">Concentração de fornecedores (HHI)</h2>
+        <p class="nota" id="nota-hhi"></p>
+        <ul class="legenda" id="legenda-hhi"></ul>
+        <div class="grafico alto-260"><canvas id="grafico-hhi" role="img"></canvas></div>
+        <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-hhi"></div></details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="rodape">
+    <span class="fonte">Fonte: Comex Stat/MDIC</span>
+    <span id="rodape-datas"></span>
+    <span>Preço implícito = valor ÷ toneladas. HHI = soma dos quadrados dos shares por país de origem (0 a 10.000). Anos parciais são comparados com os mesmos meses do ano anterior.</span>
+    <span>Código e dados: <a href="https://github.com/AliceCullen-html/radar-fertilizantes-br">github.com/AliceCullen-html/radar-fertilizantes-br</a></span>
+  </footer>
+</div>
+<div class="dica" id="dica" hidden></div>
+
+<script>
+"use strict";
+
+const GRUPOS = ["N", "P", "K", "NPK"];
+const NOMES = { N: "Nitrogenados", P: "Fosfatados", K: "Potássicos", NPK: "Compostos (NPK)", TOTAL: "Todos os grupos" };
+const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const MESES_LONGOS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const LIMIAR_HHI = 1800; // diretrizes de fusões dos EUA (2023): acima disso, mercado altamente concentrado
+const PRESETS = [
+  { id: "12m", rotulo: "12 meses", meses: 12 },
+  { id: "3a", rotulo: "3 anos", meses: 36 },
+  { id: "5a", rotulo: "5 anos", meses: 60 },
+  { id: "tudo", rotulo: "Tudo", meses: null },
+];
+
+const estado = { grupo: "TOTAL", de: null, ate: null };
+const graficos = {};
+let dados = null;
+
+// --- Formatação -----------------------------------------------------------------------------
+const fmt0 = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
+const fmt1 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fmtCompacto = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
+const MENOS = "−";
+
+const nulo = (v) => v === null || v === undefined || Number.isNaN(v);
+const toneladas = (t) => (nulo(t) ? "–" : `${fmtCompacto.format(t)} t`);
+const dolares = (v) => (nulo(v) ? "–" : `US$ ${fmtCompacto.format(v)}`);
+const porTonelada = (v) => (nulo(v) ? "–" : `US$ ${fmt0.format(v)}/t`);
+const pct = (v) => (nulo(v) ? "–" : `${fmt1.format(v)}%`);
+function variacao(v, sufixo = "%") {
+  if (nulo(v) || !Number.isFinite(v)) return "–";
+  const seta = v > 0.05 ? "▲" : v < -0.05 ? "▼" : "■";
+  const sinal = v > 0 ? "+" : v < 0 ? MENOS : "";
+  return `${seta} ${sinal}${fmt1.format(Math.abs(v))}${sufixo}`;
+}
+const variacaoPct = (atual, anterior) => (anterior > 0 && !nulo(atual) ? 100 * (atual / anterior - 1) : null);
+const rotuloMes = (p) => `${MESES[Number(p.slice(5, 7)) - 1]}/${p.slice(0, 4)}`;
+const rotuloMesLongo = (p) => `${MESES_LONGOS[Number(p.slice(5, 7)) - 1]} de ${p.slice(0, 4)}`;
+const pad = (n) => String(n).padStart(2, "0");
+
+const ACENTOS = { PARANAGUA: "Paranaguá", SAO: "São", LUIS: "Luís", VITORIA: "Vitória", MACEIO: "Maceió", SANTAREM: "Santarém" };
+const MINUSCULAS = new Set(["DE", "DO", "DA", "DOS", "DAS", "E"]);
+const SIGLAS = new Set(["ALF", "IRF"]);
+// No eixo do ranking o prefixo "Porto de" sobra (o título já diz que são portos).
+const nomeCurtoUrf = (nome) => nomeUrf(nome).replace(/(^|- )Porto d[eo] /, "$1");
+function nomeUrf(nome) {
+  if (!nome || nome === "Outros") return nome;
+  return nome.split(/(\s+|\/|-)/).map((parte, i) => {
+    if (!/\p{L}/u.test(parte)) return parte;
+    const p = parte.toUpperCase();
+    if (SIGLAS.has(p)) return p;
+    if (ACENTOS[p]) return ACENTOS[p];
+    if (MINUSCULAS.has(p) && i > 0) return p.toLowerCase();
+    const minusc = parte.toLowerCase();
+    return minusc.charAt(0).toUpperCase() + minusc.slice(1);
+  }).join("");
+}
+
+// --- Cores e DOM ---------------------------------------------------------------------------
+const cor = (nome) => getComputedStyle(document.documentElement).getPropertyValue(nome).trim();
+const corGrupo = (g) => cor(`--g-${g.toLowerCase()}`);
+function comAlfa(hex, alfa) {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alfa})`;
+}
+function el(tag, atributos = {}, ...filhos) {
+  const no = document.createElement(tag);
+  for (const [k, v] of Object.entries(atributos)) {
+    if (k === "classe") no.className = v;
+    else if (k === "estilo") Object.assign(no.style, v);
+    else no.setAttribute(k, v);
+  }
+  for (const f of filhos) no.append(f instanceof Node ? f : document.createTextNode(String(f)));
+  return no;
+}
+const texto = (id, valor) => { document.getElementById(id).textContent = valor; };
+
+function legenda(id, itens) {
+  const ul = document.getElementById(id);
+  ul.replaceChildren(...itens.map(({ rotulo, corItem, tipo }) => {
+    const chave = el("span", { classe: tipo === "limiar" ? "chave-limiar" : tipo === "linha" ? "chave-linha" : "chave-area" });
+    if (tipo !== "limiar") chave.style.background = corItem;
+    return el("li", {}, chave, rotulo);
+  }));
+  ul.classList.toggle("oculto", itens.length === 0);
+}
+
+function tabela(id, colunas, linhas) {
+  const thead = el("thead", {}, el("tr", {}, ...colunas.map((c) => el("th", c.num ? { classe: "num" } : {}, c.titulo))));
+  const tbody = el("tbody", {}, ...linhas.map((linha) => el("tr", {}, ...linha.map((v, i) => el("td", colunas[i].num ? { classe: "num" } : {}, v)))));
+  document.getElementById(id).replaceChildren(el("table", {}, thead, tbody));
+}
+
+// --- Dados derivados -----------------------------------------------------------------------
+const periodos = () => dados.mensal.periodos;
+const chaveGrupo = () => estado.grupo; // "TOTAL" ou um grupo
+function indicesEntre(de, ate) {
+  const p = periodos();
+  const a = p.indexOf(de), b = p.indexOf(ate);
+  return Array.from({ length: b - a + 1 }, (_, i) => a + i);
+}
+function soma(serie, indices) {
+  let s = 0;
+  for (const i of indices) s += serie[i] ?? 0;
+  return s;
+}
+function metricas(grupo, indices) {
+  const m = dados.mensal[grupo];
+  const t = soma(m.t, indices);
+  const fob = soma(m.fob_musd, indices) * 1e6;
+  const cif = soma(m.cif_musd, indices) * 1e6;
+  const frete = soma(m.frete_musd, indices) * 1e6;
+  return {
+    t, fob, cif, frete,
+    precoFob: t > 0 ? fob / t : null,
+    precoCif: t > 0 ? cif / t : null,
+    freteT: t > 0 ? frete / t : null,
+    freteCif: cif > 0 ? (100 * frete) / cif : null,
+  };
+}
+function mesesDoAno(ano, ateMes) {
+  const p = periodos();
+  return p.map((x, i) => [x, i]).filter(([x]) => Number(x.slice(0, 4)) === ano && Number(x.slice(5, 7)) <= ateMes).map(([, i]) => i);
+}
+function nMeses(ano) {
+  const i = dados.anual.anos.indexOf(ano);
+  return i >= 0 ? dados.anual.n_meses[i] : 0;
+}
+const anoParcial = (ano) => nMeses(ano) > 0 && nMeses(ano) < 12;
+const rotuloAno = (ano) => (anoParcial(ano) ? `${ano} (jan–${MESES[nMeses(ano) - 1]})` : String(ano));
+
+// --- Chart.js: plugins e opções comuns -----------------------------------------------------
+const pluginCruz = {
+  id: "cruz",
+  afterDatasetsDraw(chart) {
+    const ativos = chart.tooltip?.getActiveElements?.() ?? [];
+    if (!ativos.length) return;
+    const x = Math.round(ativos[0].element.x) + 0.5;
+    const { top, bottom } = chart.chartArea;
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.strokeStyle = cor("--texto-3");
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, bottom);
+    ctx.stroke();
+    ctx.restore();
+  },
+};
+
+// Rótulo com o nome de cada série na ponta direita (linhas e áreas empilhadas).
+const pluginRotulosFinais = {
+  id: "rotulosFinais",
+  afterDatasetsDraw(chart, _args, opcoes) {
+    if (!opcoes?.ativo) return;
+    const ctx = chart.ctx;
+    const { right, top, bottom } = chart.chartArea;
+    const itens = [];
+    chart.data.datasets.forEach((ds, i) => {
+      const meta = chart.getDatasetMeta(i);
+      if (meta.hidden || !ds.rotuloFinal) return;
+      let j = ds.data.length - 1;
+      while (j >= 0 && nulo(ds.data[j])) j--;
+      if (j < 0) return;
+      const ponto = meta.data[j];
+      let y = ponto.y;
+      if (opcoes.empilhado) {
+        const base = i === 0 ? chart.scales.y.getPixelForValue(0) : chart.getDatasetMeta(i - 1).data[j].y;
+        y = (ponto.y + base) / 2;
+      }
+      itens.push({ y, alvo: y, rotulo: ds.rotuloFinal, corSerie: ds.borderColor });
+    });
+    itens.sort((a, b) => a.y - b.y);
+    const altura = 14;
+    for (let k = 1; k < itens.length; k++) itens[k].y = Math.max(itens[k].y, itens[k - 1].y + altura);
+    const excesso = itens.length ? itens[itens.length - 1].y - (bottom - 4) : 0;
+    if (excesso > 0) for (const it of itens) it.y -= excesso;
+    for (let k = itens.length - 2; k >= 0; k--) itens[k].y = Math.min(itens[k].y, itens[k + 1].y - altura);
+    ctx.save();
+    ctx.font = `12px ${Chart.defaults.font.family}`;
+    ctx.textBaseline = "middle";
+    for (const it of itens) {
+      const y = Math.max(top + 4, it.y);
+      if (Math.abs(y - it.alvo) > 1) {
+        ctx.strokeStyle = cor("--texto-3");
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(right + 1, it.alvo);
+        ctx.lineTo(right + 5, y);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = it.corSerie;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(right + 6, y);
+      ctx.lineTo(right + 14, y);
+      ctx.stroke();
+      ctx.fillStyle = cor("--texto-2");
+      ctx.fillText(it.rotulo, right + 17, y);
+    }
+    ctx.restore();
+  },
+};
+
+// Valor na ponta de cada barra horizontal.
+const pluginRotulosBarras = {
+  id: "rotulosBarras",
+  afterDatasetsDraw(chart, _args, opcoes) {
+    if (!opcoes?.formatar) return;
+    const ctx = chart.ctx;
+    const meta = chart.getDatasetMeta(0);
+    ctx.save();
+    ctx.font = `12px ${Chart.defaults.font.family}`;
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = cor("--texto-2");
+    meta.data.forEach((barra, i) => ctx.fillText(opcoes.formatar(chart.data.datasets[0].data[i], i), barra.x + 6, barra.y));
+    ctx.restore();
+  },
+};
+
+// Linha de referência tracejada (limiar); o significado fica na legenda do gráfico.
+const pluginLimiar = {
+  id: "limiar",
+  afterDatasetsDraw(chart, _args, opcoes) {
+    if (!opcoes?.valor) return;
+    const y = chart.scales.y.getPixelForValue(opcoes.valor);
+    const { left, right, top, bottom } = chart.chartArea;
+    if (y < top || y > bottom) return;
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.strokeStyle = cor("--texto-3");
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(left, Math.round(y) + 0.5);
+    ctx.lineTo(right, Math.round(y) + 0.5);
+    ctx.stroke();
+    ctx.restore();
+  },
+};
+
+// Dica (tooltip) em HTML: valor em destaque, série em segundo plano; texto sempre via textContent.
+function dicaExterna(montar) {
+  return ({ chart, tooltip }) => {
+    const caixa = document.getElementById("dica");
+    if (tooltip.opacity === 0 || !tooltip.dataPoints?.length) {
+      caixa.hidden = true;
+      return;
+    }
+    const { titulo, linhas, extras = [] } = montar(tooltip.dataPoints);
+    caixa.replaceChildren(
+      el("div", { classe: "titulo" }, titulo),
+      ...linhas.map(({ corSerie, valor, serie }) => {
+        const chave = el("span", { classe: "chave" });
+        chave.style.background = corSerie;
+        return el("div", { classe: "linha" }, chave, el("strong", {}, valor), el("span", { classe: "serie" }, serie));
+      }),
+      ...extras.map((t) => el("div", { classe: "extra" }, t)),
+    );
+    caixa.hidden = false;
+    const r = chart.canvas.getBoundingClientRect();
+    const largura = caixa.offsetWidth, altura = caixa.offsetHeight;
+    let x = r.left + tooltip.caretX + 14;
+    if (x + largura > window.innerWidth - 8) x = r.left + tooltip.caretX - largura - 14;
+    let y = r.top + tooltip.caretY - altura / 2;
+    y = Math.min(Math.max(8, y), window.innerHeight - altura - 8);
+    caixa.style.left = `${Math.max(8, x)}px`;
+    caixa.style.top = `${y}px`;
+  };
+}
+
+function eixos({ formatarY, empilhado = false, maxTicksX = 8, yMin, yMaxSugerido, indexAxisY = false, formatarX } = {}) {
+  const grade = { color: cor("--grade"), lineWidth: 1, drawTicks: false };
+  const borda = { color: cor("--eixo"), width: 1 };
+  const ticks = { color: cor("--texto-3"), padding: 6, font: { size: 11 } };
+  if (indexAxisY) {
+    return {
+      x: { beginAtZero: true, grid: grade, border: { display: false }, ticks: { ...ticks, callback: formatarX, maxTicksLimit: 5 }, suggestedMax: yMaxSugerido },
+      y: {
+        grid: { display: false }, border: borda,
+        ticks: {
+          ...ticks, color: cor("--texto-2"), autoSkip: false,
+          // Em tela estreita, abrevia nomes longos para o eixo não cortar o começo do texto.
+          callback(valor) {
+            const nome = this.getLabelForValue(valor);
+            return estreito() && nome.length > 16 ? `${nome.slice(0, 15)}…` : nome;
+          },
+        },
+      },
+    };
+  }
+  return {
+    x: { stacked: empilhado, grid: { display: false }, border: borda, ticks: { ...ticks, maxRotation: 0, autoSkip: true, maxTicksLimit: maxTicksX } },
+    y: { stacked: empilhado, min: yMin, suggestedMax: yMaxSugerido, beginAtZero: yMin === undefined, grid: grade, border: { display: false }, ticks: { ...ticks, callback: formatarY, maxTicksLimit: 6 } },
+  };
+}
+
+function novoGrafico(id, config) {
+  graficos[id]?.destroy();
+  const canvas = document.getElementById(id);
+  graficos[id] = new Chart(canvas, config);
+  return graficos[id];
+}
+
+const estreito = () => window.matchMedia("(max-width: 600px)").matches;
+
+// --- Seções ---------------------------------------------------------------------------------
+function desenharKpis() {
+  const g = chaveGrupo();
+  const ate = estado.ate;
+  const ano = Number(ate.slice(0, 4)), mes = Number(ate.slice(5, 7));
+  const anterior = `${ano - 1}-${pad(mes)}`;
+  const p = periodos();
+  const mAtual = metricas(g, [p.indexOf(ate)]);
+  const mAnterior = p.includes(anterior) ? metricas(g, [p.indexOf(anterior)]) : null;
+  const aAtual = metricas(g, mesesDoAno(ano, mes));
+  const idxAnt = mesesDoAno(ano - 1, mes);
+  const aAnterior = idxAnt.length === mes ? metricas(g, idxAnt) : null;
+  const periodoAcum = mes === 1 ? `jan/${ano}` : `jan–${MESES[mes - 1]}/${ano}`;
+  const periodoAcumAnt = mes === 1 ? `jan/${ano - 1}` : `jan–${MESES[mes - 1]}/${ano - 1}`;
+
+  texto("titulo-kpis", `${NOMES[g]} · ${rotuloMesLongo(ate)}`);
+  texto("nota-kpis", "Variações sobre o mesmo período do ano anterior");
+  texto("titulo-mes", `Mês: ${rotuloMes(ate)} x ${rotuloMes(anterior)}`);
+  texto("titulo-acumulado", `Acumulado: ${periodoAcum} x ${periodoAcumAnt}`);
+
+  const tile = (rotulo, valor, delta) => el("div", { classe: "kpi" },
+    el("div", { classe: "rotulo" }, rotulo), el("div", { classe: "valor" }, valor), el("div", { classe: "delta" }, delta));
+  const linha = (m, ant) => [
+    tile("Toneladas", toneladas(m.t), variacao(variacaoPct(m.t, ant?.t))),
+    tile("Valor FOB", dolares(m.fob), variacao(variacaoPct(m.fob, ant?.fob))),
+    tile("Preço FOB", porTonelada(m.precoFob), variacao(variacaoPct(m.precoFob, ant?.precoFob))),
+    tile("Frete no CIF", pct(m.freteCif), variacao(ant && !nulo(m.freteCif) && !nulo(ant.freteCif) ? m.freteCif - ant.freteCif : null, " p.p.")),
+  ];
+  document.getElementById("kpis-mes").replaceChildren(...linha(mAtual, mAnterior));
+  document.getElementById("kpis-acumulado").replaceChildren(...linha(aAtual, aAnterior));
+}
+
+function desenharToneladas(indices) {
+  const p = periodos();
+  const rotulos = indices.map((i) => rotuloMes(p[i]));
+  const grupos = estado.grupo === "TOTAL" ? GRUPOS : [estado.grupo];
+  const datasets = grupos.map((g, k) => ({
+    label: NOMES[g],
+    rotuloFinal: grupos.length > 1 ? g : null,
+    data: indices.map((i) => dados.mensal[g].t[i] ?? 0),
+    borderColor: corGrupo(g),
+    backgroundColor: comAlfa(corGrupo(g), grupos.length > 1 ? 0.16 : 0.12),
+    fill: k === 0 ? "origin" : "-1",
+    borderWidth: 2,
+    pointRadius: 0,
+    pointHoverRadius: 4,
+    pointHoverBorderWidth: 2,
+    pointHoverBorderColor: cor("--superficie"),
+    pointHoverBackgroundColor: corGrupo(g),
+    tension: 0,
+  }));
+  const empilhado = grupos.length > 1;
+  texto("nota-toneladas", `${NOMES[estado.grupo]} · ${rotuloMes(p[indices[0]])} a ${rotuloMes(p[indices[indices.length - 1]])}`);
+  legenda("legenda-toneladas", empilhado ? grupos.map((g) => ({ rotulo: `${g} · ${NOMES[g]}`, corItem: corGrupo(g), tipo: "area" })) : []);
+  const canvas = document.getElementById("grafico-toneladas");
+  canvas.setAttribute("aria-label", `Toneladas importadas por mês, ${NOMES[estado.grupo]}, de ${rotulos[0]} a ${rotulos[rotulos.length - 1]}. A tabela abaixo traz os valores.`);
+  novoGrafico("grafico-toneladas", {
+    type: "line",
+    data: { labels: rotulos, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: empilhado ? 50 : 8 } },
+      interaction: { mode: "index", intersect: false },
+      scales: eixos({ empilhado, formatarY: (v) => fmtCompacto.format(v), maxTicksX: estreito() ? 4 : 8 }),
+      plugins: {
+        legend: { display: false },
+        rotulosFinais: { ativo: empilhado, empilhado: true },
+        tooltip: {
+          enabled: false,
+          external: dicaExterna((pontos) => {
+            const linhas = [...pontos].reverse().map((d) => ({ corSerie: d.dataset.borderColor, valor: toneladas(d.raw), serie: d.dataset.label }));
+            const total = pontos.reduce((s, d) => s + (d.raw ?? 0), 0);
+            return { titulo: pontos[0].label, linhas, extras: empilhado ? [`Total: ${toneladas(total)}`] : [] };
+          }),
+        },
+      },
+    },
+    plugins: [pluginCruz, pluginRotulosFinais],
+  });
+  tabela("tabela-toneladas",
+    [{ titulo: "Mês" }, ...grupos.map((g) => ({ titulo: `${g} (t)`, num: true })), ...(empilhado ? [{ titulo: "Total (t)", num: true }] : [])],
+    indices.map((i) => {
+      const valores = grupos.map((g) => dados.mensal[g].t[i] ?? 0);
+      return [rotuloMes(p[i]), ...valores.map((v) => fmt0.format(v)), ...(empilhado ? [fmt0.format(valores.reduce((a, b) => a + b, 0))] : [])];
+    }));
+}
+
+function desenharRanking({ tipo, idCanvas, idCaixa, idNota, idTabela }) {
+  const g = chaveGrupo();
+  const ano = Number(estado.ate.slice(0, 4));
+  const bloco = tipo === "origens" ? dados.origens : dados.urfs;
+  const linhas = (bloco.dados[String(ano)] || {})[g] || [];
+  const nomeDe = (r) => (tipo === "origens" ? r[1] : nomeUrf(r[1]));
+  const corBarra = estado.grupo === "TOTAL" ? cor("--g-total") : corGrupo(estado.grupo);
+  const nomes = linhas.map((r) => (tipo === "origens" ? r[1] : nomeCurtoUrf(r[1])));
+  const shares = linhas.map((r) => r[3]);
+  texto(idNota, `${NOMES[g]} · ${rotuloAno(ano)} · share das toneladas, top ${linhas.length - (linhas.some((r) => r[1] === "Outros") ? 1 : 0)} e outros`);
+  document.getElementById(idCaixa).style.height = `${Math.max(160, linhas.length * 30 + 36)}px`;
+  const canvas = document.getElementById(idCanvas);
+  canvas.setAttribute("aria-label", `${tipo === "origens" ? "Share por país de origem" : "Ranking de portos"} em ${rotuloAno(ano)}, ${NOMES[g]}. A tabela abaixo traz os valores.`);
+  const anoAnterior = anoParcial(ano) ? `jan–${MESES[nMeses(ano) - 1]}/${ano - 1}` : String(ano - 1);
+  novoGrafico(idCanvas, {
+    type: "bar",
+    data: {
+      labels: nomes,
+      datasets: [{
+        label: "Share",
+        data: shares,
+        backgroundColor: linhas.map((r) => (r[1] === "Outros" ? cor("--outros") : corBarra)),
+        hoverBackgroundColor: linhas.map((r) => (r[1] === "Outros" ? cor("--outros") : comAlfa(corBarra, 0.8))),
+        borderRadius: 4,
+        borderSkipped: "start",
+        maxBarThickness: 18,
+        categoryPercentage: 0.82,
+        barPercentage: 0.9,
+      }],
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: 44 } },
+      interaction: { mode: "index", axis: "y", intersect: false },
+      scales: eixos({ indexAxisY: true, formatarX: (v) => `${fmt0.format(v)}%`, yMaxSugerido: Math.max(...shares, 1) * 1.08 }),
+      plugins: {
+        legend: { display: false },
+        rotulosBarras: { formatar: (v) => pct(v) },
+        tooltip: {
+          enabled: false,
+          external: dicaExterna((pontos) => {
+            const r = linhas[pontos[0].dataIndex];
+            const extras = [`${toneladas(r[2])} · ${variacao(r[4])} vs ${anoAnterior}`];
+            if (!nulo(r[5])) extras.push(`Share: ${variacao(r[5], " p.p.")}`);
+            if (tipo === "origens" && !nulo(r[6])) extras.push(`Preço FOB: ${porTonelada(r[6])}`);
+            return { titulo: nomeDe(r), linhas: [{ corSerie: pontos[0].dataset.backgroundColor[pontos[0].dataIndex], valor: pct(r[3]), serie: "das toneladas" }], extras };
+          }),
+        },
+      },
+    },
+    plugins: [pluginRotulosBarras],
+  });
+  const colunas = [{ titulo: "#" }, { titulo: tipo === "origens" ? "País" : "URF" }, { titulo: "Toneladas", num: true }, { titulo: "Share", num: true }, { titulo: `Var. t vs ${anoAnterior}`, num: true }, { titulo: "Var. share", num: true }];
+  if (tipo === "origens") colunas.push({ titulo: "US$/t FOB", num: true });
+  tabela(idTabela, colunas, linhas.map((r, i) => {
+    const base = [r[1] === "Outros" ? "" : String(i + 1), nomeDe(r), fmt0.format(r[2]), pct(r[3]), variacao(r[4]), variacao(r[5], " p.p.")];
+    return tipo === "origens" ? [...base, nulo(r[6]) ? "–" : fmt0.format(r[6])] : base;
+  }));
+}
+
+function serieMensal(indices, campo) {
+  const g = chaveGrupo();
+  const m = dados.mensal[g];
+  return indices.map((i) => {
+    const t = m.t[i];
+    const v = m[campo][i];
+    return t > 0 && !nulo(v) ? (v * 1e6) / t : null;
+  });
+}
+
+function desenharPrecos(indices) {
+  const p = periodos();
+  const rotulos = indices.map((i) => rotuloMes(p[i]));
+  const corPrincipal = estado.grupo === "TOTAL" ? cor("--g-total") : corGrupo(estado.grupo);
+  const fob = serieMensal(indices, "fob_musd");
+  const cif = serieMensal(indices, "cif_musd");
+  const linha = (label, data, corLinha, rotuloFinal) => ({
+    label, data, rotuloFinal, borderColor: corLinha, backgroundColor: corLinha, borderWidth: 2, pointRadius: 0,
+    pointHoverRadius: 4, pointHoverBorderWidth: 2, pointHoverBorderColor: cor("--superficie"), tension: 0, spanGaps: false,
+  });
+  texto("nota-precos", `${NOMES[estado.grupo]} · US$ por tonelada · ${rotulos[0]} a ${rotulos[rotulos.length - 1]}`);
+  legenda("legenda-precos", [
+    { rotulo: "FOB (no porto de embarque)", corItem: corPrincipal, tipo: "linha" },
+    { rotulo: "CIF (com frete e seguro)", corItem: cor("--cif"), tipo: "linha" },
+  ]);
+  document.getElementById("grafico-precos").setAttribute("aria-label", `Preço implícito FOB e CIF em US$ por tonelada, ${NOMES[estado.grupo]}. A tabela abaixo traz os valores.`);
+  novoGrafico("grafico-precos", {
+    type: "line",
+    data: { labels: rotulos, datasets: [linha("CIF", cif, cor("--cif"), "CIF"), linha("FOB", fob, corPrincipal, "FOB")] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: 46 } },
+      interaction: { mode: "index", intersect: false },
+      scales: eixos({ formatarY: (v) => fmt0.format(v), maxTicksX: estreito() ? 4 : 6 }),
+      plugins: {
+        legend: { display: false },
+        rotulosFinais: { ativo: true },
+        tooltip: {
+          enabled: false,
+          external: dicaExterna((pontos) => {
+            const porSerie = Object.fromEntries(pontos.map((d) => [d.dataset.label, d]));
+            const linhas = ["CIF", "FOB"].filter((s) => porSerie[s]).map((s) => ({ corSerie: porSerie[s].dataset.borderColor, valor: porTonelada(porSerie[s].raw), serie: s }));
+            const f = porSerie.FOB?.raw, c = porSerie.CIF?.raw;
+            return { titulo: pontos[0].label, linhas, extras: !nulo(f) && !nulo(c) ? [`Diferença (frete e seguro): ${porTonelada(c - f)}`] : [] };
+          }),
+        },
+      },
+    },
+    plugins: [pluginCruz, pluginRotulosFinais],
+  });
+  tabela("tabela-precos", [{ titulo: "Mês" }, { titulo: "US$/t FOB", num: true }, { titulo: "US$/t CIF", num: true }],
+    indices.map((i, k) => [rotuloMes(p[i]), nulo(fob[k]) ? "–" : fmt0.format(fob[k]), nulo(cif[k]) ? "–" : fmt0.format(cif[k])]));
+}
+
+function desenharFrete(indices) {
+  const p = periodos();
+  const rotulos = indices.map((i) => rotuloMes(p[i]));
+  const corPrincipal = estado.grupo === "TOTAL" ? cor("--g-total") : corGrupo(estado.grupo);
+  const frete = serieMensal(indices, "frete_musd");
+  const m = dados.mensal[chaveGrupo()];
+  const peso = indices.map((i) => (m.cif_musd[i] > 0 ? (100 * (m.frete_musd[i] ?? 0)) / m.cif_musd[i] : null));
+  texto("nota-frete", `${NOMES[estado.grupo]} · US$ por tonelada · ${rotulos[0]} a ${rotulos[rotulos.length - 1]}`);
+  document.getElementById("grafico-frete").setAttribute("aria-label", `Frete em US$ por tonelada, ${NOMES[estado.grupo]}. A tabela abaixo traz os valores.`);
+  novoGrafico("grafico-frete", {
+    type: "line",
+    data: {
+      labels: rotulos,
+      datasets: [{
+        label: "Frete", data: frete, borderColor: corPrincipal, backgroundColor: comAlfa(corPrincipal, 0.1), fill: "origin",
+        borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, pointHoverBorderWidth: 2, pointHoverBorderColor: cor("--superficie"),
+        pointHoverBackgroundColor: corPrincipal, tension: 0,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: 8 } },
+      interaction: { mode: "index", intersect: false },
+      scales: eixos({ formatarY: (v) => fmt0.format(v), maxTicksX: estreito() ? 4 : 6 }),
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          enabled: false,
+          external: dicaExterna((pontos) => ({
+            titulo: pontos[0].label,
+            linhas: [{ corSerie: corPrincipal, valor: porTonelada(pontos[0].raw), serie: "de frete" }],
+            extras: [`Peso no CIF: ${pct(peso[pontos[0].dataIndex])}`],
+          })),
+        },
+      },
+    },
+    plugins: [pluginCruz],
+  });
+  tabela("tabela-frete", [{ titulo: "Mês" }, { titulo: "Frete US$/t", num: true }, { titulo: "Frete no CIF", num: true }],
+    indices.map((i, k) => [rotuloMes(p[i]), nulo(frete[k]) ? "–" : fmt0.format(frete[k]), pct(peso[k])]));
+}
+
+function desenharHhi() {
+  const anoDe = Number(estado.de.slice(0, 4)), anoAte = Number(estado.ate.slice(0, 4));
+  const anos = dados.anual.anos.filter((a) => a >= anoDe && a <= anoAte);
+  const grupos = estado.grupo === "TOTAL" ? GRUPOS : [estado.grupo];
+  const valores = (g) => anos.map((a) => dados.anual[g].hhi[dados.anual.anos.indexOf(a)]);
+  const datasets = grupos.map((g) => ({
+    label: NOMES[g], rotuloFinal: grupos.length > 1 ? g : null, grupo: g, data: valores(g),
+    borderColor: corGrupo(g), backgroundColor: corGrupo(g), borderWidth: 2, pointRadius: anos.length <= 12 ? 3 : 0,
+    pointBorderWidth: 2, pointBorderColor: cor("--superficie"), pointHoverRadius: 5, pointHoverBorderWidth: 2,
+    pointHoverBorderColor: cor("--superficie"), tension: 0,
+  }));
+  const maximo = Math.max(LIMIAR_HHI, ...datasets.flatMap((d) => d.data.filter((v) => !nulo(v))));
+  const parcial = anos.find(anoParcial);
+  texto("nota-hhi", `${NOMES[estado.grupo]} · por país de origem, em toneladas${parcial ? ` · ${rotuloAno(parcial)}` : ""}`);
+  legenda("legenda-hhi", [
+    ...(grupos.length > 1 ? grupos.map((g) => ({ rotulo: `${g} · ${NOMES[g]}`, corItem: corGrupo(g), tipo: "linha" })) : []),
+    { rotulo: "1.800: altamente concentrado", tipo: "limiar" },
+  ]);
+  document.getElementById("grafico-hhi").setAttribute("aria-label", `HHI por ano, ${NOMES[estado.grupo]}, de ${anos[0]} a ${anos[anos.length - 1]}. A tabela abaixo traz os valores.`);
+  novoGrafico("grafico-hhi", {
+    type: "line",
+    data: { labels: anos.map((a) => (anoParcial(a) ? `${a}*` : String(a))), datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: grupos.length > 1 ? 50 : 8 } },
+      interaction: { mode: "index", intersect: false },
+      scales: eixos({ formatarY: (v) => fmt0.format(v), yMin: 0, yMaxSugerido: maximo * 1.1, maxTicksX: estreito() ? 6 : 12 }),
+      plugins: {
+        legend: { display: false },
+        rotulosFinais: { ativo: grupos.length > 1 },
+        limiar: { valor: LIMIAR_HHI },
+        tooltip: {
+          enabled: false,
+          external: dicaExterna((pontos) => {
+            const ano = anos[pontos[0].dataIndex];
+            const iAno = dados.anual.anos.indexOf(ano);
+            const ordenados = [...pontos].sort((a, b) => (b.raw ?? 0) - (a.raw ?? 0));
+            return {
+              titulo: rotuloAno(ano),
+              linhas: ordenados.map((d) => {
+                const a = dados.anual[d.dataset.grupo];
+                return { corSerie: d.dataset.borderColor, valor: fmt0.format(d.raw), serie: `${d.dataset.grupo} · líder ${a.lider[iAno]} (${pct(a.lider_share_pct[iAno])})` };
+              }),
+            };
+          }),
+        },
+      },
+    },
+    plugins: [pluginCruz, pluginRotulosFinais, pluginLimiar],
+  });
+  tabela("tabela-hhi",
+    [{ titulo: "Ano" }, ...grupos.flatMap((g) => [{ titulo: `${g} HHI`, num: true }, { titulo: `${g} líder` }, { titulo: `${g} CR3`, num: true }])],
+    anos.map((a) => {
+      const i = dados.anual.anos.indexOf(a);
+      return [rotuloAno(a), ...grupos.flatMap((g) => [fmt0.format(dados.anual[g].hhi[i]), `${dados.anual[g].lider[i]} (${pct(dados.anual[g].lider_share_pct[i])})`, pct(dados.anual[g].cr3_pct[i])])];
+    }));
+}
+
+// --- Filtros, estado e URL ------------------------------------------------------------------
+function lerUrl() {
+  const q = new URLSearchParams(location.hash.slice(1));
+  const p = periodos();
+  if (["TOTAL", ...GRUPOS].includes(q.get("grupo"))) estado.grupo = q.get("grupo");
+  if (p.includes(q.get("de"))) estado.de = q.get("de");
+  if (p.includes(q.get("ate"))) estado.ate = q.get("ate");
+  if (!estado.ate) estado.ate = p[p.length - 1];
+  if (!estado.de || estado.de > estado.ate) estado.de = p[0];
+}
+function gravarUrl() {
+  const q = new URLSearchParams({ grupo: estado.grupo, de: estado.de, ate: estado.ate });
+  history.replaceState(null, "", `#${q}`);
+}
+
+function aplicarPreset(preset) {
+  const p = periodos();
+  estado.ate = p[p.length - 1];
+  estado.de = preset.meses ? p[Math.max(0, p.length - preset.meses)] : p[0];
+}
+function presetAtual() {
+  const p = periodos();
+  if (estado.ate !== p[p.length - 1]) return null;
+  return PRESETS.find((pr) => estado.de === (pr.meses ? p[Math.max(0, p.length - pr.meses)] : p[0]))?.id ?? null;
+}
+
+function montarFiltros() {
+  const grupos = ["TOTAL", ...GRUPOS];
+  document.getElementById("filtro-grupo").replaceChildren(...grupos.map((g) => {
+    const ponto = el("span", { classe: "ponto" });
+    ponto.dataset.grupo = g;
+    const botao = el("button", { type: "button", classe: "chip", "data-grupo": g }, ponto, g === "TOTAL" ? "Todos" : `${g} · ${NOMES[g]}`);
+    botao.addEventListener("click", () => { estado.grupo = g; atualizar(); });
+    return botao;
+  }));
+  document.getElementById("filtro-periodo").replaceChildren(...PRESETS.map((pr) => {
+    const botao = el("button", { type: "button", classe: "chip", "data-preset": pr.id }, pr.rotulo);
+    botao.addEventListener("click", () => { aplicarPreset(pr); atualizar(); });
+    return botao;
+  }));
+  const opcoes = () => periodos().map((p) => el("option", { value: p }, rotuloMes(p)));
+  const de = document.getElementById("filtro-de"), ate = document.getElementById("filtro-ate");
+  de.replaceChildren(...opcoes());
+  ate.replaceChildren(...opcoes());
+  de.addEventListener("change", () => { estado.de = de.value; if (estado.de > estado.ate) estado.ate = estado.de; atualizar(); });
+  ate.addEventListener("change", () => { estado.ate = ate.value; if (estado.ate < estado.de) estado.de = estado.ate; atualizar(); });
+}
+
+function sincronizarFiltros() {
+  document.querySelectorAll("#filtro-grupo .chip").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.grupo === estado.grupo)));
+  document.querySelectorAll("#filtro-grupo .ponto").forEach((s) => { s.style.background = s.dataset.grupo === "TOTAL" ? cor("--g-total") : corGrupo(s.dataset.grupo); });
+  const atual = presetAtual();
+  document.querySelectorAll("#filtro-periodo .chip").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.preset === atual)));
+  document.getElementById("filtro-de").value = estado.de;
+  document.getElementById("filtro-ate").value = estado.ate;
+}
+
+function rodape() {
+  const fim = dados.meta.periodo.fim;
+  const atualizado = document.querySelector('meta[name="atualizado"]').content;
+  const partes = [`Dados de ${rotuloMes(dados.meta.periodo.inicio)} a ${rotuloMes(fim)}`];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(atualizado)) partes.push(`atualizado em ${atualizado.slice(8, 10)}/${atualizado.slice(5, 7)}/${atualizado.slice(0, 4)}`);
+  texto("rodape-datas", partes.join(" · "));
+}
+
+function atualizar() {
+  gravarUrl();
+  sincronizarFiltros();
+  const indices = indicesEntre(estado.de, estado.ate);
+  desenharKpis();
+  desenharToneladas(indices);
+  desenharRanking({ tipo: "origens", idCanvas: "grafico-origens", idCaixa: "caixa-origens", idNota: "nota-origens", idTabela: "tabela-origens" });
+  desenharRanking({ tipo: "portos", idCanvas: "grafico-portos", idCaixa: "caixa-portos", idNota: "nota-portos", idTabela: "tabela-portos" });
+  desenharPrecos(indices);
+  desenharFrete(indices);
+  desenharHhi();
+}
+
+// --- Tema -----------------------------------------------------------------------------------
+function temaSalvo() {
+  try { return localStorage.getItem("tema"); } catch { return null; }
+}
+function temaEfetivo() {
+  return document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+}
+function aplicarTema(tema) {
+  if (tema === "light" || tema === "dark") document.documentElement.dataset.theme = tema;
+  texto("rotulo-tema", temaEfetivo() === "dark" ? "Escuro" : "Claro");
+}
+function alternarTema() {
+  const novo = temaEfetivo() === "dark" ? "light" : "dark";
+  try { localStorage.setItem("tema", novo); } catch { /* sem armazenamento: vale só nesta visita */ }
+  aplicarTema(novo);
+  if (dados) atualizar();
+}
+
+// --- Início ---------------------------------------------------------------------------------
+async function carregar() {
+  for (const url of ["dashboard.json", "../data/processed/dashboard.json"]) {
+    try {
+      const resposta = await fetch(url, { cache: "no-cache" });
+      if (resposta.ok) return await resposta.json();
+    } catch { /* tenta o próximo caminho */ }
+  }
+  throw new Error("dashboard.json não encontrado");
+}
+
+function erro(mensagem) {
+  document.getElementById("conteudo").replaceChildren(el("p", { classe: "aviso" }, mensagem));
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+  aplicarTema(temaSalvo());
+  document.getElementById("botao-tema").addEventListener("click", alternarTema);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (!temaSalvo()) { aplicarTema(null); if (dados) atualizar(); } });
+  window.addEventListener("scroll", () => { document.getElementById("dica").hidden = true; }, { passive: true });
+  if (!window.Chart) {
+    erro("Não foi possível carregar a biblioteca de gráficos (Chart.js). Verifique a conexão e recarregue a página.");
+    return;
+  }
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.font.size = 11;
+  Chart.defaults.color = cor("--texto-2");
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) Chart.defaults.animation = false;
+  try {
+    dados = await carregar();
+  } catch {
+    erro("Não foi possível carregar os dados (dashboard.json). Para ver localmente, rode `python -m http.server` na raiz do repositório e abra /dashboard/.");
+    return;
+  }
+  rodape();
+  montarFiltros();
+  lerUrl();
+  atualizar();
+  let largura = window.innerWidth;
+  window.addEventListener("resize", () => {
+    if ((window.innerWidth <= 600) !== (largura <= 600)) atualizar();
+    largura = window.innerWidth;
+  });
+});
+</script>
+</body>
+</html>

@@ -49,6 +49,9 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
 - Testes: `python -m pytest`. Eles não acessam a rede (a API é simulada).
 - CI (`.github/workflows/ci.yml`): pytest em Python 3.10 (pandas 2) e 3.13 (pandas 3) e
   gitleaks em todo o histórico, em push e PR. Só leitura e sem nenhum segredo.
+- Actions sempre em versões que rodam em Node 24 (`checkout@v6`, `setup-python@v6`,
+  `setup-go@v6`, `configure-pages@v6`, `upload-pages-artifact@v5`, `deploy-pages@v5`).
+  Antes de trocar uma versão, conferir `runs.using` no `action.yml` da tag.
 - Ingestão: `python -m src.ingest --inicio AAAA-MM [--fim AAAA-MM]`. Opções em
   `python -m src.ingest --help`.
 - Dados brutos: `data/raw/ano=AAAA/importacoes.parquet`, de 2015-01 a 2026-09 (61.460
@@ -57,10 +60,17 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
 - Fase 2: `python -m src.transform` gera em `data/processed/` os CSVs de preço US$/t,
   shares por origem e URF com variação anual, HHI, sazonalidade e o `dashboard.json`.
   As saídas são determinísticas; regenere-as sempre que `data/raw/` mudar.
+- Fase 3: `dashboard/index.html` é um HTML único (Chart.js 4.5.1 do jsDelivr, com SRI) que
+  lê `dashboard.json`. Para ver localmente: `python -m http.server` na raiz e abrir
+  `/dashboard/`. O deploy é feito pelo `.github/workflows/pages.yml` (push na main que mude
+  `dashboard/` ou o `dashboard.json`, ou manual), sem segredos. Pré-requisito: Settings →
+  Pages → Source: "GitHub Actions".
+- Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):
+  N azul, P laranja, K água, NPK amarelo, "Todos" violeta. Não reordenar.
 - Não commitar dados grandes: se `data/raw/` passar de ~20 MB, colocá-lo no `.gitignore`
   e explicar no README como gerar.
 - Roadmap: 1 ingestão (feita) → 2 transform (feita) → 3 dashboard no
-  GitHub Pages → 4 GitHub Action mensal → 5 boletim com IA opcional. Não adiantar fases
+  GitHub Pages (feito) → 4 GitHub Action mensal → 5 boletim com IA opcional. Não adiantar fases
   sem pedido.
 
 ## Fatos da API (verificados em outubro de 2026)

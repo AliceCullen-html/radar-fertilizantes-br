@@ -1,0 +1,56 @@
+# Publica o dashboard (dashboard/ + data/processed/dashboard.json) no GitHub Pages.
+# Não usa nenhum segredo: o deploy se autentica com o token OIDC do próprio Actions.
+# Pré-requisito único: Settings → Pages → Source: "GitHub Actions".
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "dashboard/**"
+      - "data/processed/dashboard.json"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # histórico para achar a data da última atualização dos dados
+          persist-credentials: false
+      - uses: actions/configure-pages@v6
+      - name: Montar o site
+        run: |
+          mkdir -p _site
+          cp -R dashboard/. _site/
+          cp data/processed/dashboard.json _site/dashboard.json
+          atualizado="$(git log -1 --format=%cs -- data/processed/dashboard.json)"
+          sed -i "s|<meta name=\"atualizado\" content=\"\">|<meta name=\"atualizado\" content=\"${atualizado}\">|" _site/index.html
+          grep -q "name=\"atualizado\" content=\"${atualizado}\"" _site/index.html
+          ls -la _site
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

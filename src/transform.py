@@ -225,22 +225,22 @@ def _ranking(tabela: pd.DataFrame, codigo: str, nome: str, com_preco: bool) -> l
             _texto(r[codigo]),
             _texto(r[nome]),
             _num(r["toneladas"], 0),
-            _num(r["share_t_pct"], 2),
+            _num(r["share_t_pct"], 3),
             _num(r["var_t_pct"], 1),
-            _num(r["var_share_pp"], 2),
+            _num(r["var_share_pp"], 3),
         ]
-        linhas.append(linha + ([_num(r["preco_fob_usd_t"], 1)] if com_preco else []))
+        linhas.append(linha + ([_num(r["preco_fob_usd_t"], 2)] if com_preco else []))
     if resto["toneladas"].sum() > 0:
         t, t_ant = resto["toneladas"].sum(), resto["toneladas_ano_anterior"].sum(min_count=1)
         linha = [
             None,
             "Outros",
             _num(t, 0),
-            _num(resto["share_t_pct"].sum(), 2),
+            _num(resto["share_t_pct"].sum(), 3),
             _num(100 * (t / t_ant - 1), 1) if t_ant and t_ant > 0 else None,
-            _num(resto["share_t_pct"].sum() - resto["share_t_pct_ano_anterior"].sum(min_count=1), 2),
+            _num(resto["share_t_pct"].sum() - resto["share_t_pct_ano_anterior"].sum(min_count=1), 3),
         ]
-        linhas.append(linha + ([_num(resto["vl_fob"].sum() / t, 1)] if com_preco else []))
+        linhas.append(linha + ([_num(resto["vl_fob"].sum() / t, 2)] if com_preco else []))
     return linhas
 
 
@@ -253,19 +253,24 @@ def dashboard(tabelas: dict[str, pd.DataFrame]) -> dict:
     anos = sorted(int(a) for a in origens["ano"].unique())
 
     mensal = {"periodos": periodos}
-    total_mes = precos_grupo.groupby("periodo")[["toneladas", "vl_fob"]].sum().reindex(periodos)
+    somaveis = ["toneladas", "vl_fob", "vl_cif", "vl_frete"]
+    total_mes = precos_grupo.groupby("periodo")[somaveis].sum().reindex(periodos)
     for grupo in GRUPOS:
         g = precos_grupo[precos_grupo["grupo"] == grupo].set_index("periodo").reindex(periodos)
         mensal[grupo] = {
             "t": [_num(v, 0) for v in g["toneladas"]],
-            "fob_musd": [_num(v / 1e6, 2) for v in g["vl_fob"]],
+            "fob_musd": [_num(v / 1e6, 3) for v in g["vl_fob"]],
+            "cif_musd": [_num(v / 1e6, 3) for v in g["vl_cif"]],
+            "frete_musd": [_num(v / 1e6, 3) for v in g["vl_frete"]],
             "preco_fob": [_num(v, 1) for v in g["preco_fob_usd_t"]],
             "preco_cif": [_num(v, 1) for v in g["preco_cif_usd_t"]],
             "frete": [_num(v, 1) for v in g["frete_usd_t"]],
         }
     mensal[TOTAL] = {
         "t": [_num(v, 0) for v in total_mes["toneladas"]],
-        "fob_musd": [_num(v / 1e6, 2) for v in total_mes["vl_fob"]],
+        "fob_musd": [_num(v / 1e6, 3) for v in total_mes["vl_fob"]],
+        "cif_musd": [_num(v / 1e6, 3) for v in total_mes["vl_cif"]],
+        "frete_musd": [_num(v / 1e6, 3) for v in total_mes["vl_frete"]],
     }
 
     anual = {"anos": anos, "n_meses": [int(n) for n in origens.groupby("ano")["n_meses"].first().reindex(anos)]}
@@ -311,6 +316,8 @@ def dashboard(tabelas: dict[str, pd.DataFrame]) -> dict:
             "unidades": {
                 "t": "toneladas",
                 "fob_musd": "US$ milhões FOB",
+                "cif_musd": "US$ milhões CIF",
+                "frete_musd": "US$ milhões de frete",
                 "preco_fob": "US$/t FOB",
                 "preco_cif": "US$/t CIF",
                 "frete": "US$/t",
