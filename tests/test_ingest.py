@@ -460,8 +460,28 @@ def test_cli_falha_se_o_ultimo_mes_publicado_nao_veio(series, monkeypatch):
     api = ApiFalsa(ultimo="2025-02", sem_dados={("export", "2025-02")})
     monkeypatch.setattr(ingest, "ClienteComexStat", lambda **kwargs: api)
     assert ingest.main(["--inicio", "2025-01", "--pausa", "0"]) == 1
-    # a soja de janeiro foi gravada, mas o mês publicado (fevereiro) não: o código de saída é 1
-    assert ingest.ultimo_mes_gravado(series["soja"], config.RAW_SOJA_ARQUIVO) == "2025-01"
+    # os fertilizantes vieram completos; da soja, o ano com lacuna não é gravado
+    assert ingest.ultimo_mes_gravado(series["fertilizantes"]) == "2025-02"
+    assert ingest.ultimo_mes_gravado(series["soja"], config.RAW_SOJA_ARQUIVO) is None
+    assert ingest.main(["--ultimo-gravado"]) == 0
+
+
+@pytest.mark.parametrize(
+    "sem_dados",
+    [
+        {("import", "2025-02")},  # lacuna no meio de um ano (uma consulta por ano)
+        {("import", "2025-12")},  # ano anterior que volta vazio numa carga de dois anos
+    ],
+)
+def test_lacuna_em_mes_ja_publicado_falha_e_nao_grava_o_ano(tmp_path, ncm_csv, sem_dados):
+    raw = tmp_path / "raw"
+    ingest.ingerir(ApiFalsa(ultimo="2024-12"), "2024-12", "2024-12", raw_dir=raw, ncm_csv=ncm_csv)
+    api = ApiFalsa(ultimo="2026-01", sem_dados=sem_dados)
+    with pytest.raises(ingest.ErroAPI, match="não devolveu dados de 2025-"):
+        ingest.ingerir(api, "2024-12", raw_dir=raw, ncm_csv=ncm_csv)
+    assert ingest.meses_gravados(raw, 2025) == set()
+    # na próxima execução, os meses que faltam continuam no plano
+    assert ingest.planejar("2024-12", "2026-01", raw)[2025] == list(range(1, 13))
 
 
 # --- Resumo e CLI -------------------------------------------------------------------------

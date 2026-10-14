@@ -517,6 +517,8 @@ def _ingerir_serie(
     """Baixa os meses faltantes de [inicio, fim], uma consulta por ano; devolve o período efetivo.
 
     `preparar()` só é chamado se houver o que baixar e devolve (consultar(de, ate), normalizar(registros)).
+    Se a API não devolver algum dos meses pedidos (todos já publicados), levanta ErroAPI sem gravar
+    aquele ano: uma carga com lacuna nunca passa por atualizada.
     """
     if ultimo is None:
         ultimo = ultimo_mes_publicado(cliente)
@@ -540,9 +542,13 @@ def _ingerir_serie(
         log.info("%s: consultando %s a %s (%d meses a baixar)...", rotulo, de, ate, len(meses))
         df = normalizar_registros(consultar(de, ate))
         df = df[(df["ano"] == ano) & df["mes"].isin(meses)]
-        if df.empty:
-            log.warning("%s: a API não retornou linhas para %s a %s.", rotulo, de, ate)
-            continue
+        faltam = sorted(set(meses) - {int(m) for m in df["mes"].unique()})
+        if faltam:
+            lista = ", ".join(f"{ano}-{m:02d}" for m in faltam)
+            raise ErroAPI(
+                f"{rotulo}: a API já publicou até {ultimo}, mas não devolveu dados de {lista}."
+                " Nada foi gravado para esse ano; tente de novo mais tarde."
+            )
         caminho = gravar_ano(df, ano, raw_dir, arquivo, colunas, ordem)
         log.info("%s: +%d linhas (%d meses).", caminho, len(df), df["mes"].nunique())
     return inicio, fim
@@ -600,13 +606,6 @@ def ingerir_soja(
         cliente, inicio, fim, rotulo="soja", raw_dir=raw_dir, arquivo=config.RAW_SOJA_ARQUIVO,
         colunas=COLUNAS_SOJA, ordem=ORDEM_SOJA, preparar=preparar, forcar=forcar, ultimo=ultimo,
     )
-
-
-def exigir_mes(rotulo: str, mes: str, raw_dir: Path, arquivo: str) -> None:
-    """Falha se o mês pedido não está no disco: evita tratar uma carga parcial como atualizada."""
-    ano, numero = map(int, mes.split("-"))
-    if numero not in meses_gravados(raw_dir, ano, arquivo):
-        raise ErroAPI(f"{rotulo}: a consulta ia até {mes}, mas a API não devolveu dados desse mês. Nada foi dado como atualizado.")
 
 
 def _no_periodo(df: pd.DataFrame, inicio: str, fim: str) -> pd.DataFrame:
@@ -766,16 +765,12 @@ def main(argv: list[str] | None = None) -> int:
                 inicio, fim = ingerir(
                     cliente, args.inicio, args.fim, raw_dir=raw_dir, forcar=args.forcar, ultimo=ultimo
                 )
-                if inicio <= fim:
-                    exigir_mes("fertilizantes", fim, raw_dir, arquivo)
-                print(resumo(ler_raw(raw_dir), inicio, fim))
+                print(resumo(ler_raw(raw_dir, arquivo), inicio, fim))
             if "soja" in series:
-                raw_dir, arquivo = SERIES["soja"]
+                raw_dir = SERIES["soja"][0]
                 inicio, fim = ingerir_soja(
                     cliente, args.inicio, args.fim, raw_dir=raw_dir, forcar=args.forcar, ultimo=ultimo
                 )
-                if inicio <= fim:
-                    exigir_mes("soja", fim, raw_dir, arquivo)
                 print(resumo_soja(ler_soja(raw_dir), inicio, fim))
     except ErroAPI as exc:
         log.error("%s", exc)

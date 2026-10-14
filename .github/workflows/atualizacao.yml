@@ -7,12 +7,14 @@
 #      soja), o transform e os testes;
 #   3. só se a API trouxe mês novo, commita "chore(dados): atualização AAAA-MM" como
 #      github-actions[bot] e publica o dashboard (pages.yml).
-# Se a API falhar ou não devolver o mês que diz ter publicado, o workflow falha com o erro
-# no log e nada é commitado.
+# Se a API falhar ou não devolver algum mês que diz ter publicado, o workflow falha com o
+# erro no log e nada é commitado.
 #
-# Não usa nenhum segredo. O push usa o GITHUB_TOKEN do próprio workflow, que só entra no
-# passo do push (o checkout não grava a credencial, então os passos que rodam Python e
-# dependências não têm acesso a ela).
+# Não usa nenhum segredo. Os privilégios ficam separados por job:
+#   - "atualizar" roda Python e as dependências de terceiros só com permissão de leitura e
+#     entrega data/ como artifact;
+#   - "commitar" é o único com contents: write e só roda git (sem pip nem Python, com hooks
+#     desligados); o GITHUB_TOKEN entra apenas no passo do push.
 name: Atualização mensal
 
 on:
@@ -29,16 +31,15 @@ concurrency:
 
 jobs:
   atualizar:
-    name: Ingestão, transform e commit
+    name: Ingestão, transform e testes
     # Só na main: o commit vai direto para ela.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
-      contents: write
+      contents: read
     outputs:
-      publicou: ${{ steps.commit.outputs.publicou }}
-      sha: ${{ steps.commit.outputs.sha }}
+      mes: ${{ steps.resultado.outputs.mes }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -48,10 +49,12 @@ jobs:
           python-version: "3.13"
           cache: pip
       - name: Instalar dependências
+        timeout-minutes: 10
         run: python -m pip install -r requirements.txt "pytest>=8"
 
       - name: Conferir se falta o mês anterior
         id: checar
+        timeout-minutes: 5
         run: |
           esperado="$(date -u -d "$(date -u +%Y-%m-01) -1 month" +%Y-%m)"
           gravado="$(python -m src.ingest --ultimo-gravado)"
@@ -65,65 +68,113 @@ jobs:
 
       - name: Ingestão incremental (fertilizantes e soja)
         if: steps.checar.outputs.falta == 'true'
+        timeout-minutes: 30
         run: |
           set -o pipefail
           # Só baixa os meses que ainda não estão em data/raw/ e data/raw_soja/.
-          if ! python -m src.ingest --inicio 2015-01 2>&1 | tee ingest.log; then
-            echo "::error title=Falha na ingestão::A API do Comex Stat falhou ou não devolveu o último mês publicado (detalhes no log deste passo). Nada foi commitado; a próxima execução agendada tenta de novo."
+          if ! python -m src.ingest --inicio 2015-01 2>&1 | tee "$RUNNER_TEMP/ingest.log"; then
+            echo "::error title=Falha na ingestão::A API do Comex Stat falhou ou não devolveu algum mês já publicado (detalhes no log deste passo). Nada foi commitado; a próxima execução agendada tenta de novo."
             exit 1
           fi
 
       - name: Transform e testes
         if: steps.checar.outputs.falta == 'true'
+        timeout-minutes: 10
         run: |
           python -m src.transform
           python -m pytest -q
 
-      - name: Commitar e publicar o mês novo
-        id: commit
+      - name: Separar o mês novo
+        id: resultado
         if: steps.checar.outputs.falta == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
+        timeout-minutes: 5
         run: |
           if [[ -z "$(git status --porcelain -- data/raw data/raw_soja)" ]]; then
             echo "A API ainda não publicou mês novo; nada a commitar. Nova checagem amanhã." | tee -a "$GITHUB_STEP_SUMMARY"
-            echo "publicou=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           mes="$(python -m src.ingest --ultimo-gravado)"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- data/raw data/raw_soja data/processed
-          git commit -m "chore(dados): atualização ${mes}"
-          auth="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
-          echo "::add-mask::${auth}"
-          if ! GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
-               GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${auth}" git push origin HEAD:main; then
-            echo "::error title=Push recusado::A main mudou durante a atualização. Nada foi publicado; a próxima execução refaz a atualização."
-            exit 1
-          fi
+          echo "mes=${mes}" >> "$GITHUB_OUTPUT"
           {
             echo "### Atualização ${mes}"
             echo
             echo '```text'
-            grep -E "^(Resumo|  )" ingest.log || true
+            grep -E "^(Resumo|  )" "$RUNNER_TEMP/ingest.log" || true
             echo '```'
             echo
             echo "Fonte: Comex Stat/MDIC."
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "publicou=true" >> "$GITHUB_OUTPUT"
+
+      - name: Entregar data/ para o commit
+        if: steps.resultado.outputs.mes != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: dados
+          path: |
+            data/raw
+            data/raw_soja
+            data/processed
+          if-no-files-found: error
+          retention-days: 1
+
+  commitar:
+    name: Commit do mês novo
+    needs: atualizar
+    if: needs.atualizar.outputs.mes != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.push.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Receber data/
+        uses: actions/download-artifact@v8
+        with:
+          name: dados
+          path: data
+      - name: Commitar e enviar para a main
+        id: push
+        env:
+          MES: ${{ needs.atualizar.outputs.mes }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ ! "${MES}" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]]; then
+            echo "::error title=Mês inválido::O job de atualização devolveu '${MES}'."
+            exit 1
+          fi
+          fora="$(git status --porcelain | grep -vE '^.. data/(raw|raw_soja|processed)/' || true)"
+          if [[ -n "${fora}" ]]; then
+            echo "::error title=Mudança fora de data/::${fora}"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- data/raw data/raw_soja data/processed
+          git -c core.hooksPath=/dev/null commit -m "chore(dados): atualização ${MES}"
+          auth="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+          echo "::add-mask::${auth}"
+          if ! GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
+               GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${auth}" \
+               git -c core.hooksPath=/dev/null push origin HEAD:main; then
+            echo "::error title=Push recusado::A main mudou durante a atualização. Nada foi publicado; a próxima execução refaz a atualização."
+            exit 1
+          fi
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   # Commits feitos com o GITHUB_TOKEN não disparam outros workflows, então o deploy do
   # dashboard é chamado daqui, com o commit que acabou de entrar na main.
   publicar:
     name: Publicar o dashboard
-    needs: atualizar
-    if: needs.atualizar.outputs.publicou == 'true'
+    needs: commitar
+    if: needs.commitar.outputs.sha != ''
     permissions:
       contents: read
       pages: write
       id-token: write
     uses: ./.github/workflows/pages.yml
     with:
-      ref: ${{ needs.atualizar.outputs.sha }}
+      ref: ${{ needs.commitar.outputs.sha }}

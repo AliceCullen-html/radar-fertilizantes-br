@@ -133,14 +133,18 @@ workflow roda uma vez por dia, do dia 1 ao dia 15 de cada mês (11h17 UTC):
 3. Só se a API trouxe mês novo, faz um commit `chore(dados): atualização AAAA-MM` como
    `github-actions[bot]`, só com arquivos de `data/`, e publica o dashboard.
 
-Se a API falhar, ou disser que publicou um mês que não vem na consulta, o job termina em
-vermelho, com o erro no log, e nada é commitado: a ingestão grava em disco no runner, mas o
-commit só acontece no fim, depois do transform e dos testes. A próxima execução tenta de
-novo.
+Se a API falhar, ou disser que publicou um mês que não vem na consulta (o último ou
+qualquer um no meio), o job termina em vermelho, com o erro no log, e nada é commitado: a
+ingestão grava em disco no runner, mas o commit só acontece no fim, depois do transform e
+dos testes. Cada passo tem limite de tempo, então um travamento também falha em minutos. A
+próxima execução tenta de novo.
 
-O workflow não usa nenhum segredo. O push usa o `GITHUB_TOKEN` do próprio Actions, com
-permissão de escrita só no conteúdo, e o token só entra no passo do push. Como pushes feitos
-com esse token não disparam outros workflows, o deploy do Pages é chamado pelo próprio
+O workflow não usa nenhum segredo, e os privilégios ficam separados por job. O job que roda
+Python e as dependências (ingestão, transform e testes) só tem permissão de leitura e
+entrega `data/` como artifact. O job do commit é o único com permissão de escrita: só roda
+git, sem pip nem Python e com os hooks desligados, recusa qualquer mudança fora de `data/`
+e usa o `GITHUB_TOKEN` do próprio Actions apenas no passo do push. Como pushes feitos com
+esse token não disparam outros workflows, o deploy do Pages é chamado pelo próprio
 workflow. Para rodar fora do calendário: Actions → Atualização mensal → Run workflow.
 
 A ingestão é incremental e não baixa de novo meses já gravados. Se o MDIC revisar um mês,
@@ -179,7 +183,7 @@ A exportação de soja fica em `data/raw_soja/ano=AAAA/exportacoes.parquet`, uma
 mês, com `mes`, `co_ncm` (12019000), `vl_fob` e `kg_liquido`. Para ler:
 `from src.ingest import ler_soja`.
 
-A série de 2015-01 a 2026-09 tem 61.460 linhas e ocupa 1,6 MB (mais 100 KB da soja), por
+A série de 2015-01 a 2026-09 tem 61.460 linhas e ocupa 1,6 MB (mais 37 KB da soja), por
 isso `data/raw/` e `data/raw_soja/` continuam versionados. Se passar de ~20 MB, a pasta vai para o `.gitignore` e os dados
 passam a ser gerados localmente com os comandos acima. Os totais anuais de kg, US$ FOB,
 US$ CIF, frete e seguro foram conferidos, até a unidade, com uma consulta agregada
@@ -233,7 +237,7 @@ frete US$/t da rota é o frete total ÷ toneladas, isto é, a média ponderada p
   meses com dados (em 2026, jan-set: 37.500 t). Abaixo disso o frete por tonelada é
   ruidoso, porque vem de cargas pequenas, em contêiner, fracionadas ou até aéreas: em
   2025, o frete das rotas acima do corte ficou entre US$ 19 e 36/t (percentis 10 e 90),
-  enquanto 53 das 169 rotas com menos de 5 mil t passaram de US$ 100/t, e amostras de
+  enquanto 53 das 164 rotas com carga e menos de 5 mil t passaram de US$ 100/t, e amostras de
   poucos quilos por aeroporto passaram de US$ 10 mil/t. Mesmo assim, o corte guarda a maior
   parte do volume: em 2025, 107 das 401 rotas com carga e 93,2% das toneladas.
 - O dashboard mostra as 20 maiores rotas acima do corte; todas, inclusive as abaixo dele
@@ -310,7 +314,10 @@ O hook do gitleaks é compilado em Go; o pre-commit usa o Go instalado ou baixa 
 automaticamente.
 
 O [CI](.github/workflows/ci.yml) roda em todo push e pull request: os testes em Python
-3.10 e 3.13 e o gitleaks em todo o histórico do repositório. O workflow só tem permissão
+3.10 e 3.13 e o gitleaks em todo o histórico do repositório. A exceção são os commits
+automáticos de dados da fase 4, que não disparam outros workflows; eles passam pelos testes
+(Python 3.13) dentro do próprio workflow de atualização, e o gitleaks do push seguinte
+varre o histórico inteiro, inclusive eles. O workflow só tem permissão
 de leitura e não usa nenhum segredo. As actions estão em versões que rodam em Node 24.
 
 Segredos nunca entram no repositório. Qualquer chave futura, como a da fase 5, é lida

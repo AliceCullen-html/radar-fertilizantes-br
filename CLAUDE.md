@@ -81,8 +81,11 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
   anterior já está gravado (`--ultimo-gravado`), encerra sem chamar a API; senão faz a
   ingestão incremental das duas séries, o transform e os testes e, só se entrou mês novo,
   commita como github-actions[bot] e chama o `pages.yml` (via `workflow_call`, porque
-  pushes com o GITHUB_TOKEN não disparam outros workflows). Falha da API = job vermelho,
-  nada commitado. O token só entra no passo do push (`persist-credentials: false`).
+  pushes com o GITHUB_TOKEN não disparam outros workflows). Falha da API (ou mês publicado
+  que não vem, mesmo no meio do período) = job vermelho, nada commitado. Privilégios
+  separados: o job que roda Python é só leitura e entrega `data/` como artifact; o job do
+  commit (único com `contents: write`) só roda git, com hooks desligados, e recusa mudança
+  fora de `data/`. Manter essa separação.
 - Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):
   N azul, P laranja, K água, NPK amarelo, "Todos" violeta. Não reordenar.
 - Não commitar dados grandes: se `data/raw/` passar de ~20 MB, colocá-lo no `.gitignore`
