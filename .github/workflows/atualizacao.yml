@@ -196,7 +196,7 @@ jobs:
           python -m src.boletim "${args[@]}"
           if [[ -n "$(git status --porcelain -- boletins)" ]]; then
             echo "gerado=true" >> "$GITHUB_OUTPUT"
-            python -c "import json; d = json.load(open('boletins/latest.json', encoding='utf-8')); print('### ' + d['titulo'] + '\n\n' + d['lead'] + '\n\nProvedor: ' + d['provedor'] + ' · modelo: ' + d['modelo'])" >> "$GITHUB_STEP_SUMMARY"
+            python -c "import json; d = json.load(open('boletins/latest.json', encoding='utf-8')); print('### ' + d['titulo'] + '\n\n' + d['lead'] + '\n\n' + d['rodape'] + ' Fonte: ' + d['fonte'] + '.\n\nProvedor: ' + d['provedor'] + ' · modelo: ' + d['modelo'])" >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Entregar boletins/ para o commit
         if: steps.gerar.outputs.gerado == 'true'

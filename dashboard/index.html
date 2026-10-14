@@ -1350,7 +1350,12 @@ function alternarTema() {
 }
 
 // --- Boletim do mês (fase 5) -----------------------------------------------------------------
-const REPOSITORIO = "https://github.com/AliceCullen-html/radar-fertilizantes-br";
+// No Pages de um fork (dono.github.io/repo), os links do boletim apontam para o próprio fork.
+const REPOSITORIO = (() => {
+  const dono = location.hostname.match(/^([a-z0-9-]+)\.github\.io$/i);
+  const repo = location.pathname.split("/")[1];
+  return dono && /^[\w.-]+$/.test(repo ?? "") ? `https://github.com/${dono[1]}/${repo}` : "https://github.com/AliceCullen-html/radar-fertilizantes-br";
+})();
 async function carregarBoletim() {
   for (const url of ["boletim.json", "../boletins/latest.json"]) {
     try {
