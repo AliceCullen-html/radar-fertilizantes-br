@@ -190,6 +190,59 @@ def test_sazonalidade_usa_so_anos_completos():
     assert len(n) == 12 and (n["toneladas_media"] == 0).all()
 
 
+# --- Rotas origem -> URF ---------------------------------------------------------------------
+
+
+def test_rotas_frete_ponderado_share_e_meses_com_carga():
+    b = base(
+        [
+            linha(2025, 1, t=40_000, frete=800_000),  # Canadá -> Paranaguá: 20 US$/t
+            linha(2025, 2, t=20_000, frete=800_000),  # 40 US$/t
+            linha(2025, 3, pais=RUSSIA, t=40_000, frete=1_200_000, urf=SANTOS),  # 30 US$/t, abaixo do corte
+            *[linha(2025, m, t=0, frete=0) for m in range(4, 13)],  # meses sem carga não contam
+        ]
+    )
+    r = transform.rotas_anuais(b)
+    k = r[r["grupo"] == "K"].set_index("no_pais")
+    assert k.loc["Canadá", "toneladas"] == 60_000 and k.loc["Canadá", "meses"] == 2
+    assert k.loc["Canadá", "frete_usd_t"] == pytest.approx(1_600_000 / 60_000)  # não a média de 20 e 40
+    assert k.loc["Canadá", "share_t_pct"] == pytest.approx(60)
+    assert bool(k.loc["Canadá", "relevante"]) and not bool(k.loc["Rússia", "relevante"])
+    assert r.groupby(["ano", "grupo"])["share_t_pct"].sum().to_numpy() == pytest.approx(100)
+    assert set(r["grupo"]) == {"K", "TOTAL"}
+
+
+def test_corte_de_rota_e_proporcional_no_ano_parcial():
+    b = base([linha(2026, m, t=4_500) for m in range(1, 10)])  # 40.500 t em jan-set
+    r = transform.rotas_anuais(b)
+    assert r["corte_t"].iloc[0] == 37_500 and r["relevante"].all()
+
+
+def test_bloco_de_rotas_agrupa_o_resto_em_outros(monkeypatch):
+    monkeypatch.setattr(transform, "TOP_SANKEY", 1)
+    monkeypatch.setattr(transform, "TOP_ROTAS", 2)
+    b = base(
+        [
+            linha(2025, 1, pais=CANADA, t=300_000, frete=6_000_000),
+            linha(2025, 1, pais=RUSSIA, t=200_000, frete=6_000_000, urf=SANTOS),
+            linha(2025, 1, pais=CHINA, t=100_000, frete=1_000_000, urf=SANTOS),
+            linha(2025, 1, pais=PAIS_X, t=1_000, frete=500_000),
+        ]
+    )
+    r = transform.rotas_anuais(b)
+    bloco = transform._bloco_rotas(r[(r["ano"] == 2025) & (r["grupo"] == "K")])
+    assert bloco["origens"] == [["149", "Canadá", 300_000], [None, "Outros", 301_000]]
+    assert bloco["urfs"] == [["0917800", "PORTO DE PARANAGUA", 301_000], [None, "Outros", 300_000]]
+    # Canadá -> Paranaguá; Outros (País X) -> Paranaguá; Outros (Rússia e China) -> Outros (Santos)
+    assert bloco["fluxos"] == [[0, 0, 300_000, 20.0], [1, 0, 1_000, 500.0], [1, 1, 300_000, 23.3]]
+    assert sum(f[2] for f in bloco["fluxos"]) == 601_000
+    # só rotas acima do corte, das maiores para as menores, até TOP_ROTAS
+    assert [(x[0], x[3]) for x in bloco["rotas"]] == [("Canadá", 300_000), ("Rússia", 200_000)]
+    assert bloco["n_rotas"] == 4 and bloco["n_relevantes"] == 3
+    assert bloco["share_relevantes_pct"] == pytest.approx(99.8, abs=0.05)
+    assert bloco["frete_relevantes"] == pytest.approx(13_000_000 / 600_000, abs=0.05)
+
+
 # --- Base, gravação e dashboard.json --------------------------------------------------------
 
 
@@ -231,6 +284,11 @@ def test_gerar_grava_as_tabelas_e_um_dashboard_json_valido(tmp_path, monkeypatch
     ranking = painel["origens"]["dados"]["2025"]["TOTAL"]
     assert [linha_[1] for linha_ in ranking] == ["Rússia", "Outros"]
     assert sum(linha_[3] for linha_ in ranking) == pytest.approx(100, abs=0.05)
+    rotas = painel["rotas"]
+    assert rotas["corte_t"] == transform.CORTE_ROTA_T and set(rotas["dados"]) == {"2024", "2025"}
+    assert set(rotas["dados"]["2025"]) == {"N", "K", "TOTAL"}
+    total = rotas["dados"]["2025"]["TOTAL"]
+    assert sum(f[2] for f in total["fluxos"]) == painel["anual"]["TOTAL"]["t"][1]
 
 
 def test_dados_versionados_shares_somam_100(tmp_path):
@@ -241,3 +299,8 @@ def test_dados_versionados_shares_somam_100(tmp_path):
         somas = tabelas[nome].groupby(["ano", "grupo"])["share_t_pct"].sum()
         assert somas.to_numpy() == pytest.approx(100)
     assert tabelas["hhi_ano_grupo"]["hhi"].between(0, 10_000).all()
+    rotas = tabelas["rotas_ano"]
+    assert rotas.groupby(["ano", "grupo"])["share_t_pct"].sum().to_numpy() == pytest.approx(100)
+    totais = rotas.groupby(["ano", "grupo"])["toneladas"].sum()
+    origens = tabelas["share_origem_ano"].groupby(["ano", "grupo"])["toneladas"].sum()
+    assert totais.to_numpy() == pytest.approx(origens.reindex(totais.index).to_numpy())

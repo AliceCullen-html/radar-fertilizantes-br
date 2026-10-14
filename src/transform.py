@@ -11,6 +11,8 @@ Lê os dados brutos (data/raw/, via ingest.ler_raw) e o grupo de cada NCM
   anterior (YoY);
 - hhi_ano_grupo.csv: concentração de fornecedores (HHI) por ano e grupo;
 - sazonalidade_grupo.csv: média de toneladas por mês do calendário e grupo;
+- rotas_ano.csv: toneladas e frete US$/t por ano × grupo × país de origem × URF,
+  marcando as rotas com volume relevante (CORTE_ROTA_T);
 - troca_mensal.csv: relação de troca "no porto" entre soja exportada e KCl,
   ureia e MAP importados (src/troca.py), se houver dados de soja em
   data/raw_soja/;
@@ -52,6 +54,13 @@ VALORES = ["toneladas", "vl_fob", "vl_cif", "vl_frete", "vl_seguro"]
 PAIS = ["co_pais", "no_pais"]
 URF = ["co_urf", "no_urf"]
 TOP_DASHBOARD = 10  # origens e URFs por ano e grupo no dashboard.json; o resto vira "Outros"
+# Rota (país de origem -> URF) com volume relevante: pelo menos 50 mil t no ano, cerca de um
+# navio Supramax cheio, proporcional aos meses num ano parcial. Abaixo disso o frete US$/t
+# é ruidoso (cargas pequenas, conteinerizadas ou fracionadas) e as rotas somam ~10% do volume.
+CORTE_ROTA_T = 50_000
+TOP_SANKEY = 7  # origens e URFs por lado no diagrama de fluxo; o resto vira "Outros"...
+MIN_SHARE_SANKEY = 2.0  # ...assim como quem tem menos de 2% das toneladas do ano
+TOP_ROTAS = 20  # rotas relevantes por ano e grupo na tabela de frete do dashboard
 
 
 # --- Base ----------------------------------------------------------------------------------
@@ -203,6 +212,86 @@ def sazonalidade(base: pd.DataFrame) -> pd.DataFrame:
     return _ordenar(saz[colunas], ["grupo", "mes"])
 
 
+def rotas_anuais(base: pd.DataFrame) -> pd.DataFrame:
+    """Toneladas, valores e frete US$/t por ano × grupo × país de origem × URF.
+
+    `relevante` marca as rotas com pelo menos CORTE_ROTA_T toneladas no ano (num ano
+    parcial, o corte é proporcional aos meses com dados: 9 meses -> 37.500 t).
+    """
+    dados = com_total(base)
+    meses = meses_por_ano(base)
+    chaves = ["ano", "grupo", *PAIS, *URF]
+    df = _somar(dados, chaves).drop(columns="vl_seguro")
+    com_carga = dados[dados["toneladas"] > 0].groupby(chaves, dropna=False)["mes"].nunique()
+    df = df.merge(com_carga.rename("meses").reset_index(), on=chaves, how="left")
+    df["meses"] = df["meses"].fillna(0).astype("int64")
+    df["frete_usd_t"] = preco_por_tonelada(df["vl_frete"], df["toneladas"])
+    df["frete_pct_cif"] = (100 * df["vl_frete"] / df["vl_cif"]).where(df["vl_cif"] > 0)
+    df["share_t_pct"] = 100 * df["toneladas"] / df.groupby(["ano", "grupo"])["toneladas"].transform("sum")
+    df.insert(1, "n_meses", df["ano"].map(lambda ano: len(meses[ano])))
+    df["corte_t"] = (CORTE_ROTA_T * df["n_meses"] / 12).round()
+    df["relevante"] = df["toneladas"] >= df["corte_t"]
+    return _ordenar(df, ["ano", "grupo", "toneladas"], decrescentes=("toneladas",))
+
+
+def _bloco_rotas(g: pd.DataFrame) -> dict:
+    """Diagrama de fluxo (top origens -> top URFs, o resto em "Outros") e rotas relevantes de um ano × grupo."""
+    g = g[g["toneladas"] > 0]
+
+    def nos(entidade: list[str]) -> tuple[list[list], pd.Series]:
+        codigo, nome = entidade
+        tot = g.groupby(entidade, dropna=False, sort=False)["toneladas"].sum().sort_values(ascending=False, kind="mergesort")
+        top = tot.head(TOP_SANKEY)
+        top = top[100 * top >= MIN_SHARE_SANKEY * tot.sum()]
+        lista = [[_texto(c), _texto(n), _num(t, 0)] for (c, n), t in top.items()]
+        if len(tot) > len(top):
+            lista.append([None, "Outros", _num(tot.iloc[len(top):].sum(), 0)])
+        indice = {chave: i for i, chave in enumerate(top.index)}
+        posicao = pd.Series(
+            [indice.get(chave, len(top)) for chave in zip(g[codigo], g[nome])], index=g.index, dtype="int64"
+        )
+        return lista, posicao
+
+    origens, i_origem = nos(PAIS)
+    urfs, i_urf = nos(URF)
+    fluxos = (
+        g.assign(o=i_origem, u=i_urf)
+        .groupby(["o", "u"], as_index=False)[["toneladas", "vl_frete"]]
+        .sum()
+        .sort_values(["o", "u"])
+    )
+    fluxos["frete_usd_t"] = preco_por_tonelada(fluxos["vl_frete"], fluxos["toneladas"])
+    relevantes = g[g["relevante"]]
+    t_relevantes = relevantes["toneladas"].sum()
+    rotas = [
+        [
+            _texto(r["no_pais"]),
+            _texto(r["co_urf"]),
+            _texto(r["no_urf"]),
+            _num(r["toneladas"], 0),
+            _num(r["share_t_pct"], 2),
+            _num(r["frete_usd_t"], 1),
+            _num(r["frete_pct_cif"], 1),
+            int(r["meses"]),
+        ]
+        for _, r in relevantes.head(TOP_ROTAS).iterrows()
+    ]
+    return {
+        "origens": origens,
+        "urfs": urfs,
+        "fluxos": [
+            [int(r["o"]), int(r["u"]), _num(r["toneladas"], 0), _num(r["frete_usd_t"], 1)]
+            for _, r in fluxos.iterrows()
+        ],
+        "rotas": rotas,
+        "n_rotas": int(len(g)),
+        "n_relevantes": int(len(relevantes)),
+        "share_relevantes_pct": _num(relevantes["share_t_pct"].sum(), 1),
+        "frete_relevantes": _num(relevantes["vl_frete"].sum() / t_relevantes, 1) if t_relevantes > 0 else None,
+        "corte_t": _num(g["corte_t"].iloc[0], 0) if not g.empty else None,
+    }
+
+
 # --- Export para o dashboard -----------------------------------------------------------
 
 
@@ -341,6 +430,16 @@ def dashboard(tabelas: dict[str, pd.DataFrame]) -> dict:
         "urfs": {"colunas": colunas, "dados": rankings(urfs, "co_urf", "no_urf", False)},
         "sazonalidade": sazonal,
     }
+    if "rotas_ano" in tabelas:
+        rotas = tabelas["rotas_ano"]
+        painel["rotas"] = {
+            "corte_t": CORTE_ROTA_T,
+            "colunas_rotas": ["pais", "co_urf", "urf", "t", "share_pct", "frete_usd_t", "frete_pct_cif", "meses"],
+            "dados": {
+                str(ano): {grupo: _bloco_rotas(g) for grupo, g in rotas[rotas["ano"] == ano].groupby("grupo", sort=False)}
+                for ano in anos
+            },
+        }
     if "troca_mensal" in tabelas:
         painel["troca"] = troca.bloco_dashboard(tabelas["troca_mensal"], periodos, _num)
     return painel
@@ -380,6 +479,7 @@ def gerar(
     }
     tabelas["hhi_ano_grupo"] = concentracao(tabelas["share_origem_ano"])
     tabelas["sazonalidade_grupo"] = sazonalidade(base)
+    tabelas["rotas_ano"] = rotas_anuais(base)
     if soja is not None and not soja.empty:
         tabelas["troca_mensal"] = troca.relacao_troca(base, soja)
     saida.mkdir(parents=True, exist_ok=True)

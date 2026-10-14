@@ -97,6 +97,8 @@ O [dashboard](https://alicecullen-html.github.io/radar-fertilizantes-br/) é uma
 - KPIs do último mês e do acumulado do ano, comparados com o mesmo período do ano anterior;
 - toneladas mensais por grupo (N, P, K e NPK);
 - share por país de origem e ranking de portos (URF), com variação sobre o ano anterior;
+- [rotas país de origem → porto](#rotas-e-frete-por-rota): diagrama de fluxo (Sankey) por
+  grupo e ano e tabela de frete US$/t das rotas com volume relevante;
 - preço implícito US$/t FOB x CIF e frete US$/t;
 - [relação de troca no porto](#relação-de-troca-no-porto) entre soja e KCl, ureia e MAP, com a
   média histórica como referência;
@@ -165,8 +167,9 @@ independente à API, que filtra pelas posições SH4 em vez da lista de NCMs.
 | `share_urf_ano.csv` | ano × grupo × URF | o mesmo, por URF |
 | `hhi_ano_grupo.csv` | ano × grupo | HHI, número de origens, país líder e seu share, CR3 |
 | `sazonalidade_grupo.csv` | grupo × mês | média de toneladas por mês do calendário e índice sazonal |
+| `rotas_ano.csv` | ano × grupo × país × URF | [rotas](#rotas-e-frete-por-rota): toneladas, US$ FOB, CIF e frete, frete US$/t e % do CIF, share, meses com carga e se passa do corte de volume |
 | `troca_mensal.csv` | mês × produto | [relação de troca](#relação-de-troca-no-porto): preço CIF do fertilizante, preço FOB da soja, t de soja por t e sacas por t |
-| `dashboard.json` | — | export compacto para o dashboard: séries mensais, resumo anual, top 10 origens e URFs, sazonalidade, relação de troca |
+| `dashboard.json` | — | export compacto para o dashboard: séries mensais, resumo anual, top 10 origens e URFs, rotas, sazonalidade, relação de troca |
 
 Como os números são calculados:
 
@@ -184,6 +187,25 @@ Como os números são calculados:
   índice sazonal é a média do mês ÷ média dos 12 meses × 100.
 - `n_meses` marca anos parciais. As saídas são determinísticas: os mesmos dados geram
   arquivos idênticos.
+
+### Rotas e frete por rota
+
+Uma rota é o par país de origem → URF de desembaraço, somado no ano (`rotas_ano.csv`). O
+frete US$/t da rota é o frete total ÷ toneladas, isto é, a média ponderada pelo peso.
+
+- **Diagrama de fluxo:** as 7 maiores origens e as 7 maiores URFs de cada ano e grupo, desde
+  que tenham pelo menos 2% das toneladas; o resto entra em "Outros". A espessura é
+  proporcional às toneladas. É desenhado em SVG próprio, sem biblioteca externa.
+- **Corte de volume relevante:** a tabela de frete só mostra rotas com **pelo menos 50 mil t
+  no ano**, cerca de um navio Supramax cheio. Num ano parcial, o corte é proporcional aos
+  meses com dados (em 2026, jan-set: 37.500 t). Abaixo disso o frete por tonelada é
+  ruidoso, porque vem de cargas pequenas, em contêiner, fracionadas ou até aéreas: em
+  2025, o frete das rotas acima do corte ficou entre US$ 19 e 36/t (percentis 10 e 90),
+  enquanto 53 das 169 rotas com menos de 5 mil t passaram de US$ 100/t, e amostras de
+  poucos quilos por aeroporto passaram de US$ 10 mil/t. Mesmo assim, o corte guarda a maior
+  parte do volume: em 2025, 107 das 401 rotas com carga e 93,2% das toneladas.
+- O dashboard mostra as 20 maiores rotas acima do corte; todas, inclusive as abaixo dele
+  (coluna `relevante`), estão no CSV.
 
 ### Relação de troca no porto
 

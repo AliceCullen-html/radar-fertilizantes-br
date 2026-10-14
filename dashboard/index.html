@@ -118,7 +118,7 @@ header.topo p { margin: 0; color: var(--texto-2); }
 .chip .ponto { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .intervalo { display: flex; gap: 8px; flex-wrap: wrap; }
 .intervalo label { display: inline-flex; align-items: center; gap: 6px; color: var(--texto-2); font-size: 13px; }
-.intervalo select {
+.intervalo select, .seletor-ano select {
   min-height: 36px; padding: 0 8px; border: 1px solid var(--borda); border-radius: 8px;
   background: var(--superficie); color: var(--texto); font: inherit;
 }
@@ -127,6 +127,7 @@ header.topo p { margin: 0; color: var(--texto-2); }
 .cartao h2 { font-size: 15px; font-weight: 650; margin: 0; }
 .cartao .nota { margin: 2px 0 0; color: var(--texto-2); font-size: 13px; }
 .grade { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px; }
+.grade > * { min-width: 0; }
 @media (min-width: 900px) { .grade.duas { grid-template-columns: 1fr 1fr; } }
 
 .kpis .cabecalho { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; align-items: baseline; }
@@ -167,6 +168,21 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .kpi-linha.produtos { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 12px; }
 .kpi .titulo-produto { display: flex; align-items: center; gap: 6px; }
 .kpi .titulo-produto .ponto { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+
+.cabecalho-secao { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: flex-end; }
+.seletor-ano { display: inline-flex; align-items: center; gap: 6px; color: var(--texto-2); font-size: 13px; }
+.sankey { position: relative; width: 100%; margin-top: 12px; touch-action: pan-y; }
+.sankey svg { display: block; width: 100%; height: auto; overflow: visible; }
+.sankey .fita { fill-opacity: 0.32; transition: fill-opacity 120ms; }
+.sankey .fita.outros { fill-opacity: 0.4; }
+.sankey.focado .fita { fill-opacity: 0.08; }
+.sankey.focado .fita.ativa { fill-opacity: 0.72; }
+.sankey text { font-size: 12px; fill: var(--texto); }
+.sankey text .share { fill: var(--texto-3); }
+@media (prefers-reduced-motion: reduce) { .sankey .fita { transition: none; } }
+h3.subtitulo { font-size: 14px; font-weight: 650; margin: 20px 0 0; }
+.rolagem.alta { max-height: 640px; }
+td .barra { display: inline-block; height: 8px; border-radius: 2px; vertical-align: middle; }
 
 .aviso { padding: 16px; border: 1px solid var(--borda); border-radius: 12px; background: var(--superficie); }
 
@@ -264,6 +280,22 @@ footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
       </section>
     </div>
 
+    <section class="cartao grade" aria-labelledby="titulo-rotas" id="secao-rotas">
+      <div>
+        <div class="cabecalho-secao">
+          <div>
+            <h2 id="titulo-rotas">Rotas: país de origem → porto (URF)</h2>
+            <p class="nota" id="nota-rotas"></p>
+          </div>
+          <label class="seletor-ano">Ano <select id="filtro-ano-rotas"></select></label>
+        </div>
+        <div class="sankey" id="sankey" role="img"></div>
+        <h3 class="subtitulo" id="titulo-frete-rotas">Frete por rota</h3>
+        <p class="nota" id="nota-frete-rotas"></p>
+        <div class="rolagem alta" id="tabela-rotas"></div>
+      </div>
+    </section>
+
     <div class="grade duas">
       <section class="cartao" aria-labelledby="titulo-precos">
         <h2 id="titulo-precos">Preço implícito: FOB x CIF</h2>
@@ -307,6 +339,7 @@ footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
     <span class="fonte">Fonte: Comex Stat/MDIC</span>
     <span id="rodape-datas"></span>
     <span>Preço implícito = valor ÷ toneladas. HHI = soma dos quadrados dos shares por país de origem (0 a 10.000). Anos parciais são comparados com os mesmos meses do ano anterior.</span>
+    <span>Rotas: país de origem → URF de desembaraço, por ano. Na tabela de frete entram as rotas com pelo menos 50 mil t no ano (proporcional aos meses num ano parcial); a lista completa está em data/processed/rotas_ano.csv.</span>
     <span>Relação de troca = preço CIF do fertilizante importado (KCl NCM 31042090, ureia 31021010, MAP 31054000) ÷ preço FOB da soja em grão exportada (NCM 12019000) no mesmo mês; média histórica = média simples dos meses da série.</span>
     <span>Código e dados: <a href="https://github.com/AliceCullen-html/radar-fertilizantes-br">github.com/AliceCullen-html/radar-fertilizantes-br</a></span>
   </footer>
@@ -328,7 +361,8 @@ const PRESETS = [
   { id: "tudo", rotulo: "Tudo", meses: null },
 ];
 
-const estado = { grupo: "TOTAL", de: null, ate: null };
+// anoRotas: ano escolhido no diagrama de rotas; null segue o ano do fim do período.
+const estado = { grupo: "TOTAL", de: null, ate: null, anoRotas: null };
 const graficos = {};
 let dados = null;
 
@@ -558,32 +592,39 @@ const pluginLimiar = {
 };
 
 // Dica (tooltip) em HTML: valor em destaque, série em segundo plano; texto sempre via textContent.
+function preencherDica({ titulo, linhas, extras = [] }) {
+  const caixa = document.getElementById("dica");
+  caixa.replaceChildren(
+    el("div", { classe: "titulo" }, titulo),
+    ...linhas.map(({ corSerie, valor, serie }) => {
+      const chave = el("span", { classe: "chave" });
+      chave.style.background = corSerie;
+      return el("div", { classe: "linha" }, chave, el("strong", {}, valor), el("span", { classe: "serie" }, serie));
+    }),
+    ...extras.map((t) => el("div", { classe: "extra" }, t)),
+  );
+  caixa.hidden = false;
+  return caixa;
+}
+// Posição em coordenadas da janela (clientX/clientY), sem sair da tela.
+function posicionarDica(caixa, cx, cy) {
+  const largura = caixa.offsetWidth, altura = caixa.offsetHeight;
+  let x = cx + 14;
+  if (x + largura > window.innerWidth - 8) x = cx - largura - 14;
+  const y = Math.min(Math.max(8, cy - altura / 2), window.innerHeight - altura - 8);
+  caixa.style.left = `${Math.max(8, x)}px`;
+  caixa.style.top = `${y}px`;
+}
+const esconderDica = () => { document.getElementById("dica").hidden = true; };
 function dicaExterna(montar) {
   return ({ chart, tooltip }) => {
-    const caixa = document.getElementById("dica");
     if (tooltip.opacity === 0 || !tooltip.dataPoints?.length) {
-      caixa.hidden = true;
+      esconderDica();
       return;
     }
-    const { titulo, linhas, extras = [] } = montar(tooltip.dataPoints);
-    caixa.replaceChildren(
-      el("div", { classe: "titulo" }, titulo),
-      ...linhas.map(({ corSerie, valor, serie }) => {
-        const chave = el("span", { classe: "chave" });
-        chave.style.background = corSerie;
-        return el("div", { classe: "linha" }, chave, el("strong", {}, valor), el("span", { classe: "serie" }, serie));
-      }),
-      ...extras.map((t) => el("div", { classe: "extra" }, t)),
-    );
-    caixa.hidden = false;
+    const caixa = preencherDica(montar(tooltip.dataPoints));
     const r = chart.canvas.getBoundingClientRect();
-    const largura = caixa.offsetWidth, altura = caixa.offsetHeight;
-    let x = r.left + tooltip.caretX + 14;
-    if (x + largura > window.innerWidth - 8) x = r.left + tooltip.caretX - largura - 14;
-    let y = r.top + tooltip.caretY - altura / 2;
-    y = Math.min(Math.max(8, y), window.innerHeight - altura - 8);
-    caixa.style.left = `${Math.max(8, x)}px`;
-    caixa.style.top = `${y}px`;
+    posicionarDica(caixa, r.left + tooltip.caretX, r.top + tooltip.caretY);
   };
 }
 
@@ -768,6 +809,169 @@ function desenharRanking({ tipo, idCanvas, idCaixa, idNota, idTabela }) {
     const base = [r[1] === "Outros" ? "" : String(i + 1), nomeDe(r), fmt0.format(r[2]), pct(r[3]), variacao(r[4]), variacao(r[5], " p.p.")];
     return tipo === "origens" ? [...base, nulo(r[6]) ? "–" : fmt0.format(r[6])] : base;
   }));
+}
+
+// --- Rotas: diagrama de fluxo (Sankey) em SVG próprio e frete por rota -----------------------
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svg(tag, atributos = {}, ...filhos) {
+  const no = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(atributos)) no.setAttribute(k, v);
+  for (const f of filhos) no.append(f instanceof Node ? f : document.createTextNode(String(f)));
+  return no;
+}
+const anoRotas = () => estado.anoRotas ?? Number(estado.ate.slice(0, 4));
+const abreviar = (nome, max) => (nome.length > max ? `${nome.slice(0, max - 1)}…` : nome);
+const varGrupo = (g) => (g === "TOTAL" ? "--g-total" : `--g-${g.toLowerCase()}`);
+
+function desenharRotas() {
+  const rotas = dados.rotas;
+  document.getElementById("secao-rotas").classList.toggle("oculto", !rotas);
+  if (!rotas) return;
+  const g = chaveGrupo();
+  const ano = anoRotas();
+  document.getElementById("filtro-ano-rotas").value = String(ano);
+  const bloco = rotas.dados[String(ano)]?.[g];
+  const nOrigens = bloco ? bloco.origens.filter((o) => o[1] !== "Outros").length : 0;
+  const nUrfs = bloco ? bloco.urfs.filter((u) => u[1] !== "Outros").length : 0;
+  texto("nota-rotas", `${NOMES[g]} · ${rotuloAno(ano)} · espessura = toneladas · ${nOrigens} maiores origens e ${nUrfs} maiores URFs; o resto em Outros`);
+  desenharSankey(bloco, g, ano);
+  tabelaRotas(bloco, g, ano);
+}
+
+function desenharSankey(bloco, g, ano) {
+  const caixa = document.getElementById("sankey");
+  caixa.classList.remove("focado");
+  if (!bloco || !bloco.fluxos.length) {
+    caixa.replaceChildren(el("p", { classe: "nota" }, "Sem importações neste ano e grupo."));
+    caixa.setAttribute("aria-label", "Sem importações neste ano e grupo.");
+    return;
+  }
+  const largura = Math.max(280, Math.round(caixa.clientWidth));
+  const curto = largura < 560;
+  const n = Math.max(bloco.origens.length, bloco.urfs.length);
+  const altura = Math.max(curto ? 280 : 320, n * (curto ? 38 : 46));
+  const esq = curto ? 84 : 176, dir = curto ? 98 : 214, larguraNo = 10, vao = curto ? 6 : 8;
+  const total = bloco.origens.reduce((s, o) => s + o[2], 0);
+  const escala = Math.min(...[bloco.origens, bloco.urfs].map((lado) => (altura - vao * (lado.length - 1)) / total));
+  const posicoes = (lado) => {
+    const usado = lado.reduce((s, x) => s + x[2] * escala, 0) + vao * (lado.length - 1);
+    let y = (altura - usado) / 2;
+    return lado.map((x) => {
+      const p = { y, h: Math.max(2, x[2] * escala), livre: y };
+      y += x[2] * escala + vao;
+      return p;
+    });
+  };
+  const pO = posicoes(bloco.origens), pU = posicoes(bloco.urfs);
+  const x0 = esq + larguraNo, x1 = largura - dir - larguraNo, xm = (x0 + x1) / 2;
+  const nomeO = (i) => bloco.origens[i][1];
+  const nomeU = (i) => (bloco.urfs[i][1] === "Outros" ? "Outros" : nomeCurtoUrf(bloco.urfs[i][1]));
+  const fitas = bloco.fluxos.map(([o, u, t, frete]) => ({ o, u, t, frete, h: t * escala }));
+  // Empilha as fitas na ordem dos nós do outro lado, para não se cruzarem à toa.
+  [...fitas].sort((a, b) => a.o - b.o || a.u - b.u).forEach((f) => { f.ys = pO[f.o].livre; pO[f.o].livre += f.h; });
+  [...fitas].sort((a, b) => a.u - b.u || a.o - b.o).forEach((f) => { f.yt = pU[f.u].livre; pU[f.u].livre += f.h; });
+  const corBase = `var(${varGrupo(g)})`;
+  const ehOutros = (f) => nomeO(f.o) === "Outros" || bloco.urfs[f.u][1] === "Outros";
+
+  const camadaFitas = svg("g", {});
+  const porFita = new Map();
+  for (const f of [...fitas].sort((a, b) => b.t - a.t)) {
+    const d = `M${x0},${f.ys} C${xm},${f.ys} ${xm},${f.yt} ${x1},${f.yt} L${x1},${f.yt + f.h} C${xm},${f.yt + f.h} ${xm},${f.ys + f.h} ${x0},${f.ys + f.h} Z`;
+    const caminho = svg("path", { d, class: `fita${ehOutros(f) ? " outros" : ""}`, fill: ehOutros(f) ? "var(--outros)" : corBase });
+    porFita.set(caminho, f);
+    camadaFitas.append(caminho);
+  }
+  const camadaNos = svg("g", {});
+  const rotulo = (nome, t, x, y, ancora) => {
+    const no = svg("text", { x, y, "text-anchor": ancora, "dominant-baseline": "middle" }, abreviar(nome, curto ? 12 : 24));
+    if (!curto) no.append(svg("tspan", { class: "share" }, ` ${pct((100 * t) / total)}`));
+    return no;
+  };
+  // Centro de cada rótulo, afastando os vizinhos de nós finos para não se sobreporem.
+  const centros = (pos) => {
+    const ys = pos.map((p) => p.y + p.h / 2);
+    const minimo = curto ? 13 : 15;
+    for (let k = 1; k < ys.length; k++) ys[k] = Math.max(ys[k], ys[k - 1] + minimo);
+    const excesso = ys.length ? ys[ys.length - 1] - (altura - 6) : 0;
+    if (excesso > 0) for (let k = ys.length - 1; k >= 0; k--) ys[k] = Math.min(ys[k] - excesso, k < ys.length - 1 ? ys[k + 1] - minimo : Infinity);
+    return ys;
+  };
+  const yO = centros(pO), yU = centros(pU);
+  const alvos = new Map(); // nó ou rótulo -> { lado, i }
+  bloco.origens.forEach((o, i) => {
+    const no = svg("rect", { x: esq, y: pO[i].y, width: larguraNo, height: pO[i].h, rx: 2, fill: o[1] === "Outros" ? "var(--outros)" : corBase });
+    const r = rotulo(nomeO(i), o[2], esq - 6, yO[i], "end");
+    alvos.set(no, { lado: "o", i }).set(r, { lado: "o", i });
+    camadaNos.append(no, r);
+  });
+  bloco.urfs.forEach((u, i) => {
+    const no = svg("rect", { x: x1, y: pU[i].y, width: larguraNo, height: pU[i].h, rx: 2, fill: u[1] === "Outros" ? "var(--outros)" : corBase });
+    const r = rotulo(nomeU(i), u[2], x1 + larguraNo + 6, yU[i], "start");
+    alvos.set(no, { lado: "u", i }).set(r, { lado: "u", i });
+    camadaNos.append(no, r);
+  });
+  const desenho = svg("svg", { viewBox: `0 0 ${largura} ${altura}`, width: largura, height: altura, "aria-hidden": "true" }, camadaFitas, camadaNos);
+  caixa.replaceChildren(desenho);
+  const maiores = [...fitas].filter((f) => !ehOutros(f)).sort((a, b) => b.t - a.t).slice(0, 3);
+  caixa.setAttribute("aria-label", `Fluxo das importações, ${NOMES[g]}, ${rotuloAno(ano)}: das maiores origens para as maiores URFs. Maiores rotas: ${maiores.map((f) => `${nomeO(f.o)} para ${nomeU(f.u)}, ${toneladas(f.t)}`).join("; ")}. A tabela abaixo traz o frete por rota.`);
+
+  // Destaque e dica ao passar o mouse (ou tocar) numa fita ou num nó.
+  const corDica = cor(varGrupo(g));
+  const conteudo = (alvo) => {
+    const f = porFita.get(alvo);
+    if (f) {
+      const extras = [`Frete: ${porTonelada(f.frete)}`];
+      if (ehOutros(f)) extras.push("Outros soma as demais origens ou URFs; o frete é a média ponderada.");
+      return { titulo: `${nomeO(f.o)} → ${nomeU(f.u)}`, linhas: [{ corSerie: ehOutros(f) ? cor("--outros") : corDica, valor: toneladas(f.t), serie: `${pct((100 * f.t) / total)} do ano` }], extras };
+    }
+    const { lado, i } = alvos.get(alvo);
+    const no = lado === "o" ? bloco.origens[i] : bloco.urfs[i];
+    const nome = lado === "o" ? nomeO(i) : nomeU(i);
+    const ligadas = fitas.filter((x) => x[lado] === i).sort((a, b) => b.t - a.t).slice(0, 3);
+    const extras = ligadas.map((x) => `${lado === "o" ? `→ ${nomeU(x.u)}` : `${nomeO(x.o)} →`}: ${pct((100 * x.t) / no[2])}`);
+    return { titulo: nome, linhas: [{ corSerie: nome === "Outros" ? cor("--outros") : corDica, valor: toneladas(no[2]), serie: `${pct((100 * no[2]) / total)} do ano` }], extras };
+  };
+  const destacar = (alvo) => {
+    const f = porFita.get(alvo);
+    const no = alvos.get(alvo);
+    caixa.classList.add("focado");
+    for (const [caminho, x] of porFita) caminho.classList.toggle("ativa", f ? caminho === alvo : x[no.lado] === no.i);
+  };
+  const soltar = () => { caixa.classList.remove("focado"); esconderDica(); };
+  desenho.addEventListener("pointermove", (evento) => {
+    const alvo = porFita.has(evento.target) || alvos.has(evento.target) ? evento.target : null;
+    if (!alvo) { soltar(); return; }
+    destacar(alvo);
+    posicionarDica(preencherDica(conteudo(alvo)), evento.clientX, evento.clientY);
+  });
+  desenho.addEventListener("pointerleave", soltar);
+}
+
+function tabelaRotas(bloco, g, ano) {
+  const corte = bloco?.corte_t ?? dados.rotas.corte_t;
+  texto("titulo-frete-rotas", `Frete por rota · ${rotuloAno(ano)}`);
+  if (!bloco || !bloco.rotas.length) {
+    texto("nota-frete-rotas", `Nenhuma rota com pelo menos ${fmt0.format(corte)} t neste ano e grupo.`);
+    document.getElementById("tabela-rotas").replaceChildren();
+    return;
+  }
+  const proporcional = anoParcial(ano) ? ` (${fmt0.format(dados.rotas.corte_t)} t × ${nMeses(ano)}/12 meses)` : "";
+  texto("nota-frete-rotas", `Só rotas com volume relevante: pelo menos ${fmt0.format(corte)} t no ano${proporcional}, cerca de um navio Supramax. São ${bloco.n_relevantes} de ${bloco.n_rotas} rotas e ${pct(bloco.share_relevantes_pct)} das toneladas; frete médio delas: ${porTonelada(bloco.frete_relevantes)}. Mostrando as ${bloco.rotas.length} maiores; todas estão em data/processed/rotas_ano.csv.`);
+  const maxFrete = Math.max(...bloco.rotas.map((r) => r[5] ?? 0), 1);
+  const corBarra = comAlfa(cor(varGrupo(g)), 0.5);
+  const colunas = [["#"], ["Origem"], ["URF"], ["Toneladas", true], ["Share", true], ["Frete US$/t", true], [""], ["Frete no CIF", true], ["Meses", true]];
+  const thead = el("thead", {}, el("tr", {}, ...colunas.map(([t, num]) => el("th", num ? { classe: "num" } : {}, t))));
+  const tbody = el("tbody", {}, ...bloco.rotas.map((r, i) => {
+    const barra = el("span", { classe: "barra" });
+    barra.style.width = `${Math.round((64 * (r[5] ?? 0)) / maxFrete)}px`;
+    barra.style.background = corBarra;
+    return el("tr", {},
+      el("td", {}, String(i + 1)), el("td", {}, r[0] ?? "–"), el("td", {}, r[2] ? nomeUrf(r[2]) : "–"),
+      el("td", { classe: "num" }, fmt0.format(r[3])), el("td", { classe: "num" }, pct(r[4])),
+      el("td", { classe: "num" }, nulo(r[5]) ? "–" : fmt0.format(r[5])), el("td", {}, barra),
+      el("td", { classe: "num" }, pct(r[6])), el("td", { classe: "num" }, `${r[7]}/${nMeses(ano)}`));
+  }));
+  document.getElementById("tabela-rotas").replaceChildren(el("table", {}, thead, tbody));
 }
 
 function serieMensal(indices, campo) {
@@ -1049,15 +1253,20 @@ function montarFiltros() {
   }));
   document.getElementById("filtro-periodo").replaceChildren(...PRESETS.map((pr) => {
     const botao = el("button", { type: "button", classe: "chip", "data-preset": pr.id }, pr.rotulo);
-    botao.addEventListener("click", () => { aplicarPreset(pr); atualizar(); });
+    botao.addEventListener("click", () => { aplicarPreset(pr); estado.anoRotas = null; atualizar(); });
     return botao;
   }));
   const opcoes = () => periodos().map((p) => el("option", { value: p }, rotuloMes(p)));
   const de = document.getElementById("filtro-de"), ate = document.getElementById("filtro-ate");
   de.replaceChildren(...opcoes());
   ate.replaceChildren(...opcoes());
-  de.addEventListener("change", () => { estado.de = de.value; if (estado.de > estado.ate) estado.ate = estado.de; atualizar(); });
-  ate.addEventListener("change", () => { estado.ate = ate.value; if (estado.ate < estado.de) estado.de = estado.ate; atualizar(); });
+  de.addEventListener("change", () => { estado.de = de.value; if (estado.de > estado.ate) estado.ate = estado.de; estado.anoRotas = null; atualizar(); });
+  ate.addEventListener("change", () => { estado.ate = ate.value; if (estado.ate < estado.de) estado.de = estado.ate; estado.anoRotas = null; atualizar(); });
+  if (dados.rotas) {
+    const anoSel = document.getElementById("filtro-ano-rotas");
+    anoSel.replaceChildren(...[...dados.anual.anos].reverse().map((a) => el("option", { value: String(a) }, rotuloAno(a))));
+    anoSel.addEventListener("change", () => { estado.anoRotas = Number(anoSel.value); esconderDica(); desenharRotas(); });
+  }
 }
 
 function sincronizarFiltros() {
@@ -1085,6 +1294,7 @@ function atualizar() {
   desenharToneladas(indices);
   desenharRanking({ tipo: "origens", idCanvas: "grafico-origens", idCaixa: "caixa-origens", idNota: "nota-origens", idTabela: "tabela-origens" });
   desenharRanking({ tipo: "portos", idCanvas: "grafico-portos", idCaixa: "caixa-portos", idNota: "nota-portos", idTabela: "tabela-portos" });
+  desenharRotas();
   desenharPrecos(indices);
   desenharFrete(indices);
   desenharTroca(indices);
@@ -1152,6 +1362,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     if ((window.innerWidth <= 600) !== (largura <= 600)) atualizar();
     largura = window.innerWidth;
   });
+  // O SVG do diagrama de rotas é desenhado na largura da caixa: redesenha quando ela muda.
+  let larguraSankey = document.getElementById("sankey").clientWidth;
+  new ResizeObserver(([entrada]) => {
+    const nova = Math.round(entrada.contentRect.width);
+    if (Math.abs(nova - larguraSankey) < 8 || !dados.rotas) return;
+    larguraSankey = nova;
+    desenharSankey(dados.rotas.dados[String(anoRotas())]?.[chaveGrupo()], chaveGrupo(), anoRotas());
+  }).observe(document.getElementById("sankey"));
 });
 </script>
 </body>

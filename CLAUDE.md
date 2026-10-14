@@ -59,6 +59,9 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
   linhas, 1,6 MB). A coluna `ano` fica no caminho, não dentro do arquivo; leia com
   `src.ingest.ler_raw()`. A exportação de soja em grão (NCM 12019000, só FOB e kg) fica em
   `data/raw_soja/ano=AAAA/exportacoes.parquet`; leia com `src.ingest.ler_soja()`.
+- Rotas (`rotas_ano.csv` e bloco "rotas" do dashboard.json): país de origem → URF por ano.
+  Frete por rota só para rotas com ≥ 50 mil t no ano (`CORTE_ROTA_T`, proporcional em ano
+  parcial). O Sankey é SVG próprio, sem lib externa.
 - Relação de troca (`src/troca.py`): preço CIF de KCl 31042090, ureia 31021010 e MAP
   31054000 ÷ preço FOB da soja no mesmo mês. É "no porto", não o preço ao produtor; dizer
   isso em toda saída pública que a mostrar.
