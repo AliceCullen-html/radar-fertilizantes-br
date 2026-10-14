@@ -1,5 +1,7 @@
 # radar-fertilizantes-br
 
+[![CI](https://github.com/AliceCullen-html/radar-fertilizantes-br/actions/workflows/ci.yml/badge.svg)](https://github.com/AliceCullen-html/radar-fertilizantes-br/actions/workflows/ci.yml)
+
 Radar das importações brasileiras de fertilizantes, feito apenas com dados públicos do
 [Comex Stat](https://comexstat.mdic.gov.br/), do Ministério do Desenvolvimento, Indústria,
 Comércio e Serviços (MDIC).
@@ -15,7 +17,7 @@ pela tonelada de MAP?
 
 Cada linha traz país de origem, NCM, UF, via de transporte e URF (unidade da Receita
 Federal onde a carga foi desembaraçada), com valor US$ FOB, peso líquido em kg, valor
-US$ CIF, frete e seguro.
+US$ CIF, frete e seguro. O repositório já inclui a série de 2015-01 a 2026-09.
 
 ### Produtos acompanhados
 
@@ -39,31 +41,33 @@ Requer Python 3.10 ou mais recente.
 python -m venv .venv
 source .venv/bin/activate        # no Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python -m src.ingest --inicio 2025-01 --fim 2025-03
+python -m src.ingest --inicio 2015-01   # baixa só os meses que faltam em data/raw/
+python -m src.transform                 # gera as tabelas de data/processed/
 ```
 
-A ingestão é incremental: só consulta os meses que ainda não estão em `data/raw/`.
-Ao final, imprime um resumo do período. Saída da execução de teste:
+A ingestão é incremental: só consulta os meses que ainda não estão em `data/raw/`, uma
+consulta por ano. Ao final, imprime um resumo do período. Saída da carga de 2015-01 a
+2026-09:
 
 ```text
-Resumo 2025-01 a 2025-03 (Fonte: Comex Stat/MDIC)
-  Linhas: 1.245 | meses: 3 | NCMs: 30
-  Total: 7.887.708 t | US$ FOB 2.465.674.057 | US$ CIF 2.681.476.795
+Resumo 2015-01 a 2026-09 (Fonte: Comex Stat/MDIC)
+  Linhas: 61.460 | meses: 141 | NCMs: 38
+  Total: 405.882.785 t | US$ FOB 140.294.506.174 | US$ CIF 152.229.591.323
   Top 5 países de origem por kg líquido:
-    1. Rússia                            2.475.427 t   31,4%
-    2. China                             1.789.967 t   22,7%
-    3. Canadá                              770.746 t    9,8%
-    4. Nigéria                             442.081 t    5,6%
-    5. Marrocos                            338.982 t    4,3%
+    1. Rússia                           90.368.607 t   22,3%
+    2. China                            59.228.818 t   14,6%
+    3. Canadá                           46.808.647 t   11,5%
+    4. Marrocos                         24.761.403 t    6,1%
+    5. Estados Unidos                   21.303.111 t    5,2%
   Top 5 URFs por kg líquido:
-    1. 0917800 PORTO DE PARANAGUA                2.001.060 t   25,4%
-    2. 0817800 PORTO DE SANTOS                   1.179.645 t   15,0%
-    3. 1017700 PORTO DE RIO GRANDE               1.121.599 t   14,2%
-    4. 0517800 ALF - SALVADOR                      632.583 t    8,0%
-    5. 0317903 IRF SAO LUIS                        598.648 t    7,6%
+    1. 0917800 PORTO DE PARANAGUA              113.356.690 t   27,9%
+    2. 0817800 PORTO DE SANTOS                  78.152.511 t   19,3%
+    3. 1017700 PORTO DE RIO GRANDE              60.390.026 t   14,9%
+    4. 0927700 PORTO DE SAO FRANCISCO DO SUL    27.426.288 t    6,8%
+    5. 0727600 PORTO DE VITORIA                 23.347.338 t    5,8%
 ```
 
-| Opção | O que faz |
+| Opção da ingestão | O que faz |
 | --- | --- |
 | `--inicio AAAA-MM` | primeiro mês (a série mensal começa em 1997-01) |
 | `--fim AAAA-MM` | último mês; o padrão é o último mês publicado pelo MDIC |
@@ -72,13 +76,9 @@ Resumo 2025-01 a 2025-03 (Fonte: Comex Stat/MDIC)
 | `--pausa SEG` | pausa mínima entre chamadas à API (padrão: 10 s) |
 | `--ssl-inseguro` | último recurso para problemas de certificado; veja [SSL](#ssl) |
 
-Para baixar o histórico completo, use `python -m src.ingest --inicio 1997-01`. São
-algumas dezenas de consultas (uma por ano) e alguns minutos, por causa do limite de
-requisições da API.
+## Dados brutos
 
-## Dados gerados
-
-Os dados brutos ficam em Parquet, particionados por ano no estilo Hive:
+Ficam em Parquet, particionados por ano no estilo Hive:
 `data/raw/ano=AAAA/importacoes.parquet`. A coluna `ano` fica no caminho, não dentro do
 arquivo.
 
@@ -104,16 +104,54 @@ from src.ingest import ler_raw
 df = ler_raw()
 ```
 
-O repositório traz a amostra de 2025-01 a 2025-03 (cerca de 40 KB). O histórico completo
-desde 1997 deve ocupar poucos MB, então `data/raw/` continua versionado. Se passar de
-~20 MB, a pasta vai para o `.gitignore` e os dados passam a ser gerados localmente com os
-comandos acima.
+A série de 2015-01 a 2026-09 tem 61.460 linhas e ocupa 1,6 MB, por isso `data/raw/`
+continua versionado. Se passar de ~20 MB, a pasta vai para o `.gitignore` e os dados
+passam a ser gerados localmente com os comandos acima. Os totais anuais de kg, US$ FOB,
+US$ CIF, frete e seguro foram conferidos, até a unidade, com uma consulta agregada
+independente à API, que filtra pelas posições SH4 em vez da lista de NCMs.
+
+## Tabelas analíticas (fase 2)
+
+`python -m src.transform` lê `data/raw/` e grava em `data/processed/`:
+
+| Arquivo | Grão | Conteúdo |
+| --- | --- | --- |
+| `precos_mes_grupo_origem.csv` | mês × grupo × país | toneladas, US$ FOB, CIF e frete, e os preços implícitos em US$/t |
+| `precos_mes_grupo.csv` | mês × grupo | o mesmo, somando todas as origens |
+| `share_origem_ano.csv` | ano × grupo × país | toneladas, share, variação sobre o ano anterior (% e p.p.), US$/t FOB |
+| `share_urf_ano.csv` | ano × grupo × URF | o mesmo, por URF |
+| `hhi_ano_grupo.csv` | ano × grupo | HHI, número de origens, país líder e seu share, CR3 |
+| `sazonalidade_grupo.csv` | grupo × mês | média de toneladas por mês do calendário e índice sazonal |
+| `dashboard.json` | — | export compacto para o dashboard: séries mensais, resumo anual, top 10 origens e URFs, sazonalidade |
+
+Como os números são calculados:
+
+- **Preço implícito:** valor total ÷ toneladas, ou seja, média ponderada pelo peso.
+  Células com poucas toneladas podem ter preços extremos; use a coluna `toneladas` para
+  filtrar.
+- **Share:** participação nas toneladas do ano e do grupo. O grupo `TOTAL` soma N, P, K e
+  NPK.
+- **Variação sobre o ano anterior:** compara sempre os mesmos meses. Em 2026 (jan-set), a
+  base é jan-set de 2025. Quem importou no ano anterior e parou aparece com zero.
+- **HHI (Herfindahl-Hirschman):** soma dos quadrados dos shares, em %, por país de origem,
+  de 0 a 10.000. Como referência, as diretrizes de fusões dos EUA (2023) consideram
+  altamente concentrado um mercado com HHI acima de 1.800.
+- **Sazonalidade:** média de toneladas de cada mês nos anos completos (2015 a 2025). O
+  índice sazonal é a média do mês ÷ média dos 12 meses × 100.
+- `n_meses` marca anos parciais. As saídas são determinísticas: os mesmos dados geram
+  arquivos idênticos.
 
 ## Observações sobre os dados e a API
 
 - **URF não é exatamente o porto.** É a unidade da Receita onde a mercadoria foi
   desembaraçada. Para fertilizantes, quase sempre é o porto de chegada, mas pode ser um
   porto seco ou uma unidade no interior.
+- **Códigos de URF mudam com o tempo.** A Receita reorganiza suas unidades. Na série,
+  `PORTO DE SAO LUIS` some e `IRF SAO LUIS` aparece; o mesmo acontece entre
+  `PORTO DE ARATU` e `ALF - SALVADOR`. Em séries longas por porto, agrupe por Região
+  Fiscal (os dois primeiros dígitos do código) ou revise os nomes.
+- **Consultas de vários anos.** Num período como 2015-01 a 2026-09, a API soma, em cada
+  ano, só os meses do intervalo (jan a set). Por isso a ingestão consulta um ano por vez.
 - **Limite de requisições.** A API responde HTTP 429 a chamadas seguidas. O cliente faz
   uma pausa de 10 s entre chamadas e repete com backoff exponencial (10, 20, 40... s),
   respeitando o tempo pedido pela API.
@@ -145,14 +183,19 @@ python -m pytest        # os testes não acessam a rede
 O hook do gitleaks é compilado em Go; o pre-commit usa o Go instalado ou baixa um
 automaticamente.
 
+O [CI](.github/workflows/ci.yml) roda em todo push e pull request: os testes em Python
+3.10 e 3.13 e o gitleaks em todo o histórico do repositório. O workflow só tem permissão
+de leitura e não usa nenhum segredo.
+
 Segredos nunca entram no repositório. Qualquer chave futura, como a da fase 5, é lida
 apenas de variáveis de ambiente. Os nomes estão em [`.env.example`](.env.example).
 
 ## Roadmap
 
 - [x] **Fase 1:** ingestão incremental via API do Comex Stat (`src/ingest.py`).
-- [ ] **Fase 2:** `src/transform.py` com preço médio em US$/t e share por país de origem.
-- [ ] **Fase 3:** dashboard estático no GitHub Pages.
+- [x] **Fase 2:** `src/transform.py` com preço US$/t, shares com variação anual, HHI,
+  sazonalidade e o `dashboard.json`.
+- [ ] **Fase 3:** dashboard estático no GitHub Pages, lendo `data/processed/dashboard.json`.
 - [ ] **Fase 4:** GitHub Action mensal para atualizar os dados.
 - [ ] **Fase 5:** boletim mensal com IA (opcional; a chave vem só de variável de ambiente).
 

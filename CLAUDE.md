@@ -42,16 +42,24 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
 
 ## Como trabalhar aqui
 
+- Trabalhar a partir de `main`, o branch padrão no GitHub. Force-push só com autorização
+  explícita.
 - Python 3.10+. Dependências em `requirements.txt` (requests, pandas, pyarrow); as de
   desenvolvimento em `requirements-dev.txt`.
 - Testes: `python -m pytest`. Eles não acessam a rede (a API é simulada).
+- CI (`.github/workflows/ci.yml`): pytest em Python 3.10 (pandas 2) e 3.13 (pandas 3) e
+  gitleaks em todo o histórico, em push e PR. Só leitura e sem nenhum segredo.
 - Ingestão: `python -m src.ingest --inicio AAAA-MM [--fim AAAA-MM]`. Opções em
   `python -m src.ingest --help`.
-- Dados brutos: `data/raw/ano=AAAA/importacoes.parquet`. A coluna `ano` fica no caminho,
-  não dentro do arquivo; leia com `src.ingest.ler_raw()`.
+- Dados brutos: `data/raw/ano=AAAA/importacoes.parquet`, de 2015-01 a 2026-09 (61.460
+  linhas, 1,6 MB). A coluna `ano` fica no caminho, não dentro do arquivo; leia com
+  `src.ingest.ler_raw()`.
+- Fase 2: `python -m src.transform` gera em `data/processed/` os CSVs de preço US$/t,
+  shares por origem e URF com variação anual, HHI, sazonalidade e o `dashboard.json`.
+  As saídas são determinísticas; regenere-as sempre que `data/raw/` mudar.
 - Não commitar dados grandes: se `data/raw/` passar de ~20 MB, colocá-lo no `.gitignore`
   e explicar no README como gerar.
-- Roadmap: 1 ingestão (feita) → 2 transform (US$/t, share por origem) → 3 dashboard no
+- Roadmap: 1 ingestão (feita) → 2 transform (feita) → 3 dashboard no
   GitHub Pages → 4 GitHub Action mensal → 5 boletim com IA opcional. Não adiantar fases
   sem pedido.
 
@@ -69,6 +77,10 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
   e `/tables/ways`. Da UF guardamos a sigla, porque os ids da API não são os do IBGE.
 - `/tables/ncm?search=3102&add=sh` busca por trecho do código (casa até 61031020), então é
   preciso filtrar por `headingCode`. A tabela inclui NCMs antigos e cobre a série desde 1997.
+- Num período de vários anos, a API soma em cada ano só os meses do intervalo
+  (2015-01 a 2026-09 traz jan-set de cada ano). Por isso a ingestão consulta um ano por vez.
+- Os códigos de URF mudam com reorganizações da Receita (ex.: `PORTO DE SAO LUIS` some e
+  `IRF SAO LUIS` aparece). Em séries longas, agrupar por Região Fiscal (2 primeiros dígitos).
 - Rate limit agressivo: HTTP 429 com "tente novamente em 10 segundos" e sem `Retry-After`.
   O cliente faz pausa de 10 s entre chamadas e backoff exponencial. Uma consulta por ano
   (~5,3 mil linhas, ~2 s).
