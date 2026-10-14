@@ -91,6 +91,7 @@ jobs:
           fi
 
       - name: Ingestão incremental (Comex Stat, Pink Sheet e PTAX)
+        id: ingestao
         if: steps.checar.outputs.falta == 'true'
         timeout-minutes: 30
         run: |
@@ -116,6 +117,10 @@ jobs:
           echo "Comex Stat até ${limite} (Pink Sheet até ${pink}, PTAX até ${ptax})." | tee -a "$log"
           python -m src.ingest --inicio 2015-01 --fim "${limite}" --serie fertilizantes 2>&1 | tee -a "$log" || falhou
           python -m src.ingest --inicio 2015-01 --fim "${limite}" --serie soja 2>&1 | tee -a "$log" || falhou
+          # Para o aviso: o Comex Stat segurado em ${limite} não é uma fonte atrasada.
+          comex="$(sed -nE 's/.*Último mês publicado na API: ([0-9]{4}-(0[1-9]|1[0-2]))\..*/\1/p' "$log" | tail -n 1)"
+          echo "limite=${limite}" >> "$GITHUB_OUTPUT"
+          echo "comex=${comex}" >> "$GITHUB_OUTPUT"
 
       - name: Transform e testes
         if: steps.checar.outputs.falta == 'true'
@@ -131,9 +136,14 @@ jobs:
         env:
           ANTES: ${{ steps.checar.outputs.gravado }}
           ESPERADO: ${{ steps.checar.outputs.esperado }}
+          LIMITE: ${{ steps.ingestao.outputs.limite }}
+          COMEX: ${{ steps.ingestao.outputs.comex }}
         run: |
-          # Séries que ainda não têm o mês esperado: a fonte não publicou ou atrasou.
+          # Séries que ainda não têm o mês esperado: a fonte não publicou ou atrasou. O Comex
+          # Stat só é baixado até LIMITE (o menor mês da Pink Sheet e da PTAX): se ele já
+          # publicou o mês, a série fica "retida", não atrasada.
           atrasadas=""
+          retidas=""
           while read -r serie mes; do
             if [[ "${mes}" == "-" || "${mes}" < "${ESPERADO}" ]]; then
               case "${serie}" in
@@ -143,13 +153,24 @@ jobs:
                 cambio) nome="PTAX (BCB)" ;;
                 *) nome="${serie}" ;;
               esac
-              if [[ "${mes}" == "-" ]]; then
+              comex_retido=false
+              if [[ ( "${serie}" == fertilizantes || "${serie}" == soja ) && -n "${LIMITE}" && "${mes}" == "${LIMITE}" ]]; then
+                comex_retido=true
+              fi
+              if [[ "${comex_retido}" == true && -n "${COMEX}" && ! "${COMEX}" < "${ESPERADO}" ]]; then
+                retidas+="${retidas:+; }${nome}"
+              elif [[ "${comex_retido}" == true && -z "${COMEX}" ]]; then
+                atrasadas+="${atrasadas:+; }${nome}, não consultada além de ${LIMITE} (espera a Pink Sheet e a PTAX)"
+              elif [[ "${mes}" == "-" ]]; then
                 atrasadas+="${atrasadas:+; }${nome}, sem nada gravado"
               else
                 atrasadas+="${atrasadas:+; }${nome}, gravada até ${mes}"
               fi
             fi
           done < <(python -m src.ingest --ultimo-gravado --por-serie)
+          if [[ -n "${retidas}" ]]; then
+            retidas="O Comex Stat já publicou até ${COMEX}, mas só foi baixado até ${LIMITE}, à espera da Pink Sheet e da PTAX: ${retidas}."
+          fi
           depois="nova checagem amanhã"
           if [[ -n "${atrasadas}" ]]; then
             echo "atrasadas=${atrasadas}" >> "$GITHUB_OUTPUT"
@@ -161,8 +182,8 @@ jobs:
           # Mês completo = o menor entre as quatro séries. Só ele decide se há o que commitar.
           mes="$(python -m src.ingest --ultimo-gravado)"
           if [[ -z "${mes}" || ( -n "${ANTES}" && ! "${mes}" > "${ANTES}" ) ]]; then
-            echo "::notice title=Mês ${ESPERADO} incompleto::Falta ${ESPERADO} em: ${atrasadas:-nenhuma série}. Nada foi commitado; ${depois}."
-            echo "Mês ${ESPERADO} incompleto. Falta em: ${atrasadas:-nenhuma série}. Nada foi commitado; ${depois}." >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=Mês ${ESPERADO} incompleto::Falta ${ESPERADO} em: ${atrasadas:-nenhuma série}. ${retidas:+${retidas} }Nada foi commitado; ${depois}."
+            echo "Mês ${ESPERADO} incompleto. Falta em: ${atrasadas:-nenhuma série}. ${retidas:+${retidas} }Nada foi commitado; ${depois}." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           echo "mes=${mes}" >> "$GITHUB_OUTPUT"
@@ -175,6 +196,10 @@ jobs:
             echo
             if [[ -n "${atrasadas}" ]]; then
               echo "Ainda falta ${ESPERADO} em: ${atrasadas}."
+              echo
+            fi
+            if [[ -n "${retidas}" ]]; then
+              echo "${retidas}"
               echo
             fi
             echo "Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX."
@@ -360,7 +385,7 @@ jobs:
           ESPERADO: ${{ needs.atualizar.outputs.esperado }}
           ATRASADAS: ${{ needs.atualizar.outputs.atrasadas }}
         run: |
-          echo "::error title=Fonte sem o mês ${ESPERADO}::Passou o dia 15 e ainda falta ${ESPERADO} em: ${ATRASADAS}. Nenhum mês incompleto foi commitado. Confira se a fonte mudou de endereço ou de formato e, quando ela publicar, rode este workflow manualmente com a opção boletim desmarcada (o boletim do mês novo é gerado de qualquer jeito; marcada, ela refaz o boletim já publicado)."
+          echo "::error title=Fonte sem o mês ${ESPERADO}::Passou o dia 15 e ainda falta ${ESPERADO} em: ${ATRASADAS}. Nenhum mês incompleto foi commitado. Confira se a fonte mudou de endereço ou de formato e, quando ela publicar, rode este workflow manualmente. O boletim do mês novo é gerado de qualquer jeito; deixe a opção boletim desmarcada, porque, se o mês ainda não tiver entrado, marcada ela refaz o boletim já publicado."
           exit 1
 
   # Commits feitos com o GITHUB_TOKEN não disparam outros workflows, então o deploy do
