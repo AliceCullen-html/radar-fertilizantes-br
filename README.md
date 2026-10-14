@@ -9,7 +9,8 @@
 Radar das importações brasileiras de fertilizantes, feito apenas com dados públicos do
 [Comex Stat](https://comexstat.mdic.gov.br/), do Ministério do Desenvolvimento, Indústria,
 Comércio e Serviços (MDIC). Os dados e o dashboard se atualizam sozinhos todo mês
-([fase 4](#atualização-automática-fase-4)).
+([fase 4](#atualização-automática-fase-4)), com um [boletim escrito por IA](#boletim-mensal-com-ia-fase-5)
+em que todos os números são inseridos e conferidos pelo programa.
 
 **Fonte: Comex Stat/MDIC.**
 
@@ -96,6 +97,7 @@ Resumo soja em grão (NCM 12019000, exportação) 2015-01 a 2026-09 (Fonte: Come
 O [dashboard](https://alicecullen-html.github.io/radar-fertilizantes-br/) é uma página estática (`dashboard/index.html`) que lê o
 `data/processed/dashboard.json`. Mostra:
 
+- o [boletim do mês](#boletim-mensal-com-ia-fase-5), num card no topo, com link para o histórico;
 - KPIs do último mês e do acumulado do ano, comparados com o mesmo período do ano anterior;
 - toneladas mensais por grupo (N, P, K e NPK);
 - share por país de origem e ranking de portos (URF), com variação sobre o ano anterior;
@@ -115,8 +117,9 @@ Para ver localmente, rode `python -m http.server` na raiz do repositório e abra
 <http://localhost:8000/dashboard/>.
 
 O workflow [`pages.yml`](.github/workflows/pages.yml) publica o dashboard no GitHub Pages a
-cada push na `main` que altere `dashboard/` ou o `dashboard.json` (ou manualmente, em
-Actions → Pages → Run workflow). Ele não usa nenhum segredo; o único pré-requisito é, em
+cada push na `main` que altere `dashboard/`, o `dashboard.json` ou o `boletins/latest.json`
+(publicado como `boletim.json`), ou manualmente, em
+Actions → Pages → Run workflow. Ele não usa nenhum segredo; o único pré-requisito é, em
 **Settings → Pages**, escolher **Source: GitHub Actions**.
 
 ## Atualização automática (fase 4)
@@ -130,8 +133,10 @@ workflow roda uma vez por dia, do dia 1 ao dia 15 de cada mês (11h17 UTC):
    prática, as checagens param assim que o mês novo entra.
 2. Se faltar, roda a ingestão incremental (importação de fertilizantes e exportação de
    soja), o `python -m src.transform` e os testes.
-3. Só se a API trouxe mês novo, faz um commit `chore(dados): atualização AAAA-MM` como
-   `github-actions[bot]`, só com arquivos de `data/`, e publica o dashboard.
+3. Se entrou mês novo, ou se o boletim do último mês ainda não existe, gera o
+   [boletim com IA](#boletim-mensal-com-ia-fase-5).
+4. Faz um commit `chore(dados): atualização AAAA-MM` como `github-actions[bot]`, só com
+   arquivos de `data/` e `boletins/`, e publica o dashboard.
 
 Se a API falhar, ou disser que publicou um mês que não vem na consulta (o último ou
 qualquer um no meio), o job termina em vermelho, com o erro no log, e nada é commitado: a
@@ -139,17 +144,116 @@ ingestão grava em disco no runner, mas o commit só acontece no fim, depois do 
 dos testes. Cada passo tem limite de tempo, então um travamento também falha em minutos. A
 próxima execução tenta de novo.
 
-O workflow não usa nenhum segredo, e os privilégios ficam separados por job. O job que roda
-Python e as dependências (ingestão, transform e testes) só tem permissão de leitura e
-entrega `data/` como artifact. O job do commit é o único com permissão de escrita: só roda
-git, sem pip nem Python e com os hooks desligados, recusa qualquer mudança fora de `data/`
-e usa o `GITHUB_TOKEN` do próprio Actions apenas no passo do push. Como pushes feitos com
-esse token não disparam outros workflows, o deploy do Pages é chamado pelo próprio
-workflow. Para rodar fora do calendário: Actions → Atualização mensal → Run workflow.
+Os privilégios ficam separados por job:
+
+| Job | Permissão | Acesso ao secret | O que roda |
+| --- | --- | --- | --- |
+| `atualizar` | leitura | não | ingestão, transform e testes (Python e dependências); entrega `data/` como artifact |
+| `gerar-boletim` | leitura | **sim, o único** (environment `boletim-ia`) | só `python -m src.boletim`, que usa a biblioteca padrão: nenhum pacote é instalado; timeout de 10 min |
+| `commitar` | escrita no conteúdo | não | só git, com hooks desligados; recusa mudanças fora de `data/` e `boletins/` |
+| `publicar` | Pages | não | o `pages.yml` |
+
+O workflow não tem gatilho `pull_request_target`, então PRs, inclusive de forks, nunca
+chegam ao secret. O `GITHUB_TOKEN` do próprio Actions só entra no passo do push. Como
+pushes feitos com esse token não disparam outros workflows, o deploy do Pages é chamado
+pelo próprio workflow. Se o boletim for reprovado na validação, os dados do mês são
+commitados sem ele. Para rodar fora do calendário: Actions → Atualização mensal → Run
+workflow (com a opção "boletim" marcada, ele também gera ou refaz o boletim do mês).
 
 A ingestão é incremental e não baixa de novo meses já gravados. Se o MDIC revisar um mês,
 rode localmente `python -m src.ingest --inicio AAAA-MM --fim AAAA-MM --forcar` e o
 transform, e faça o commit.
+
+## Boletim mensal com IA (fase 5)
+
+Todo mês, um texto curto de análise sobre o último mês de dados: título, lead e 4 a 6
+parágrafos, em `boletins/AAAA-MM.md`, com o mais recente em `boletins/latest.json` (lido
+pelo card do dashboard). O [histórico](boletins/) fica no repositório.
+
+### Como a IA é usada (e por que ela não inventa números)
+
+A IA escreve o texto; os números vêm do programa. O passo a passo (`src/boletim.py`):
+
+1. **Pacote de fatos.** O programa lê só dados já calculados (`dashboard.json` e
+   `troca_mensal.csv`) e monta um JSON com chaves nomeadas, valores já formatados em pt-BR
+   e a descrição de cada um, por exemplo:
+
+   ```json
+   "troca_map_ultimo": {"valor": "1,82 t de soja", "descricao": "Toneladas de soja que pagam uma tonelada de MAP ..."},
+   "share_russia_k_ano": {"valor": "30,7%", "descricao": "Participação de Rússia (segunda maior origem) ..."},
+   "var_frete_medio_ytd": {"valor": "30,5%", "descricao": "Variação do frete médio ..."},
+   "var_frete_medio_ytd_sentido": {"valor": "alta", "descricao": "Direção de var_frete_medio_ytd ..."}
+   ```
+
+   As variações vão sem sinal, com a direção numa chave à parte, para a IA não errar o
+   sinal. Para ver o pacote do mês: `python -m src.boletim --fatos`.
+2. **Marcadores no lugar de números.** A IA devolve JSON com título, lead e parágrafos e só
+   pode citar números por marcadores, como `{troca_map_ultimo}`. É proibido escrever
+   números.
+3. **Validação automática, igual para todos os provedores.** A resposta é reprovada se tiver
+   marcador que não existe no pacote; qualquer dígito (de qualquer escrita, inclusive "²" e
+   "½"), algarismo romano, número por extenso ("três", "mil", "dobrou", "um terço") ou unidade
+   (%, US$, p.p.) fora dos marcadores; palavra de direção que contradiz a variação citada
+   ("alta de {var_x}" quando a variação é de queda); Markdown ou HTML; recomendação de
+   compra e venda ou termos alarmistas ("disparou", "colapso"); menos de 6 números citados;
+   ou tamanho acima do limite. Se reprovar, a IA recebe os erros e tenta mais uma
+   vez; se reprovar de novo, nada é publicado. Um modelo fraco que inventa número reprova do
+   mesmo jeito em qualquer provedor.
+4. **O programa troca os marcadores pelos valores** e grava o boletim, com uma tabela dos
+   números citados e o rodapé fixo: "Texto gerado por IA a partir de dados do Comex
+   Stat/MDIC; números inseridos e verificados automaticamente."
+
+O tom pedido é de analista de inteligência de mercado: neutro, sem recomendação de compra e
+venda e sem adjetivos alarmistas. A relação de troca sempre aparece como medida no porto,
+não como preço ao produtor. O texto pode relacionar os números entre si, mas não cita
+causas ou eventos que não estejam no pacote. Fica registrado no boletim qual provedor e
+qual modelo escreveram o texto.
+
+O provedor padrão é a Anthropic, com o modelo `claude-sonnet-5-5` e saída JSON restrita por
+schema. Pela tabela de preços do modelo (US$ 2 por milhão de tokens de entrada e US$ 10 de
+saída), um boletim custa poucos centavos de dólar, mesmo com a nova tentativa.
+
+| Variável | Para quê |
+| --- | --- |
+| `RADAR_LLM_PROVIDER` | `anthropic` (padrão), `openai` (qualquer API compatível com OpenAI) ou `ollama` (local) |
+| `RADAR_LLM_MODEL` | modelo; padrão `claude-sonnet-5-5` na Anthropic, obrigatório nos outros |
+| `ANTHROPIC_API_KEY` | chave da Anthropic |
+| `OPENAI_API_KEY`, `OPENAI_BASE_URL` | chave e endereço da API compatível (padrão: `https://api.openai.com/v1`; num servidor local a chave pode ficar vazia) |
+| `OLLAMA_HOST` | endereço do Ollama (padrão: `http://localhost:11434`), sem chave |
+
+Cada provedor lê só as próprias variáveis. Nenhuma é necessária para os testes nem para o
+modo `--mock`, que usa uma resposta fixa de exemplo sem chamar nenhuma API e grava em
+`boletins/mock/`, fora do Git.
+
+### Use com a sua IA
+
+1. **Só ler o dashboard.** Nada a configurar: o boletim do mês fica no topo do
+   [dashboard](https://alicecullen-html.github.io/radar-fertilizantes-br/) e o histórico em
+   [`boletins/`](boletins/).
+2. **Fork com o seu próprio secret.** Faça um fork. No fork, abra a aba **Actions** e ative
+   os workflows (o GitHub os deixa desligados em forks). Em **Settings → Environments**,
+   crie o environment `boletim-ia` e, nele, o secret `ANTHROPIC_API_KEY` (de preferência
+   restrito ao branch `main`, em *Deployment branches*). Para outro provedor, use os
+   secrets `OPENAI_API_KEY` e as variables `RADAR_LLM_PROVIDER`, `RADAR_LLM_MODEL` e
+   `OPENAI_BASE_URL`. Em **Settings → Pages**, escolha **Source: GitHub Actions**. Depois,
+   **Actions → Atualização mensal → Run workflow**. Sem o secret, o workflow segue
+   atualizando os dados e só pula o boletim, com um aviso.
+3. **Local, com `.env` ou com Ollama, de graça.**
+
+   ```bash
+   python -m src.boletim --mock              # formato do boletim, sem IA e sem chave
+   cp .env.example .env                      # preencha a chave do seu provedor
+   set -a; . ./.env; set +a
+   python -m src.boletim                     # grava boletins/AAAA-MM.md e latest.json
+   ```
+
+   Com o [Ollama](https://ollama.com/), sem chave e sem custo: baixe um modelo
+   (`ollama pull <modelo>`) e rode
+   `RADAR_LLM_PROVIDER=ollama RADAR_LLM_MODEL=<modelo> python -m src.boletim`. Modelos
+   locais pequenos tendem a reprovar mais na validação, mas a regra é a mesma: número
+   inventado não passa.
+4. **MCP com o Claude Desktop** (fase 6, ainda não implementada): um servidor MCP local
+   para consultar os dados do radar direto do Claude Desktop.
 
 ## Dados brutos
 
@@ -315,13 +419,14 @@ automaticamente.
 
 O [CI](.github/workflows/ci.yml) roda em todo push e pull request: os testes em Python
 3.10 e 3.13 e o gitleaks em todo o histórico do repositório. A exceção são os commits
-automáticos de dados da fase 4, que não disparam outros workflows; eles passam pelos testes
+automáticos de dados da fase 4, que não disparam outros workflows; os dados passam pelos testes
 (Python 3.13) dentro do próprio workflow de atualização, e o gitleaks do push seguinte
 varre o histórico inteiro, inclusive eles. O workflow só tem permissão
 de leitura e não usa nenhum segredo. As actions estão em versões que rodam em Node 24.
 
-Segredos nunca entram no repositório. Qualquer chave futura, como a da fase 5, é lida
-apenas de variáveis de ambiente. Os nomes estão em [`.env.example`](.env.example).
+Segredos nunca entram no repositório. As chaves do boletim (fase 5) são lidas apenas de
+variáveis de ambiente, e no GitHub só do environment `boletim-ia`, acessível a um único
+job. Os nomes estão em [`.env.example`](.env.example). Nenhum teste depende de chave.
 
 ## Roadmap
 
@@ -334,7 +439,10 @@ apenas de variáveis de ambiente. Os nomes estão em [`.env.example`](.env.examp
 - [x] **Fase 4:** [atualização automática mensal](#atualização-automática-fase-4) da
   importação de fertilizantes e da exportação de soja, com commit do github-actions[bot]
   e novo deploy do dashboard.
-- [ ] **Fase 5:** boletim mensal com IA (opcional; a chave vem só de variável de ambiente).
+- [x] **Fase 5:** [boletim mensal com IA](#boletim-mensal-com-ia-fase-5), com números
+  inseridos e verificados pelo programa e provedor à escolha (Anthropic, API compatível com
+  OpenAI ou Ollama).
+- [ ] **Fase 6:** servidor MCP para consultar o radar no Claude Desktop.
 
 ## Fonte dos dados
 

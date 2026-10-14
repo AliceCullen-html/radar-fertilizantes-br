@@ -11,6 +11,8 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
   README, testes ou commits.
 - Qualquer segredo (ex.: `ANTHROPIC_API_KEY`, da fase 5) vem SOMENTE de variável de
   ambiente. Os nomes ficam em `.env.example`, com valores vazios.
+- Nenhuma chave está nem vai estar nas sessões de desenvolvimento: nunca pedir nem tentar
+  ler chaves (nem `.env`, nem variáveis de ambiente). Testes e o modo `--mock` não usam chave.
 - `.env`, `.env.*` (exceto `.env.example`), `*.key`, `*.pem` e `secrets/` ficam no
   `.gitignore`. Não remover essas linhas.
 - Antes de CADA commit, rodar `git diff --cached` e conferir que não há segredos.
@@ -27,7 +29,7 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
 - Única exceção, autorizada pelo mantenedor: os commits automáticos da fase 4
   (`.github/workflows/atualizacao.yml`) saem como
   `github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>`, sempre com a
-  mensagem `chore(dados): atualização AAAA-MM` e só com arquivos de `data/`.
+  mensagem `chore(dados): atualização AAAA-MM` e só com arquivos de `data/` e `boletins/`.
 - NÃO adicionar `Co-Authored-By: Claude`, "Generated with Claude Code", link de sessão
   nem nenhum trailer ou menção ao Claude em mensagens de commit ou descrições de PR.
   O `.claude/settings.json` desliga essa atribuição (`includeCoAuthoredBy: false` e
@@ -85,14 +87,23 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
   que não vem, mesmo no meio do período) = job vermelho, nada commitado. Privilégios
   separados: o job que roda Python é só leitura e entrega `data/` como artifact; o job do
   commit (único com `contents: write`) só roda git, com hooks desligados, e recusa mudança
-  fora de `data/`. Manter essa separação.
+  fora de `data/` e `boletins/`. Manter essa separação.
+- Fase 5: `src/llm.py` (provedores: `RADAR_LLM_PROVIDER` = anthropic, padrão com
+  `claude-sonnet-5-5`; openai, qualquer API compatível; ollama, local) e `src/boletim.py`
+  (pacote de fatos com valores formatados em pt-BR → IA escreve só com marcadores `{chave}` →
+  validação igual para todos os provedores → `boletins/AAAA-MM.md` e `latest.json`). Os dois
+  usam SÓ a biblioteca padrão: o job `gerar-boletim` é o único com o secret (environment
+  `boletim-ia`) e não instala pacotes. Nunca relaxar a validação (dígito, número por
+  extenso, unidade fora de marcador, marcador inexistente, tom, tamanho). Nunca usar
+  `pull_request_target`. Boletim do `--mock` vai para `boletins/mock/` (fora do Git) e nunca
+  é commitado.
 - Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):
   N azul, P laranja, K água, NPK amarelo, "Todos" violeta. Não reordenar.
 - Não commitar dados grandes: se `data/raw/` passar de ~20 MB, colocá-lo no `.gitignore`
   e explicar no README como gerar.
 - Roadmap: 1 ingestão (feita) → 2 transform (feita) → 3 dashboard no
-  GitHub Pages (feito) → 4 GitHub Action mensal (feita) → 5 boletim com IA opcional. Não
-  adiantar fases sem pedido.
+  GitHub Pages (feito) → 4 GitHub Action mensal (feita) → 5 boletim com IA (feito) → 6 MCP
+  com o Claude Desktop. Não adiantar fases sem pedido.
 
 ## Fatos da API (verificados em outubro de 2026)
 
