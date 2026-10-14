@@ -1069,7 +1069,7 @@ RESSALVA_INTEIRA = re.compile(
     re.IGNORECASE,
 )
 CAUSA = re.compile(
-    r"\b(?:reflexo\w*|reflet\w*|devid[oa]s?\s+(?:a|ao|à|aos|às)|por\s+causa|por\s+conta\s+d\w*|causa(?:s|d[oa]s?|ndo|r|ou|aram)?|efeitos?\s+d[oa]s?\b|influenci\w*|em\s+fun[çc][ãa]o|lev(?:ou|aram)\s+a|explic(?:a|am|ou|aram)|em\s+raz[ãa]o|gra[çc]as\s+a|puxad\w*|impulsionad\w*|"
+    r"\b(?:reflexo\w*|reflet\w*|devid[oa]s?\s+(?:a|ao|à|aos|às)|por\s+causa|por\s+conta\s+d\w*|causa(?:s|d[oa]s?|ndo|r|ou|aram)?|efeitos?\s+d[oa]s?\b|influenci\w*|em\s+fun[çc][ãa]o|lev(?:ou|aram)\s+a|explic(?:a|am|ou|aram)|porque|pois|j[áa]\s+que|uma\s+vez\s+que|visto\s+que|dado\s+que|em\s+decorr[êe]ncia|decorrentes?|como\s+resultado|resultad[oa]s?\s+d[eoa]s?|consequ[êe]nci\w*|na\s+esteira|acompanh(?:ando|ou|aram)|(?:se\s+)?dev(?:e|em|eu|eram)\s+(?:a|ao|à|aos|às)|movid[oa]s?|impact\w*|em\s+raz[ãa]o|gra[çc]as\s+a|puxad\w*|impulsionad\w*|"
     r"em\s+meio\s+a|diante\s+d\w*|motivad\w*|explicad\w*|tend[eê]nci\w*|tende\w*|pr[oó]ximos\s+meses|expectativ\w*|proje[çc]\w*|"
     r"perspectiv\w*|dev(?:e|em|er[áa]|er[ãa]o)\s+\w+(?:ar|er|ir)|ser[áa]|ser[ãa]o|haver[áa]|\w{2,}(?:ar|er|ir)á|\w{2,}(?:ar|er|ir)ão|"
     r"san[çc]\w*|guerra\w*|conflit\w*|estoques?|petr[óo]leo|g[áa]s\s+natural|plantio\w*|"
@@ -1407,6 +1407,12 @@ def _conferencias_benchmark(campo: str, texto: str, fatos: Fatos) -> list[str]:
         produtos = [(ini + x.start(), ini + x.end(), "p:" + p) for p, rx in MENCOES_PRODUTO.items() for x in rx.finditer(bruta)]
         produtos += [(ini + x.start(), ini + x.end(), "g:" + g) for g, rx in MENCOES_GRUPO.items() for x in rx.finditer(bruta)]
 
+        def oracao_v(pos):
+            cortes = list(re.finditer(r"[,;:—–]", bruta))
+            a = max([ini] + [ini + c.end() for c in cortes if ini + c.end() <= pos])
+            b = min([fim] + [ini + c.start() for c in cortes if ini + c.start() >= pos])
+            return a, b
+
         def oracao(pos):
             a = max([ini] + [ini + c.end() for c in CORTE_ORACAO.finditer(bruta) if ini + c.end() <= pos])
             b = min([fim] + [ini + c.start() for c in CORTE_ORACAO.finditer(bruta) if ini + c.start() >= pos])
@@ -1439,14 +1445,15 @@ def _conferencias_benchmark(campo: str, texto: str, fatos: Fatos) -> list[str]:
         # Cada benchmark ligado ao nome dele, e não ao que o Brasil pagou.
         fontes_bm = [(ini + x.start(), ini + x.end(), "bm") for x in NOMEIA_BENCHMARK.finditer(bruta)]
         fontes_bm += [(s2, e2, "bm") for s2, e2, k in marcas if k.startswith("spread_") and k.endswith("_posicao")]
-        fontes_bm += [(ini + x.start(), ini + x.end(), "br") for x in PAGO_PELO_BRASIL.finditer(bruta)]
+        fontes_bm += [(ini + x.start(), ini + x.end(), "br") for x in PAGO_PELO_BRASIL.finditer(bruta)
+                      if not (re.match(r"(?i)brasil", x.group()) and any(f[2] == "bm" and oracao(ini + x.start())[0] <= f[0] < ini + x.start() for f in fontes_bm))]
         fontes_bm.sort()
         for s2, e2, k in marcas:
             if k.startswith(("benchmark_", "base_benchmark_")):
                 a, b = oracao(s2)
                 na_oracao = [x for x in fontes_bm if a <= x[0] and x[1] <= b]
                 prox = min(na_oracao, key=lambda x: min(abs(x[0] - e2), abs(s2 - x[1]))) if na_oracao else _mais_proxima(fontes_bm, s2, e2, limpo)
-                if prox is not None and prox[2] == "br":
+                if (prox is not None and prox[2] == "br") or (prox is None and k.startswith("benchmark_")):
                     erros.append(f"{campo}: {{{k}}} é o benchmark do Banco Mundial, mas está ligado ao preço do Brasil em {trecho!r}; diga 'benchmark' ou 'Banco Mundial' junto dele")
         # Variação da PTAX no câmbio, e a do CIF em reais fora dele.
         sujeitos = [(ini + x.start(), ini + x.end(), "cambio") for x in CITA_CAMBIO.finditer(bruta)]
@@ -1457,10 +1464,15 @@ def _conferencias_benchmark(campo: str, texto: str, fatos: Fatos) -> list[str]:
             if k == "var_ptax_ano" or (k.startswith("var_cif_brl_") and not k.endswith("_sentido")):
                 ref = min([s2] + [s3 for s3, _, k3 in marcas if k3 == k + "_sentido"])
                 candidatos = [x for x in sujeitos if x[1] <= ref or x[0] >= e2]
+                apostos = [oracao_v(s3) for s3, _, k3 in marcas if k3 == "ptax_mes" and not (oracao_v(s3)[0] <= ref < oracao_v(s3)[1])]
                 if k != "var_ptax_ano":  # aposto com a PTAX ("o CIF, com o dólar a {ptax_mes}, teve") não é o sujeito
-                    apostos = [oracao(s3) for s3, _, k3 in marcas if k3 == "ptax_mes" and not (oracao(s3)[0] <= ref < oracao(s3)[1])]
                     candidatos = [x for x in candidatos if not any(a <= x[0] < b for a, b in apostos)]
                 prox = _mais_proxima(candidatos, ref, e2, limpo, fora_da_oracao=True)
+                if k == "var_ptax_ano":  # "O CIF em reais, com a PTAX a {ptax_mes}, teve {var_ptax_ano}": o sujeito é o CIF, não o aposto
+                    apostos = [(a, b) for a, b in apostos if not re.match(r"\s*,\s*que\b", limpo[b:])]
+                    sem = _mais_proxima([x for x in candidatos if not any(a <= x[0] < b for a, b in apostos)], ref, e2, limpo)
+                    if sem is not None and sem[2] != "cambio":
+                        prox = sem
                 if k == "var_ptax_ano" and (prox is None or prox[2] != "cambio"):
                     erros.append(f"{campo}: {{var_ptax_ano}} é a variação da PTAX (do dólar em reais); escreva 'PTAX' ou 'dólar' como o sujeito dela: {trecho!r}")
                 elif k != "var_ptax_ano" and prox is not None and prox[2] == "cambio":
@@ -1534,7 +1546,7 @@ def _periodo_da_frase(campo, frase, inicio, limpo, marcas, fatos, trecho) -> lis
                 erros.append(f"{campo}: {{{k}}} é do período atual (ou da série), mas a frase o põe no passado: {trecho!r}")
         if c == "prev_mes":
             todas = ancoras + [(p, p + len(t), "p_any") for p, t in escritos]
-            seguintes = [a for a in todas if a[0] >= e and not CORTE_ORACAO.search(limpo[e : a[0]])]
+            seguintes = [a for a in todas if a[0] >= e and (not CORTE_ORACAO.search(limpo[e : a[0]]) or re.fullmatch(r"\s*,\s*(?:em|no|na|de)?\s*", limpo[e : a[0]]))]
             prox = min(seguintes, key=lambda a: a[0]) if seguintes else max([a for a in todas if a[1] <= s], key=lambda a: a[1], default=None)
             if prox is None or not prox[2].startswith("p_") or prox[2] in ("p_ytd", "p_full"):
                 erros.append(f"{campo}: {{{k}}} é do mesmo mês do ano anterior; ponha {{mes_ano_anterior}} ao lado dele: {trecho!r}")

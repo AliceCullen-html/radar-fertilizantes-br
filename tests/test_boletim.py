@@ -953,6 +953,15 @@ def test_arredondamento_meio_para_cima_igual_ao_dashboard():
         ("O KCl ficou {spread_kcl_mes} {spread_kcl_mes_posicao} no FOB, e a ureia, {spread_ureia_mes} {spread_ureia_mes_posicao}.", "preço CIF do Brasil"),
         ("A ureia e o MAP, pelo CIF, ficaram {spread_ureia_mes} {spread_ureia_mes_posicao} e {spread_map_mes} {spread_map_mes_posicao}.", "preço FOB do Brasil"),
         ("O KCl custou {cif_kcl_ultimo} por tonelada no porto em {mes_referencia}.", "já traz a unidade"),
+        # conectivos de causa, PTAX em aposto, benchmark sem nome nem lado
+        ("O CIF do KCl em reais teve {var_cif_brl_kcl_sentido} de {var_cif_brl_kcl} sobre {mes_ano_anterior}, porque a PTAX média ficou em {ptax_mes}.", "causa"),
+        ("O CIF do KCl em reais teve {var_cif_brl_kcl_sentido} de {var_cif_brl_kcl} sobre {mes_ano_anterior}, pois a PTAX média ficou em {ptax_mes}.", "causa"),
+        ("O CIF do KCl em reais teve {var_cif_brl_kcl_sentido} de {var_cif_brl_kcl} sobre {mes_ano_anterior}, em decorrência do câmbio, com a PTAX a {ptax_mes}.", "causa"),
+        ("O CIF do KCl em reais teve {var_cif_brl_kcl_sentido} de {var_cif_brl_kcl} sobre {mes_ano_anterior}, na esteira do dólar, a {ptax_mes}.", "causa"),
+        ("O CIF em reais, com o dólar médio a {ptax_mes}, teve {var_ptax_ano_sentido} de {var_ptax_ano} sobre {mes_ano_anterior}.", "como o sujeito dela"),
+        ("O preço em reais, com a PTAX a {ptax_mes}, teve {var_ptax_ano_sentido} de {var_ptax_ano} sobre {mes_ano_anterior}.", "como o sujeito dela"),
+        ("O preço do KCl foi de {benchmark_kcl_mes} em {mes_referencia}, {spread_kcl_mes} {spread_kcl_mes_posicao}.", "ligado ao preço do Brasil"),
+        ("O KCl saiu a {benchmark_kcl_mes} em {mes_referencia}, {spread_kcl_mes} {spread_kcl_mes_posicao}.", "ligado ao preço do Brasil"),
         # anáfora de grupo continua só para chave de grupo
         ("Os potássicos somaram {t_k_mes} em {mes_referencia}, e o grupo teve {var_preco_cif_n_mes_sentido} de {var_preco_cif_n_mes} no preço sobre {mes_ano_anterior}.", "ligado a"),
     ],
@@ -986,6 +995,13 @@ def test_pos_push_frases_ruins_reprovam(com_benchmark, texto, trecho):
         "Os fosfatados somaram {t_p_mes} em {mes_referencia}, e o MAP, produto do grupo, ficou {spread_map_mes} {spread_map_mes_posicao}.",
         "Os potássicos somaram {t_k_mes} em {mes_referencia}. No grupo, o KCl ficou {spread_kcl_mes} {spread_kcl_mes_posicao}.",
         "Para o MAP, o Banco Mundial usa como referência o fosfato diamônico, cotado a {benchmark_map_mes} em {mes_referencia}.",
+        "O KCl ficou {spread_kcl_ano_anterior} {spread_kcl_ano_anterior_posicao}, em {mes_ano_anterior}, e {spread_kcl_mes} {spread_kcl_mes_posicao} em {mes_referencia}.",
+        "O CIF do KCl em reais, calculado com a PTAX média do mês ({ptax_mes}), teve {var_cif_brl_kcl_sentido} de {var_cif_brl_kcl} sobre {mes_ano_anterior}.",
+        "O benchmark do Banco Mundial para o KCl entregue no Brasil foi de {benchmark_kcl_mes} em {mes_referencia}.",
+        "O benchmark do KCl no Brasil, na base {base_benchmark_kcl}, foi de {benchmark_kcl_mes} em {mes_referencia}.",
+        "Em {mes_referencia}, a PTAX média foi de {ptax_mes}, {var_ptax_ano_sentido} de {var_ptax_ano} sobre {mes_ano_anterior}.",
+        "Em reais, o CIF do KCl foi de {cif_brl_kcl_mes}, com a PTAX média a {ptax_mes}, que teve {var_ptax_ano_sentido} de {var_ptax_ano} sobre {mes_ano_anterior}.",
+        "Pelo Banco Mundial, o KCl valeu {benchmark_kcl_mes} em {mes_referencia}.",
     ],
 )
 def test_pos_push_frases_corretas_passam(com_benchmark, texto):
