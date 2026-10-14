@@ -1,4 +1,4 @@
-"""Ingestão das importações brasileiras de fertilizantes.
+"""Ingestão das importações brasileiras de fertilizantes e das fontes de comparação.
 
 Baixa da API pública do Comex Stat (MDIC) duas séries mensais:
 
@@ -11,13 +11,16 @@ Baixa da API pública do Comex Stat (MDIC) duas séries mensais:
 As duas séries usam o mesmo cliente, o mesmo rate limit e a mesma gravação
 incremental: só consultam os meses que ainda não estão no disco.
 
+A mesma CLI baixa as fontes da fase 6 (src/benchmark.py): a Pink Sheet do Banco Mundial
+(--serie benchmark) e a PTAX média mensal do BCB (--serie cambio).
+
 Uso:
     python -m src.ingest --inicio 2025-01 --fim 2025-03
     python -m src.ingest --inicio 2015-01 --serie soja
     python -m src.ingest --atualizar-ncm
-    python -m src.ingest --ultimo-gravado
+    python -m src.ingest --ultimo-gravado [--por-serie]
 
-Fonte: Comex Stat/MDIC.
+Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX.
 """
 
 from __future__ import annotations
@@ -40,7 +43,7 @@ import pandas as pd
 import requests
 from urllib3.exceptions import InsecureRequestWarning
 
-from . import config
+from . import benchmark, config
 
 log = logging.getLogger(__name__)
 
@@ -666,30 +669,42 @@ def _pct(parte: float, total: float) -> str:
 
 # --- CLI -----------------------------------------------------------------------------------
 
-# Série -> (diretório, arquivo por ano) no disco.
+# Série -> (diretório, arquivo) no disco: Parquet por ano (Comex Stat) ou CSV único (fase 6).
 SERIES = {
     "fertilizantes": (config.RAW_DIR, config.RAW_ARQUIVO),
     "soja": (config.RAW_SOJA_DIR, config.RAW_SOJA_ARQUIVO),
+    "benchmark": (config.RAW_BENCHMARK_DIR, config.PINK_ARQUIVO),
+    "cambio": (config.RAW_CAMBIO_DIR, config.PTAX_ARQUIVO),
 }
+
+
+def ultimo_da_serie(serie: str) -> str | None:
+    """Último mês completo gravado de uma série (na Pink Sheet, com as quatro séries comparadas)."""
+    raw_dir, arquivo = SERIES[serie]
+    if serie == "benchmark":
+        return benchmark.ultimo_pink_gravado(raw_dir)
+    if serie == "cambio":
+        return benchmark.ultimo_ptax_gravado(raw_dir)
+    return ultimo_mes_gravado(raw_dir, arquivo)
 
 
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="python -m src.ingest",
-        description="Importações brasileiras de fertilizantes e exportações de soja em grão."
-        " Fonte: Comex Stat/MDIC.",
+        description="Importações brasileiras de fertilizantes, exportações de soja em grão, Pink Sheet do"
+        " Banco Mundial e PTAX do BCB. Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX.",
     )
     p.add_argument(
         "--inicio",
         type=mes_valido,
         metavar="AAAA-MM",
-        help="primeiro mês (obrigatório, exceto com --atualizar-ncm)",
+        help="primeiro mês (obrigatório, exceto com --atualizar-ncm ou --ultimo-gravado)",
     )
     p.add_argument(
         "--fim",
         type=mes_valido,
         metavar="AAAA-MM",
-        help="último mês (padrão: último mês publicado na API)",
+        help="último mês (padrão: último mês publicado em cada fonte)",
     )
     p.add_argument(
         "--serie",
@@ -700,12 +715,17 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--ultimo-gravado",
         action="store_true",
-        help="só imprime o último AAAA-MM já gravado em todas as séries escolhidas, sem chamar a API",
+        help="só imprime o último AAAA-MM já gravado em todas as séries escolhidas (o menor entre elas), sem chamar a API",
+    )
+    p.add_argument(
+        "--por-serie",
+        action="store_true",
+        help="com --ultimo-gravado, imprime uma linha por série (série e último mês)",
     )
     p.add_argument(
         "--forcar",
         action="store_true",
-        help="baixa de novo meses já gravados (ex.: revisões do MDIC)",
+        help="baixa de novo meses já gravados (ex.: revisões do MDIC ou do BCB)",
     )
     p.add_argument(
         "--atualizar-ncm",
@@ -717,7 +737,7 @@ def _parser() -> argparse.ArgumentParser:
         type=float,
         default=config.PAUSA_ENTRE_CHAMADAS_S,
         metavar="SEG",
-        help="pausa mínima entre chamadas à API (padrão: %(default)s s)",
+        help="pausa mínima entre chamadas à API do Comex Stat (padrão: %(default)s s)",
     )
     p.add_argument(
         "--ssl-inseguro",
@@ -734,8 +754,11 @@ def main(argv: list[str] | None = None) -> int:
     series = list(SERIES) if args.serie == "todas" else [args.serie]
     if args.ultimo_gravado:
         # O menor entre as séries: a atualização só está completa quando todas têm o mês.
-        meses = [ultimo_mes_gravado(*SERIES[serie]) for serie in series]
-        print("" if None in meses else min(meses))
+        meses = {serie: ultimo_da_serie(serie) for serie in series}
+        if args.por_serie:
+            print("\n".join(f"{serie} {mes or '-'}" for serie, mes in meses.items()))
+        else:
+            print("" if None in meses.values() else min(meses.values()))
         return 0
     if not args.inicio and not args.atualizar_ncm:
         parser.error("informe --inicio AAAA-MM (ou use --atualizar-ncm ou --ultimo-gravado)")
@@ -757,7 +780,7 @@ def main(argv: list[str] | None = None) -> int:
             ncms = buscar_ncms_fertilizantes(cliente)
             salvar_ncms(ncms)
             log.info("%d NCMs gravados em %s.", len(ncms), config.NCM_CSV)
-        if args.inicio:
+        if args.inicio and {"fertilizantes", "soja"} & set(series):
             ultimo = ultimo_mes_publicado(cliente)
             log.info("Último mês publicado na API: %s.", ultimo)
             if "fertilizantes" in series:
@@ -772,7 +795,17 @@ def main(argv: list[str] | None = None) -> int:
                     cliente, args.inicio, args.fim, raw_dir=raw_dir, forcar=args.forcar, ultimo=ultimo
                 )
                 print(resumo_soja(ler_soja(raw_dir), inicio, fim))
-    except ErroAPI as exc:
+        if args.inicio and {"benchmark", "cambio"} & set(series):
+            fontes = benchmark.ClienteFontes()
+            if "benchmark" in series:
+                raw_dir = SERIES["benchmark"][0]
+                inicio, fim, mudancas = benchmark.ingerir_pink(fontes, args.inicio, args.fim, raw_dir=raw_dir, forcar=args.forcar)
+                print(benchmark.resumo_pink(benchmark.ler_pink(raw_dir), inicio, fim, mudancas))
+            if "cambio" in series:
+                raw_dir = SERIES["cambio"][0]
+                inicio, fim = benchmark.ingerir_ptax(fontes, args.inicio, args.fim, raw_dir=raw_dir, forcar=args.forcar)
+                print(benchmark.resumo_ptax(benchmark.ler_ptax(raw_dir), inicio, fim))
+    except (ErroAPI, benchmark.ErroFonte) as exc:
         log.error("%s", exc)
         return 1
     return 0

@@ -67,6 +67,39 @@ TIMEOUT_S = (15, 180)  # (conexão, leitura)
 # bundle padrão na verificação TLS. A verificação nunca é desligada por padrão.
 ENV_CA_EXTRA = "COMEXSTAT_CA_BUNDLE"
 
+# --- Fase 6: benchmark internacional (Banco Mundial) e câmbio (BCB) ----------------------
+# Banco Mundial, Commodity Price Data (The Pink Sheet), CC BY 4.0. A URL do xlsx muda a cada
+# edição; ela é procurada na página Commodity Markets.
+RAW_BENCHMARK_DIR = DADOS_DIR / "raw_benchmark"
+PINK_ARQUIVO = "pink_sheet_mensal.csv"
+PINK_FONTE = "fonte.json"
+PINK_PAGINA = "https://www.worldbank.org/en/research/commodity-markets"
+PINK_HOST_ARQUIVO = "thedocs.worldbank.org"
+PINK_NOME_ARQUIVO = "CMO-Historical-Data-Monthly.xlsx"
+PINK_ABA = "Monthly Prices"
+PINK_MAX_BYTES = 20 * 1024 * 1024
+# Nome da coluna no xlsx (sem espaços nem asteriscos nas pontas) -> coluna gravada.
+PINK_SERIES = {
+    "Urea": "ureia",
+    "DAP": "dap",
+    "TSP": "tsp",
+    "Potassium chloride": "kcl",
+    "Phosphate rock": "rocha_fosfatica",
+}
+# As comparadas com o Brasil: um mês só está publicado quando as quatro têm valor.
+PINK_OBRIGATORIAS = ("ureia", "dap", "tsp", "kcl")
+# Banco Central do Brasil, SGS (dados abertos, ODbL). 3698: taxa de câmbio livre, dólar
+# americano (venda), média do período, mensal (média das PTAX de venda dos dias úteis).
+RAW_CAMBIO_DIR = DADOS_DIR / "raw_cambio"
+PTAX_ARQUIVO = "ptax_venda_media_mensal.csv"
+SGS_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.{codigo}/dados"
+SGS_PTAX_VENDA_MEDIA_MENSAL = 3698
+SGS_JANELA_ANOS = 5
+INICIO_FASE6 = "2015-01"
+PAUSA_FONTES_S = 5.0
+# Únicos hosts que o cliente das fontes externas acessa (inclusive em redirecionamentos).
+HOSTS_FONTES = ("www.worldbank.org", "thedocs.worldbank.org", "api.bcb.gov.br")
+
 # --- Fertilizantes (capítulo 31 do SH) ----------------------------------------------
 # Grupo por posição (SH4)...
 GRUPO_POR_SH4 = {"3102": "N", "3103": "P", "3104": "K", "3105": "NPK"}
