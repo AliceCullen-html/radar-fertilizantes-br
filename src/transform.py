@@ -13,6 +13,9 @@ Lê os dados brutos (data/raw/, via ingest.ler_raw) e o grupo de cada NCM
 - sazonalidade_grupo.csv: média de toneladas por mês do calendário e grupo;
 - rotas_ano.csv: toneladas e frete US$/t por ano × grupo × país de origem × URF,
   marcando as rotas com volume relevante (CORTE_ROTA_T);
+- benchmark_mensal.csv: Brasil x mercado internacional (src/comparacao.py): FOB e CIF
+  implícitos de KCl, ureia, MAP, DAP e TSP contra a Pink Sheet do Banco Mundial, spread,
+  custo posto e CIF em reais pela PTAX, se houver data/raw_benchmark e data/raw_cambio;
 - troca_mensal.csv: relação de troca "no porto" entre soja exportada e KCl,
   ureia e MAP importados (src/troca.py), se houver dados de soja em
   data/raw_soja/;
@@ -36,7 +39,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import config, ingest, troca
+from . import benchmark, comparacao, config, ingest, troca
 
 log = logging.getLogger(__name__)
 
@@ -336,7 +339,7 @@ def _ranking(tabela: pd.DataFrame, codigo: str, nome: str, com_preco: bool) -> l
     return linhas
 
 
-def dashboard(tabelas: dict[str, pd.DataFrame]) -> dict:
+def dashboard(tabelas: dict[str, pd.DataFrame], fonte_pink: dict | None = None) -> dict:
     """Export compacto (séries mensais, resumo anual, rankings e sazonalidade) para a fase 3."""
     precos_grupo = tabelas["precos_mes_grupo"]
     origens, urfs = tabelas["share_origem_ano"], tabelas["share_urf_ano"]
@@ -442,6 +445,8 @@ def dashboard(tabelas: dict[str, pd.DataFrame]) -> dict:
         }
     if "troca_mensal" in tabelas:
         painel["troca"] = troca.bloco_dashboard(tabelas["troca_mensal"], periodos, _num)
+    if "benchmark_mensal" in tabelas:
+        painel["benchmark"] = comparacao.bloco_dashboard(tabelas["benchmark_mensal"], periodos, _num, fonte_pink)
     return painel
 
 
@@ -459,17 +464,26 @@ def _arredondar(df: pd.DataFrame) -> pd.DataFrame:
             df[coluna] = df[coluna].round(3)
         elif coluna.endswith("_usd_t") or coluna in ("hhi", "indice_sazonal"):
             df[coluna] = df[coluna].round(2)
-        elif coluna.endswith(("_pct", "_pp", "_por_t", "_pct_cif")):
+        elif coluna.endswith(("_pct", "_pp", "_por_t", "_pct_cif", "_brl_usd")):
             df[coluna] = df[coluna].round(4)
+        elif coluna.endswith("_brl_t"):
+            df[coluna] = df[coluna].round(2)
     return df
 
 
 def gerar(
-    base: pd.DataFrame, saida: Path = config.PROCESSED_DIR, soja: pd.DataFrame | None = None
+    base: pd.DataFrame,
+    saida: Path = config.PROCESSED_DIR,
+    soja: pd.DataFrame | None = None,
+    pink: pd.DataFrame | None = None,
+    ptax: pd.DataFrame | None = None,
+    fonte_pink: dict | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Calcula todas as tabelas e grava os CSVs e o dashboard.json em `saida`.
 
-    Sem `soja` (exportação de soja em grão), a relação de troca fica de fora.
+    Sem `soja` (exportação de soja em grão), a relação de troca fica de fora; sem `pink` (Pink
+    Sheet do Banco Mundial), a comparação com o mercado internacional também. `ptax` (BCB) só
+    serve para o CIF em reais.
     """
     tabelas = {
         "precos_mes_grupo_origem": precos(base, por_origem=True),
@@ -482,10 +496,13 @@ def gerar(
     tabelas["rotas_ano"] = rotas_anuais(base)
     if soja is not None and not soja.empty:
         tabelas["troca_mensal"] = troca.relacao_troca(base, soja)
+    if pink is not None and not pink.empty:
+        ptax = ptax if ptax is not None else pd.DataFrame(columns=benchmark.COLUNAS_PTAX)
+        tabelas["benchmark_mensal"] = comparacao.comparar(base, pink, ptax)
     saida.mkdir(parents=True, exist_ok=True)
     for nome, df in tabelas.items():
         _arredondar(df).to_csv(saida / f"{nome}.csv", index=False, encoding="utf-8", lineterminator="\n")
-    painel = json.dumps(dashboard(tabelas), ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    painel = json.dumps(dashboard(tabelas, fonte_pink), ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     (saida / "dashboard.json").write_text(painel + "\n", encoding="utf-8")
     return tabelas
 
@@ -498,12 +515,16 @@ def _ultimo_mes(df: pd.DataFrame) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m src.transform",
-        description="Fase 2: tabelas analíticas em data/processed/. Fonte: Comex Stat/MDIC.",
+        description="Tabelas analíticas em data/processed/. Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX.",
     )
     parser.add_argument("--raw", type=Path, default=config.RAW_DIR, help="dados brutos (padrão: data/raw)")
     parser.add_argument(
         "--raw-soja", type=Path, default=config.RAW_SOJA_DIR, help="exportação de soja (padrão: data/raw_soja)"
     )
+    parser.add_argument(
+        "--raw-benchmark", type=Path, default=config.RAW_BENCHMARK_DIR, help="Pink Sheet (padrão: data/raw_benchmark)"
+    )
+    parser.add_argument("--raw-cambio", type=Path, default=config.RAW_CAMBIO_DIR, help="PTAX (padrão: data/raw_cambio)")
     parser.add_argument("--saida", type=Path, default=config.PROCESSED_DIR, help="destino (padrão: data/processed)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
@@ -526,7 +547,27 @@ def main(argv: list[str] | None = None) -> int:
             args.raw_soja,
             *divmod(_ultimo_mes(soja), 100),
         )
-    tabelas = gerar(base, args.saida, soja)
+    pink, ptax = benchmark.ler_pink(args.raw_benchmark), benchmark.ler_ptax(args.raw_cambio)
+    fonte_pink = None
+    if pink.empty:
+        log.warning(
+            "Sem a Pink Sheet em %s; a comparação com o mercado internacional fica de fora."
+            " Rode: python -m src.ingest --inicio 2015-01 --serie benchmark",
+            args.raw_benchmark,
+        )
+    else:
+        arquivo_fonte = Path(args.raw_benchmark) / config.PINK_FONTE
+        fonte_pink = json.loads(arquivo_fonte.read_text(encoding="utf-8")) if arquivo_fonte.exists() else None
+        ultimo = f"{_ultimo_mes(base) // 100}-{_ultimo_mes(base) % 100:02d}"
+        for nome, df, serie in [("Pink Sheet", pink, "benchmark"), ("PTAX", ptax, "cambio")]:
+            fim = None if df.empty else str(df["mes"].max())
+            if fim is None or fim < ultimo:
+                log.warning(
+                    "%s vai só até %s, antes do último mês das importações (%s); esses meses ficam sem"
+                    " comparação. Rode: python -m src.ingest --inicio 2015-01 --serie %s",
+                    nome, fim or "nenhum mês", ultimo, serie,
+                )
+    tabelas = gerar(base, args.saida, soja, pink, ptax, fonte_pink)
     for nome, df in tabelas.items():
         log.info("%s: %d linhas", args.saida / f"{nome}.csv", len(df))
     log.info("%s: %.0f KB", args.saida / "dashboard.json", (args.saida / "dashboard.json").stat().st_size / 1024)
