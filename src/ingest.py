@@ -1,14 +1,21 @@
 """Ingestão das importações brasileiras de fertilizantes.
 
-Baixa da API pública do Comex Stat (MDIC) as importações mensais dos NCMs de
-data/ncm_fertilizantes.csv, detalhadas por país de origem, NCM, UF, via e URF,
-com as métricas US$ FOB, kg líquido, US$ CIF, frete e seguro. Grava em Parquet
-particionado por ano (data/raw/ano=AAAA/importacoes.parquet) e só consulta os
-meses que ainda não estão no disco.
+Baixa da API pública do Comex Stat (MDIC) duas séries mensais:
+
+- importações dos NCMs de data/ncm_fertilizantes.csv, detalhadas por país de
+  origem, NCM, UF, via e URF, com US$ FOB, kg líquido, US$ CIF, frete e seguro
+  (data/raw/ano=AAAA/importacoes.parquet);
+- exportações de soja em grão (NCM 12019000), com US$ FOB e kg líquido, usadas
+  na relação de troca (data/raw_soja/ano=AAAA/exportacoes.parquet).
+
+As duas séries usam o mesmo cliente, o mesmo rate limit e a mesma gravação
+incremental: só consultam os meses que ainda não estão no disco.
 
 Uso:
     python -m src.ingest --inicio 2025-01 --fim 2025-03
+    python -m src.ingest --inicio 2015-01 --serie soja
     python -m src.ingest --atualizar-ncm
+    python -m src.ingest --ultimo-gravado
 
 Fonte: Comex Stat/MDIC.
 """
@@ -53,6 +60,8 @@ COLUNAS_RAW = [
 # Ordem estável das linhas, para arquivos reprodutíveis.
 ORDEM_RAW = ["mes", "co_ncm", "no_pais", "no_uf", "no_via", "co_urf"]
 COLUNAS_NCM = ["ncm", "descricao", "grupo", "sh4", "sh6"]
+COLUNAS_SOJA = ["mes", "co_ncm", *config.METRICAS_SOJA.values()]
+ORDEM_SOJA = ["mes", "co_ncm"]
 
 _RE_MES = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 _RE_SEGUNDOS = re.compile(r"(\d+)\s*segundo", re.IGNORECASE)
@@ -319,15 +328,23 @@ def carregar_tabelas_auxiliares(cliente) -> dict[str, dict[str, str]]:
 # --- Consulta ----------------------------------------------------------------------------
 
 
-def montar_consulta(inicio: str, fim: str, ncms: list[str]) -> dict:
-    """Corpo do POST /general: importações mensais dos NCMs, com todos os detalhamentos."""
+def montar_consulta(
+    inicio: str,
+    fim: str,
+    ncms: list[str],
+    *,
+    fluxo: str = config.FLUXO,
+    detalhes: list[str] = config.DETALHES,
+    metricas: dict[str, str] = config.METRICAS,
+) -> dict:
+    """Corpo do POST /general: dados mensais dos NCMs (por padrão, importações com todos os detalhamentos)."""
     return {
-        "flow": config.FLUXO,
+        "flow": fluxo,
         "monthDetail": True,
         "period": {"from": inicio, "to": fim},
         "filters": [{"filter": "ncm", "values": list(ncms)}],
-        "details": list(config.DETALHES),
-        "metrics": list(config.METRICAS),
+        "details": list(detalhes),
+        "metrics": list(metricas),
     }
 
 
@@ -362,6 +379,23 @@ def normalizar(registros: list[dict], tabelas: dict[str, dict[str, str]]) -> pd.
     return df[["ano", *COLUNAS_RAW]]
 
 
+def normalizar_soja(registros: list[dict]) -> pd.DataFrame:
+    """Linhas mensais da exportação de soja: ano, mês, NCM, US$ FOB e kg líquido."""
+    if not registros:
+        return pd.DataFrame(columns=["ano", *COLUNAS_SOJA])
+    api = pd.DataFrame.from_records(registros)
+    df = pd.DataFrame(
+        {
+            "ano": pd.to_numeric(api["year"]).astype("int64"),
+            "mes": pd.to_numeric(api["monthNumber"]).astype("int64"),
+            "co_ncm": api["coNcm"].astype(str),
+        }
+    )
+    for metrica, coluna in config.METRICAS_SOJA.items():
+        df[coluna] = pd.to_numeric(api[metrica]).astype("Int64")
+    return df[["ano", *COLUNAS_SOJA]]
+
+
 # --- Parquet incremental ------------------------------------------------------------
 
 
@@ -382,54 +416,80 @@ def meses_do_intervalo(inicio: str, fim: str) -> list[tuple[int, int]]:
     return meses
 
 
-def arquivo_do_ano(raw_dir: Path, ano: int) -> Path:
-    return Path(raw_dir) / f"ano={ano}" / config.RAW_ARQUIVO
+def arquivo_do_ano(raw_dir: Path, ano: int, arquivo: str = config.RAW_ARQUIVO) -> Path:
+    return Path(raw_dir) / f"ano={ano}" / arquivo
 
 
-def meses_gravados(raw_dir: Path, ano: int) -> set[int]:
-    arquivo = arquivo_do_ano(raw_dir, ano)
-    if not arquivo.exists():
+def meses_gravados(raw_dir: Path, ano: int, arquivo: str = config.RAW_ARQUIVO) -> set[int]:
+    caminho = arquivo_do_ano(raw_dir, ano, arquivo)
+    if not caminho.exists():
         return set()
-    return {int(m) for m in pd.read_parquet(arquivo, columns=["mes"])["mes"].unique()}
+    return {int(m) for m in pd.read_parquet(caminho, columns=["mes"])["mes"].unique()}
 
 
-def planejar(inicio: str, fim: str, raw_dir: Path, forcar: bool = False) -> dict[int, list[int]]:
+def ultimo_mes_gravado(raw_dir: Path = config.RAW_DIR, arquivo: str = config.RAW_ARQUIVO) -> str | None:
+    """Último AAAA-MM gravado no disco, ou None se ainda não há dados."""
+    anos = sorted(int(c.parent.name.removeprefix("ano=")) for c in Path(raw_dir).glob(f"ano=*/{arquivo}"))
+    for ano in reversed(anos):
+        meses = meses_gravados(raw_dir, ano, arquivo)
+        if meses:
+            return f"{ano:04d}-{max(meses):02d}"
+    return None
+
+
+def planejar(
+    inicio: str, fim: str, raw_dir: Path, forcar: bool = False, arquivo: str = config.RAW_ARQUIVO
+) -> dict[int, list[int]]:
     """Meses a baixar por ano: os que ainda não estão no disco (ou todos, com forcar)."""
     plano: dict[int, list[int]] = {}
     for ano, mes in meses_do_intervalo(inicio, fim):
         plano.setdefault(ano, []).append(mes)
     if not forcar:
         for ano in plano:
-            gravados = meses_gravados(raw_dir, ano)
+            gravados = meses_gravados(raw_dir, ano, arquivo)
             plano[ano] = [m for m in plano[ano] if m not in gravados]
     return {ano: meses for ano, meses in plano.items() if meses}
 
 
-def gravar_ano(df: pd.DataFrame, ano: int, raw_dir: Path) -> Path:
+def gravar_ano(
+    df: pd.DataFrame,
+    ano: int,
+    raw_dir: Path,
+    arquivo: str = config.RAW_ARQUIVO,
+    colunas: list[str] = COLUNAS_RAW,
+    ordem: list[str] = ORDEM_RAW,
+) -> Path:
     """Junta os meses novos aos já gravados do ano e regrava o arquivo de forma atômica."""
-    arquivo = arquivo_do_ano(raw_dir, ano)
+    caminho = arquivo_do_ano(raw_dir, ano, arquivo)
     novo = df.drop(columns="ano", errors="ignore")
-    if arquivo.exists():
-        atual = pd.read_parquet(arquivo)
+    if caminho.exists():
+        atual = pd.read_parquet(caminho)
         novo = pd.concat([atual[~atual["mes"].isin(novo["mes"])], novo], ignore_index=True)
-    novo = novo[COLUNAS_RAW].sort_values(ORDEM_RAW, ignore_index=True)
-    arquivo.parent.mkdir(parents=True, exist_ok=True)
-    temporario = arquivo.with_name(arquivo.name + ".tmp")
+    novo = novo[colunas].sort_values(ordem, ignore_index=True)
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    temporario = caminho.with_name(caminho.name + ".tmp")
     novo.to_parquet(temporario, index=False, compression="zstd")
-    os.replace(temporario, arquivo)
-    return arquivo
+    os.replace(temporario, caminho)
+    return caminho
 
 
-def ler_raw(raw_dir: Path = config.RAW_DIR) -> pd.DataFrame:
+def ler_raw(
+    raw_dir: Path = config.RAW_DIR, arquivo: str = config.RAW_ARQUIVO, colunas: list[str] = COLUNAS_RAW
+) -> pd.DataFrame:
     """Lê todos os anos gravados, recolocando a coluna `ano` (que fica no caminho)."""
     partes = []
-    for arquivo in sorted(Path(raw_dir).glob(f"ano=*/{config.RAW_ARQUIVO}")):
-        df = pd.read_parquet(arquivo)
-        df.insert(0, "ano", int(arquivo.parent.name.removeprefix("ano=")))
+    for caminho in sorted(Path(raw_dir).glob(f"ano=*/{arquivo}")):
+        df = pd.read_parquet(caminho)
+        df.insert(0, "ano", int(caminho.parent.name.removeprefix("ano=")))
         partes.append(df)
     if not partes:
-        return pd.DataFrame(columns=["ano", *COLUNAS_RAW])
+        return pd.DataFrame(columns=["ano", *colunas])
     return pd.concat(partes, ignore_index=True)
+
+
+def ler_soja(raw_dir: Path = config.RAW_SOJA_DIR) -> pd.DataFrame:
+    """Exportação mensal de soja gravada, com a coluna `ano`."""
+    return ler_raw(raw_dir, config.RAW_SOJA_ARQUIVO, COLUNAS_SOJA)
 
 
 # --- Orquestração ----------------------------------------------------------------------
@@ -440,6 +500,54 @@ def ultimo_mes_publicado(cliente) -> str:
     return f"{int(dados['year']):04d}-{int(dados['monthNumber']):02d}"
 
 
+def _ingerir_serie(
+    cliente,
+    inicio: str,
+    fim: str | None,
+    *,
+    rotulo: str,
+    raw_dir: Path,
+    arquivo: str,
+    colunas: list[str],
+    ordem: list[str],
+    preparar,
+    forcar: bool,
+    ultimo: str | None,
+) -> tuple[str, str]:
+    """Baixa os meses faltantes de [inicio, fim], uma consulta por ano; devolve o período efetivo.
+
+    `preparar()` só é chamado se houver o que baixar e devolve (consultar(de, ate), normalizar(registros)).
+    """
+    if ultimo is None:
+        ultimo = ultimo_mes_publicado(cliente)
+    if fim is None or fim > ultimo:
+        if fim is not None:
+            log.info("%s: %s ainda não foi publicado; indo até %s (última atualização da API).", rotulo, fim, ultimo)
+        fim = ultimo
+    if inicio < config.PRIMEIRO_MES:
+        log.info("A série mensal começa em %s; ajustando o início.", config.PRIMEIRO_MES)
+        inicio = config.PRIMEIRO_MES
+    if inicio > fim:
+        log.info("%s: nada a fazer, %s é posterior ao último mês publicado (%s).", rotulo, inicio, fim)
+        return inicio, fim
+    plano = planejar(inicio, fim, raw_dir, forcar, arquivo)
+    if not plano:
+        log.info("%s: nada a baixar, %s a %s já está em %s.", rotulo, inicio, fim, raw_dir)
+        return inicio, fim
+    consultar, normalizar_registros = preparar()
+    for ano, meses in sorted(plano.items()):
+        de, ate = f"{ano}-{min(meses):02d}", f"{ano}-{max(meses):02d}"
+        log.info("%s: consultando %s a %s (%d meses a baixar)...", rotulo, de, ate, len(meses))
+        df = normalizar_registros(consultar(de, ate))
+        df = df[(df["ano"] == ano) & df["mes"].isin(meses)]
+        if df.empty:
+            log.warning("%s: a API não retornou linhas para %s a %s.", rotulo, de, ate)
+            continue
+        caminho = gravar_ano(df, ano, raw_dir, arquivo, colunas, ordem)
+        log.info("%s: +%d linhas (%d meses).", caminho, len(df), df["mes"].nunique())
+    return inicio, fim
+
+
 def ingerir(
     cliente,
     inicio: str,
@@ -448,47 +556,67 @@ def ingerir(
     raw_dir: Path = config.RAW_DIR,
     ncm_csv: Path = config.NCM_CSV,
     forcar: bool = False,
+    ultimo: str | None = None,
 ) -> tuple[str, str]:
-    """Baixa os meses faltantes de [inicio, fim], uma consulta por ano; devolve o período efetivo."""
-    ultimo = ultimo_mes_publicado(cliente)
-    if fim is None or fim > ultimo:
-        if fim is not None:
-            log.info("%s ainda não foi publicado; indo até %s (última atualização da API).", fim, ultimo)
-        fim = ultimo
-    if inicio < config.PRIMEIRO_MES:
-        log.info("A série mensal começa em %s; ajustando o início.", config.PRIMEIRO_MES)
-        inicio = config.PRIMEIRO_MES
-    if inicio > fim:
-        log.info("Nada a fazer: %s é posterior ao último mês publicado (%s).", inicio, fim)
-        return inicio, fim
-    plano = planejar(inicio, fim, raw_dir, forcar)
-    if not plano:
-        log.info("Nada a baixar: %s a %s já está em %s.", inicio, fim, raw_dir)
-        return inicio, fim
-    ncms = carregar_ncms(ncm_csv)["ncm"].tolist()
-    tabelas = carregar_tabelas_auxiliares(cliente)
-    for ano, meses in sorted(plano.items()):
-        de, ate = f"{ano}-{min(meses):02d}", f"{ano}-{max(meses):02d}"
-        log.info("Consultando %s a %s (%d meses a baixar)...", de, ate, len(meses))
-        dados = cliente.post(
-            config.ENDPOINT_CONSULTA,
-            montar_consulta(de, ate, ncms),
-            params={"language": config.IDIOMA},
-        )
-        df = normalizar(_lista(dados), tabelas)
-        df = df[(df["ano"] == ano) & df["mes"].isin(meses)]
-        if df.empty:
-            log.warning("A API não retornou linhas para %s a %s.", de, ate)
-            continue
-        arquivo = gravar_ano(df, ano, raw_dir)
-        log.info("%s: +%d linhas (%d meses).", arquivo, len(df), df["mes"].nunique())
-    return inicio, fim
+    """Importações de fertilizantes: baixa os meses faltantes e devolve o período efetivo."""
+
+    def preparar():
+        ncms = carregar_ncms(ncm_csv)["ncm"].tolist()
+        tabelas = carregar_tabelas_auxiliares(cliente)
+
+        def consultar(de: str, ate: str) -> list[dict]:
+            corpo = montar_consulta(de, ate, ncms)
+            return _lista(cliente.post(config.ENDPOINT_CONSULTA, corpo, params={"language": config.IDIOMA}))
+
+        return consultar, lambda registros: normalizar(registros, tabelas)
+
+    return _ingerir_serie(
+        cliente, inicio, fim, rotulo="fertilizantes", raw_dir=raw_dir, arquivo=config.RAW_ARQUIVO,
+        colunas=COLUNAS_RAW, ordem=ORDEM_RAW, preparar=preparar, forcar=forcar, ultimo=ultimo,
+    )
+
+
+def ingerir_soja(
+    cliente,
+    inicio: str,
+    fim: str | None = None,
+    *,
+    raw_dir: Path = config.RAW_SOJA_DIR,
+    forcar: bool = False,
+    ultimo: str | None = None,
+) -> tuple[str, str]:
+    """Exportações de soja em grão (NCM 12019000): baixa os meses faltantes e devolve o período efetivo."""
+
+    def preparar():
+        def consultar(de: str, ate: str) -> list[dict]:
+            corpo = montar_consulta(
+                de, ate, [config.NCM_SOJA], fluxo="export", detalhes=["ncm"], metricas=config.METRICAS_SOJA
+            )
+            return _lista(cliente.post(config.ENDPOINT_CONSULTA, corpo, params={"language": config.IDIOMA}))
+
+        return consultar, normalizar_soja
+
+    return _ingerir_serie(
+        cliente, inicio, fim, rotulo="soja", raw_dir=raw_dir, arquivo=config.RAW_SOJA_ARQUIVO,
+        colunas=COLUNAS_SOJA, ordem=ORDEM_SOJA, preparar=preparar, forcar=forcar, ultimo=ultimo,
+    )
+
+
+def exigir_mes(rotulo: str, mes: str, raw_dir: Path, arquivo: str) -> None:
+    """Falha se o mês pedido não está no disco: evita tratar uma carga parcial como atualizada."""
+    ano, numero = map(int, mes.split("-"))
+    if numero not in meses_gravados(raw_dir, ano, arquivo):
+        raise ErroAPI(f"{rotulo}: a consulta ia até {mes}, mas a API não devolveu dados desse mês. Nada foi dado como atualizado.")
+
+
+def _no_periodo(df: pd.DataFrame, inicio: str, fim: str) -> pd.DataFrame:
+    chave = df["ano"].astype(int) * 100 + df["mes"].astype(int)
+    return df[(chave >= int(inicio.replace("-", ""))) & (chave <= int(fim.replace("-", "")))]
 
 
 def resumo(df: pd.DataFrame, inicio: str, fim: str, n: int = 5) -> str:
     """Linhas, totais e os maiores países de origem e URFs por kg líquido no período."""
-    chave = df["ano"].astype(int) * 100 + df["mes"].astype(int)
-    df = df[(chave >= int(inicio.replace("-", ""))) & (chave <= int(fim.replace("-", "")))]
+    df = _no_periodo(df, inicio, fim)
     if df.empty:
         return f"Sem dados gravados para {inicio} a {fim}."
     total_kg = df["kg_liquido"].sum()
@@ -512,6 +640,22 @@ def resumo(df: pd.DataFrame, inicio: str, fim: str, n: int = 5) -> str:
     return "\n".join(linhas)
 
 
+def resumo_soja(df: pd.DataFrame, inicio: str, fim: str) -> str:
+    """Toneladas, US$ FOB e preço médio da soja exportada no período."""
+    df = _no_periodo(df, inicio, fim)
+    if df.empty:
+        return f"Soja: sem dados gravados para {inicio} a {fim}."
+    toneladas = df["kg_liquido"].sum() / 1000
+    fob = df["vl_fob"].sum()
+    meses = len(df[["ano", "mes"]].drop_duplicates())
+    return "\n".join(
+        [
+            f"Resumo soja em grão (NCM {config.NCM_SOJA}, exportação) {inicio} a {fim} (Fonte: Comex Stat/MDIC)",
+            f"  Meses: {meses} | Total: {_fmt(toneladas)} t | US$ FOB {_fmt(fob)} | US$ {_fmt(fob / toneladas)}/t",
+        ]
+    )
+
+
 def _fmt(valor: float) -> str:
     """Inteiro com separador de milhar brasileiro."""
     return f"{valor:,.0f}".replace(",", ".")
@@ -523,11 +667,18 @@ def _pct(parte: float, total: float) -> str:
 
 # --- CLI -----------------------------------------------------------------------------------
 
+# Série -> (diretório, arquivo por ano) no disco.
+SERIES = {
+    "fertilizantes": (config.RAW_DIR, config.RAW_ARQUIVO),
+    "soja": (config.RAW_SOJA_DIR, config.RAW_SOJA_ARQUIVO),
+}
+
 
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="python -m src.ingest",
-        description="Importações brasileiras de fertilizantes. Fonte: Comex Stat/MDIC.",
+        description="Importações brasileiras de fertilizantes e exportações de soja em grão."
+        " Fonte: Comex Stat/MDIC.",
     )
     p.add_argument(
         "--inicio",
@@ -540,6 +691,17 @@ def _parser() -> argparse.ArgumentParser:
         type=mes_valido,
         metavar="AAAA-MM",
         help="último mês (padrão: último mês publicado na API)",
+    )
+    p.add_argument(
+        "--serie",
+        choices=["todas", *SERIES],
+        default="todas",
+        help="série a baixar (padrão: %(default)s)",
+    )
+    p.add_argument(
+        "--ultimo-gravado",
+        action="store_true",
+        help="só imprime o último AAAA-MM já gravado em todas as séries escolhidas, sem chamar a API",
     )
     p.add_argument(
         "--forcar",
@@ -570,8 +732,14 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
+    series = list(SERIES) if args.serie == "todas" else [args.serie]
+    if args.ultimo_gravado:
+        # O menor entre as séries: a atualização só está completa quando todas têm o mês.
+        meses = [ultimo_mes_gravado(*SERIES[serie]) for serie in series]
+        print("" if None in meses else min(meses))
+        return 0
     if not args.inicio and not args.atualizar_ncm:
-        parser.error("informe --inicio AAAA-MM (ou use --atualizar-ncm)")
+        parser.error("informe --inicio AAAA-MM (ou use --atualizar-ncm ou --ultimo-gravado)")
     if args.inicio and args.fim and args.inicio > args.fim:
         parser.error("--inicio deve ser anterior ou igual a --fim")
     logging.basicConfig(
@@ -586,13 +754,29 @@ def main(argv: list[str] | None = None) -> int:
         )
     try:
         cliente = ClienteComexStat(pausa=args.pausa, ssl_inseguro=args.ssl_inseguro)
-        if args.atualizar_ncm or not config.NCM_CSV.exists():
+        if args.atualizar_ncm or ("fertilizantes" in series and not config.NCM_CSV.exists()):
             ncms = buscar_ncms_fertilizantes(cliente)
             salvar_ncms(ncms)
             log.info("%d NCMs gravados em %s.", len(ncms), config.NCM_CSV)
         if args.inicio:
-            inicio, fim = ingerir(cliente, args.inicio, args.fim, forcar=args.forcar)
-            print(resumo(ler_raw(), inicio, fim))
+            ultimo = ultimo_mes_publicado(cliente)
+            log.info("Último mês publicado na API: %s.", ultimo)
+            if "fertilizantes" in series:
+                raw_dir, arquivo = SERIES["fertilizantes"]
+                inicio, fim = ingerir(
+                    cliente, args.inicio, args.fim, raw_dir=raw_dir, forcar=args.forcar, ultimo=ultimo
+                )
+                if inicio <= fim:
+                    exigir_mes("fertilizantes", fim, raw_dir, arquivo)
+                print(resumo(ler_raw(raw_dir), inicio, fim))
+            if "soja" in series:
+                raw_dir, arquivo = SERIES["soja"]
+                inicio, fim = ingerir_soja(
+                    cliente, args.inicio, args.fim, raw_dir=raw_dir, forcar=args.forcar, ultimo=ultimo
+                )
+                if inicio <= fim:
+                    exigir_mes("soja", fim, raw_dir, arquivo)
+                print(resumo_soja(ler_soja(raw_dir), inicio, fim))
     except ErroAPI as exc:
         log.error("%s", exc)
         return 1

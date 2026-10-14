@@ -82,13 +82,27 @@ def registro(ano, mes, pais="Canadá", kg=1000, urf="0917800 - PORTO DE PARANAGU
     }
 
 
-class ApiFalsa:
-    """Simula as rotas usadas por ingest.ingerir."""
+def registro_soja(ano, mes, kg=1_000_000, fob=400_000):
+    """Uma linha da exportação de soja (detalhe só por NCM) devolvida por POST /general."""
+    return {
+        "coNcm": config.NCM_SOJA,
+        "year": str(ano),
+        "monthNumber": f"{mes:02d}",
+        "ncm": "Soja, mesmo triturada, exceto para semeadura",
+        "metricFOB": str(fob),
+        "metricKG": str(kg),
+    }
 
-    def __init__(self, ultimo="2025-04", kg=1000):
+
+class ApiFalsa:
+    """Simula as rotas usadas por ingest.ingerir e ingest.ingerir_soja."""
+
+    def __init__(self, ultimo="2025-04", kg=1000, sem_dados=()):
         self.ultimo = ultimo
         self.kg = kg
+        self.sem_dados = set(sem_dados)  # (fluxo, "AAAA-MM") que a API "esquece" de devolver
         self.consultas = []
+        self.corpos = []
 
     def get(self, caminho, params=None):
         ano, mes = self.ultimo.split("-")
@@ -103,7 +117,14 @@ class ApiFalsa:
         assert caminho == config.ENDPOINT_CONSULTA
         periodo = corpo["period"]
         self.consultas.append((periodo["from"], periodo["to"]))
-        meses = ingest.meses_do_intervalo(periodo["from"], periodo["to"])
+        self.corpos.append(corpo)
+        meses = [
+            (a, m)
+            for a, m in ingest.meses_do_intervalo(periodo["from"], periodo["to"])
+            if (corpo["flow"], f"{a}-{m:02d}") not in self.sem_dados
+        ]
+        if corpo["flow"] == "export":
+            return {"list": [registro_soja(a, m) for a, m in meses]}
         return {"list": [registro(a, m, kg=self.kg) for a, m in meses]}
 
 
@@ -353,6 +374,94 @@ def test_forcar_substitui_os_meses_sem_duplicar(tmp_path, ncm_csv):
 
     kg = ingest.ler_raw(raw).set_index("mes")["kg_liquido"].to_dict()
     assert kg == {1: 1000, 2: 2000}
+
+
+# --- Exportação de soja (relação de troca) ----------------------------------------------
+
+
+def test_consulta_da_soja_e_exportacao_so_com_fob_e_kg():
+    corpo = ingest.montar_consulta(
+        "2025-01", "2025-12", [config.NCM_SOJA], fluxo="export", detalhes=["ncm"], metricas=config.METRICAS_SOJA
+    )
+    assert corpo["flow"] == "export" and corpo["details"] == ["ncm"]
+    assert corpo["metrics"] == ["metricFOB", "metricKG"]
+    assert corpo["filters"] == [{"filter": "ncm", "values": ["12019000"]}]
+
+
+def test_normalizar_soja():
+    df = ingest.normalizar_soja([registro_soja(2025, 3, kg=14_657_780_797, fob=5_673_615_141)])
+    assert list(df.columns) == ["ano", *ingest.COLUNAS_SOJA]
+    assert df.loc[0, "mes"] == 3 and df.loc[0, "co_ncm"] == "12019000"
+    assert df.loc[0, "kg_liquido"] == 14_657_780_797 and str(df["vl_fob"].dtype) == "Int64"
+
+
+def test_soja_incremental_em_diretorio_proprio(tmp_path):
+    raw_soja = tmp_path / "raw_soja"
+    api = ApiFalsa(ultimo="2025-02")
+    assert ingest.ingerir_soja(api, "2024-12", raw_dir=raw_soja) == ("2024-12", "2025-02")
+    assert api.consultas == [("2024-12", "2024-12"), ("2025-01", "2025-02")]
+    assert all(c["flow"] == "export" and c["details"] == ["ncm"] for c in api.corpos)
+    assert (raw_soja / "ano=2025" / config.RAW_SOJA_ARQUIVO).exists()
+
+    api.consultas.clear()
+    ingest.ingerir_soja(api, "2024-12", raw_dir=raw_soja)
+    assert api.consultas == []
+    df = ingest.ler_soja(raw_soja)
+    assert list(df.columns) == ["ano", *ingest.COLUNAS_SOJA]
+    assert list(zip(df["ano"], df["mes"])) == [(2024, 12), (2025, 1), (2025, 2)]
+    assert ingest.ultimo_mes_gravado(raw_soja, config.RAW_SOJA_ARQUIVO) == "2025-02"
+
+
+def test_ultimo_mes_gravado_sem_dados(tmp_path):
+    assert ingest.ultimo_mes_gravado(tmp_path / "vazio") is None
+
+
+@pytest.fixture
+def series(tmp_path, monkeypatch):
+    """CLI apontada para diretórios temporários e para a API simulada."""
+    dirs = {"fertilizantes": tmp_path / "raw", "soja": tmp_path / "raw_soja"}
+    monkeypatch.setattr(
+        ingest,
+        "SERIES",
+        {"fertilizantes": (dirs["fertilizantes"], config.RAW_ARQUIVO), "soja": (dirs["soja"], config.RAW_SOJA_ARQUIVO)},
+    )
+    return dirs
+
+
+def test_cli_baixa_as_duas_series_com_o_mesmo_ultimo_mes(series, monkeypatch, capsys):
+    api = ApiFalsa(ultimo="2025-02")
+    monkeypatch.setattr(ingest, "ClienteComexStat", lambda **kwargs: api)
+    assert ingest.main(["--inicio", "2025-01", "--pausa", "0"]) == 0
+    assert [c["flow"] for c in api.corpos] == ["import", "export"]
+    saida = capsys.readouterr().out
+    assert "Resumo 2025-01 a 2025-02" in saida and "soja em grão" in saida
+
+    assert ingest.main(["--ultimo-gravado"]) == 0
+    assert capsys.readouterr().out.strip() == "2025-02"
+
+
+def test_cli_ultimo_gravado_e_o_menor_entre_as_series(series, capsys):
+    ingest.gravar_ano(ingest.normalizar([registro(2025, 3)], TABELAS), 2025, series["fertilizantes"])
+    ingest.gravar_ano(
+        ingest.normalizar_soja([registro_soja(2025, 2)]),
+        2025,
+        series["soja"],
+        config.RAW_SOJA_ARQUIVO,
+        ingest.COLUNAS_SOJA,
+        ingest.ORDEM_SOJA,
+    )
+    assert ingest.main(["--ultimo-gravado"]) == 0
+    assert capsys.readouterr().out.strip() == "2025-02"
+    assert ingest.main(["--ultimo-gravado", "--serie", "fertilizantes"]) == 0
+    assert capsys.readouterr().out.strip() == "2025-03"
+
+
+def test_cli_falha_se_o_ultimo_mes_publicado_nao_veio(series, monkeypatch):
+    api = ApiFalsa(ultimo="2025-02", sem_dados={("export", "2025-02")})
+    monkeypatch.setattr(ingest, "ClienteComexStat", lambda **kwargs: api)
+    assert ingest.main(["--inicio", "2025-01", "--pausa", "0"]) == 1
+    # a soja de janeiro foi gravada, mas o mês publicado (fevereiro) não: o código de saída é 1
+    assert ingest.ultimo_mes_gravado(series["soja"], config.RAW_SOJA_ARQUIVO) == "2025-01"
 
 
 # --- Resumo e CLI -------------------------------------------------------------------------

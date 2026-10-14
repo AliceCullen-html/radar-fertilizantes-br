@@ -17,6 +17,9 @@ PROCESSED_DIR = DADOS_DIR / "processed"
 NCM_CSV = DADOS_DIR / "ncm_fertilizantes.csv"
 # Um arquivo por ano, em partição no estilo Hive: data/raw/ano=AAAA/importacoes.parquet
 RAW_ARQUIVO = "importacoes.parquet"
+# Exportação de soja em grão (relação de troca): data/raw_soja/ano=AAAA/exportacoes.parquet
+RAW_SOJA_DIR = DADOS_DIR / "raw_soja"
+RAW_SOJA_ARQUIVO = "exportacoes.parquet"
 
 # --- API Comex Stat (dados abertos do MDIC, sem autenticação) --------------------
 # Documentação: https://api-comexstat.mdic.gov.br/docs (spec OpenAPI em /docs/doc.yaml)
@@ -44,6 +47,10 @@ METRICAS = {
     "metricFreight": "vl_frete",  # US$ frete (só importação)
     "metricInsurance": "vl_seguro",  # US$ seguro (só importação)
 }
+
+# Soja em grão exceto para semeadura (confirmado em /tables/ncm/12019000): exportação mensal.
+NCM_SOJA = "12019000"
+METRICAS_SOJA = {"metricFOB": "vl_fob", "metricKG": "kg_liquido"}
 
 # --- Rate limiting -----------------------------------------------------------------
 # A API responde HTTP 429 ("tente novamente em 10 segundos") a chamadas em sequência.

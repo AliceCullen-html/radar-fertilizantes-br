@@ -159,6 +159,15 @@ th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--gra
 th { position: sticky; top: 0; background: var(--superficie); color: var(--texto-2); font-weight: 600; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
+.ressalva {
+  margin: 10px 0 0; padding: 8px 12px; border-left: 3px solid var(--texto-3); border-radius: 0 8px 8px 0;
+  background: var(--lavagem); color: var(--texto-2); font-size: 13px;
+}
+.ressalva strong { color: var(--texto); font-weight: 600; }
+.kpi-linha.produtos { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 12px; }
+.kpi .titulo-produto { display: flex; align-items: center; gap: 6px; }
+.kpi .titulo-produto .ponto { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+
 .aviso { padding: 16px; border: 1px solid var(--borda); border-radius: 12px; background: var(--superficie); }
 
 footer.rodape { color: var(--texto-2); font-size: 12px; padding: 8px 0 24px; display: grid; gap: 4px; }
@@ -271,6 +280,18 @@ footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
       </section>
     </div>
 
+    <section class="cartao grade" aria-labelledby="titulo-troca" id="secao-troca">
+      <div>
+        <h2 id="titulo-troca">Relação de troca no porto: soja x fertilizante</h2>
+        <p class="nota" id="nota-troca"></p>
+        <p class="ressalva"><strong>No porto, não na fazenda.</strong> Toneladas de soja exportada (preço FOB) que pagam 1 t de fertilizante importado (preço CIF) no mesmo mês. Não é o preço ao produtor: ficam de fora o frete interno, impostos, margens e prêmios.</p>
+        <div class="kpi-linha produtos" id="kpis-troca"></div>
+        <ul class="legenda" id="legenda-troca"></ul>
+        <div class="grafico alto-300"><canvas id="grafico-troca" role="img"></canvas></div>
+        <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-troca"></div></details>
+      </div>
+    </section>
+
     <section class="cartao grade" aria-labelledby="titulo-hhi">
       <div>
         <h2 id="titulo-hhi">Concentração de fornecedores (HHI)</h2>
@@ -286,6 +307,7 @@ footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
     <span class="fonte">Fonte: Comex Stat/MDIC</span>
     <span id="rodape-datas"></span>
     <span>Preço implícito = valor ÷ toneladas. HHI = soma dos quadrados dos shares por país de origem (0 a 10.000). Anos parciais são comparados com os mesmos meses do ano anterior.</span>
+    <span>Relação de troca = preço CIF do fertilizante importado (KCl NCM 31042090, ureia 31021010, MAP 31054000) ÷ preço FOB da soja em grão exportada (NCM 12019000) no mesmo mês; média histórica = média simples dos meses da série.</span>
     <span>Código e dados: <a href="https://github.com/AliceCullen-html/radar-fertilizantes-br">github.com/AliceCullen-html/radar-fertilizantes-br</a></span>
   </footer>
 </div>
@@ -313,6 +335,7 @@ let dados = null;
 // --- Formatação -----------------------------------------------------------------------------
 const fmt0 = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
 const fmt1 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fmt2 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtCompacto = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
 const MENOS = "−";
 
@@ -843,6 +866,94 @@ function desenharFrete(indices) {
     indices.map((i, k) => [rotuloMes(p[i]), nulo(frete[k]) ? "–" : fmt0.format(frete[k]), pct(peso[k])]));
 }
 
+// Produtos da relação de troca por filtro de grupo; "Todos" e NPK mostram os três.
+const PRODUTOS_TROCA = { K: ["kcl"], N: ["ureia"], P: ["map"] };
+function desenharTroca(indices) {
+  const secao = document.getElementById("secao-troca");
+  const tr = dados.troca;
+  secao.classList.toggle("oculto", !tr);
+  if (!tr) return;
+  const p = periodos();
+  const rotulos = indices.map((i) => rotuloMes(p[i]));
+  // A série da troca é alinhada aos períodos da série mensal; o índice é o mesmo.
+  const iTroca = (i) => tr.periodos.indexOf(p[i]);
+  const chaves = PRODUTOS_TROCA[estado.grupo] ?? ["kcl", "ureia", "map"];
+  const produtos = chaves.map((k) => ({ chave: k, ...tr.produtos[k], corSerie: corGrupo(tr.produtos[k].grupo) }));
+  const valor = (prod, campo, i) => { const j = iTroca(i); return j < 0 ? null : prod[campo][j]; };
+  const sacas = (v) => (nulo(v) ? null : (v * 1000) / tr.kg_saca);
+  const tSoja = (v) => (nulo(v) ? "–" : `${fmt2.format(v)} t`);
+  const rotuloMedia = (prod) => (prod.media_periodo ? `${rotuloMes(prod.media_periodo[0])}–${rotuloMes(prod.media_periodo[1])}` : "");
+
+  const ate = indices[indices.length - 1];
+  texto("nota-troca", `${produtos.map((x) => x.nome).join(", ")} · t de soja por t de fertilizante · ${rotulos[0]} a ${rotulos[rotulos.length - 1]}${estado.grupo === "NPK" ? " · NPK não entra na relação: mostrando os três produtos" : ""}`);
+  document.getElementById("kpis-troca").replaceChildren(...produtos.map((prod) => {
+    const v = valor(prod, "razao", ate);
+    const desvio = !nulo(v) && prod.media > 0 ? 100 * (v / prod.media - 1) : null;
+    const ponto = el("span", { classe: "ponto" });
+    ponto.style.background = prod.corSerie;
+    return el("div", { classe: "kpi" },
+      el("div", { classe: "rotulo titulo-produto" }, ponto, `${prod.nome} · ${rotuloMes(p[ate])}`),
+      el("div", { classe: "valor" }, nulo(v) ? "sem importação" : `${fmt2.format(v)} t de soja`),
+      el("div", { classe: "delta" }, nulo(v) ? `Média ${rotuloMedia(prod)}: ${tSoja(prod.media)}` : `${variacao(desvio)} vs média ${rotuloMedia(prod)} (${tSoja(prod.media)}) · ${fmt1.format(sacas(v))} sacas`));
+  }));
+  legenda("legenda-troca", [
+    ...produtos.map((prod) => ({ rotulo: `${prod.nome} (${prod.descricao}, NCM ${prod.ncm})`, corItem: prod.corSerie, tipo: "linha" })),
+    { rotulo: "Média histórica de cada produto", tipo: "limiar" },
+  ]);
+  const comum = { pointRadius: 0, tension: 0, spanGaps: false };
+  const datasets = produtos.flatMap((prod) => [
+    {
+      ...comum, label: prod.nome, chave: prod.chave, rotuloFinal: produtos.length > 1 ? prod.nome : null,
+      data: indices.map((i) => valor(prod, "razao", i)), borderColor: prod.corSerie, backgroundColor: prod.corSerie,
+      borderWidth: 2, pointHoverRadius: 4, pointHoverBorderWidth: 2, pointHoverBorderColor: cor("--superficie"),
+    },
+    {
+      ...comum, label: `Média ${prod.nome}`, media: true, data: indices.map(() => prod.media),
+      borderColor: comAlfa(prod.corSerie, 0.75), borderWidth: 1.5, borderDash: [5, 4], pointHoverRadius: 0,
+    },
+  ]);
+  document.getElementById("grafico-troca").setAttribute("aria-label", `Relação de troca no porto, toneladas de soja por tonelada de ${produtos.map((x) => x.nome).join(", ")}, de ${rotulos[0]} a ${rotulos[rotulos.length - 1]}, com a média histórica tracejada. A tabela abaixo traz os valores.`);
+  novoGrafico("grafico-troca", {
+    type: "line",
+    data: { labels: rotulos, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: produtos.length > 1 ? 54 : 8 } },
+      interaction: { mode: "index", intersect: false },
+      scales: eixos({ formatarY: (v) => fmt1.format(v), maxTicksX: estreito() ? 4 : 8 }),
+      plugins: {
+        legend: { display: false },
+        rotulosFinais: { ativo: produtos.length > 1 },
+        tooltip: {
+          enabled: false,
+          filter: (item) => !item.dataset.media,
+          external: dicaExterna((pontos) => {
+            const i = indices[pontos[0].dataIndex];
+            const linhas = pontos.map((d) => {
+              const prod = tr.produtos[d.dataset.chave];
+              const cif = valor(prod, "cif", i);
+              return { corSerie: d.dataset.borderColor, valor: tSoja(d.raw), serie: `${prod.nome} · CIF ${porTonelada(cif)} · ${nulo(d.raw) ? "–" : fmt1.format(sacas(d.raw))} sacas` };
+            });
+            const soja = iTroca(i) < 0 ? null : tr.soja_fob[iTroca(i)];
+            return { titulo: pontos[0].label, linhas, extras: [`Soja FOB: ${porTonelada(soja)}`, `Médias: ${produtos.map((x) => `${x.nome} ${tSoja(x.media)}`).join(" · ")}`] };
+          }),
+        },
+      },
+    },
+    plugins: [pluginCruz, pluginRotulosFinais],
+  });
+  tabela("tabela-troca",
+    [{ titulo: "Mês" }, { titulo: "Soja US$/t FOB", num: true }, ...produtos.flatMap((x) => [{ titulo: `${x.nome} US$/t CIF`, num: true }, { titulo: `${x.nome} t soja/t`, num: true }, { titulo: `${x.nome} sacas/t`, num: true }])],
+    indices.map((i) => {
+      const j = iTroca(i);
+      const n = (v, f) => (nulo(v) ? "–" : f.format(v));
+      return [rotuloMes(p[i]), n(j < 0 ? null : tr.soja_fob[j], fmt0), ...produtos.flatMap((x) => {
+        const r = valor(x, "razao", i);
+        return [n(valor(x, "cif", i), fmt0), n(r, fmt2), n(sacas(r), fmt1)];
+      })];
+    }));
+}
+
 function desenharHhi() {
   const anoDe = Number(estado.de.slice(0, 4)), anoAte = Number(estado.ate.slice(0, 4));
   const anos = dados.anual.anos.filter((a) => a >= anoDe && a <= anoAte);
@@ -976,6 +1087,7 @@ function atualizar() {
   desenharRanking({ tipo: "portos", idCanvas: "grafico-portos", idCaixa: "caixa-portos", idNota: "nota-portos", idTabela: "tabela-portos" });
   desenharPrecos(indices);
   desenharFrete(indices);
+  desenharTroca(indices);
   desenharHhi();
 }
 

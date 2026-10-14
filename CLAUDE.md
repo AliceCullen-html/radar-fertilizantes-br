@@ -52,11 +52,16 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
 - Actions sempre em versões que rodam em Node 24 (`checkout@v6`, `setup-python@v6`,
   `setup-go@v6`, `configure-pages@v6`, `upload-pages-artifact@v5`, `deploy-pages@v5`).
   Antes de trocar uma versão, conferir `runs.using` no `action.yml` da tag.
-- Ingestão: `python -m src.ingest --inicio AAAA-MM [--fim AAAA-MM]`. Opções em
-  `python -m src.ingest --help`.
+- Ingestão: `python -m src.ingest --inicio AAAA-MM [--fim AAAA-MM] [--serie todas|fertilizantes|soja]`.
+  Opções em `python -m src.ingest --help`. `--ultimo-gravado` imprime o último mês já
+  gravado em todas as séries, sem chamar a API.
 - Dados brutos: `data/raw/ano=AAAA/importacoes.parquet`, de 2015-01 a 2026-09 (61.460
   linhas, 1,6 MB). A coluna `ano` fica no caminho, não dentro do arquivo; leia com
-  `src.ingest.ler_raw()`.
+  `src.ingest.ler_raw()`. A exportação de soja em grão (NCM 12019000, só FOB e kg) fica em
+  `data/raw_soja/ano=AAAA/exportacoes.parquet`; leia com `src.ingest.ler_soja()`.
+- Relação de troca (`src/troca.py`): preço CIF de KCl 31042090, ureia 31021010 e MAP
+  31054000 ÷ preço FOB da soja no mesmo mês. É "no porto", não o preço ao produtor; dizer
+  isso em toda saída pública que a mostrar.
 - Fase 2: `python -m src.transform` gera em `data/processed/` os CSVs de preço US$/t,
   shares por origem e URF com variação anual, HHI, sazonalidade e o `dashboard.json`.
   As saídas são determinísticas; regenere-as sempre que `data/raw/` mudar.

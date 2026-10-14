@@ -11,6 +11,9 @@ Lê os dados brutos (data/raw/, via ingest.ler_raw) e o grupo de cada NCM
   anterior (YoY);
 - hhi_ano_grupo.csv: concentração de fornecedores (HHI) por ano e grupo;
 - sazonalidade_grupo.csv: média de toneladas por mês do calendário e grupo;
+- troca_mensal.csv: relação de troca "no porto" entre soja exportada e KCl,
+  ureia e MAP importados (src/troca.py), se houver dados de soja em
+  data/raw_soja/;
 - dashboard.json: export compacto para o dashboard estático (fase 3).
 
 Nas tabelas de share, HHI e sazonalidade, o grupo TOTAL soma N, P, K e NPK.
@@ -31,7 +34,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import config, ingest
+from . import config, ingest, troca
 
 log = logging.getLogger(__name__)
 
@@ -308,7 +311,7 @@ def dashboard(tabelas: dict[str, pd.DataFrame]) -> dict:
     if not saz.empty:
         sazonal["anos"] = [int(saz["ano_inicial"].iloc[0]), int(saz["ano_final"].iloc[0])]
 
-    return {
+    painel = {
         "meta": {
             "fonte": "Comex Stat/MDIC",
             "periodo": {"inicio": periodos[0], "fim": periodos[-1]},
@@ -338,6 +341,9 @@ def dashboard(tabelas: dict[str, pd.DataFrame]) -> dict:
         "urfs": {"colunas": colunas, "dados": rankings(urfs, "co_urf", "no_urf", False)},
         "sazonalidade": sazonal,
     }
+    if "troca_mensal" in tabelas:
+        painel["troca"] = troca.bloco_dashboard(tabelas["troca_mensal"], periodos, _num)
+    return painel
 
 
 # --- Gravação -------------------------------------------------------------------------------
@@ -354,13 +360,18 @@ def _arredondar(df: pd.DataFrame) -> pd.DataFrame:
             df[coluna] = df[coluna].round(3)
         elif coluna.endswith("_usd_t") or coluna in ("hhi", "indice_sazonal"):
             df[coluna] = df[coluna].round(2)
-        elif coluna.endswith(("_pct", "_pp")):
+        elif coluna.endswith(("_pct", "_pp", "_por_t")):
             df[coluna] = df[coluna].round(4)
     return df
 
 
-def gerar(base: pd.DataFrame, saida: Path = config.PROCESSED_DIR) -> dict[str, pd.DataFrame]:
-    """Calcula todas as tabelas e grava os CSVs e o dashboard.json em `saida`."""
+def gerar(
+    base: pd.DataFrame, saida: Path = config.PROCESSED_DIR, soja: pd.DataFrame | None = None
+) -> dict[str, pd.DataFrame]:
+    """Calcula todas as tabelas e grava os CSVs e o dashboard.json em `saida`.
+
+    Sem `soja` (exportação de soja em grão), a relação de troca fica de fora.
+    """
     tabelas = {
         "precos_mes_grupo_origem": precos(base, por_origem=True),
         "precos_mes_grupo": precos(base, por_origem=False),
@@ -369,6 +380,8 @@ def gerar(base: pd.DataFrame, saida: Path = config.PROCESSED_DIR) -> dict[str, p
     }
     tabelas["hhi_ano_grupo"] = concentracao(tabelas["share_origem_ano"])
     tabelas["sazonalidade_grupo"] = sazonalidade(base)
+    if soja is not None and not soja.empty:
+        tabelas["troca_mensal"] = troca.relacao_troca(base, soja)
     saida.mkdir(parents=True, exist_ok=True)
     for nome, df in tabelas.items():
         _arredondar(df).to_csv(saida / f"{nome}.csv", index=False, encoding="utf-8", lineterminator="\n")
@@ -383,6 +396,9 @@ def main(argv: list[str] | None = None) -> int:
         description="Fase 2: tabelas analíticas em data/processed/. Fonte: Comex Stat/MDIC.",
     )
     parser.add_argument("--raw", type=Path, default=config.RAW_DIR, help="dados brutos (padrão: data/raw)")
+    parser.add_argument(
+        "--raw-soja", type=Path, default=config.RAW_SOJA_DIR, help="exportação de soja (padrão: data/raw_soja)"
+    )
     parser.add_argument("--saida", type=Path, default=config.PROCESSED_DIR, help="destino (padrão: data/processed)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
@@ -391,7 +407,14 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         log.error("%s", exc)
         return 1
-    tabelas = gerar(base, args.saida)
+    soja = ingest.ler_soja(args.raw_soja)
+    if soja.empty:
+        log.warning(
+            "Sem exportação de soja em %s; a relação de troca fica de fora."
+            " Rode: python -m src.ingest --inicio 2015-01 --serie soja",
+            args.raw_soja,
+        )
+    tabelas = gerar(base, args.saida, soja)
     for nome, df in tabelas.items():
         log.info("%s: %d linhas", args.saida / f"{nome}.csv", len(df))
     log.info("%s: %.0f KB", args.saida / "dashboard.json", (args.saida / "dashboard.json").stat().st_size / 1024)

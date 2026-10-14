@@ -23,6 +23,9 @@ Cada linha traz país de origem, NCM, UF, via de transporte e URF (unidade da Re
 Federal onde a carga foi desembaraçada), com valor US$ FOB, peso líquido em kg, valor
 US$ CIF, frete e seguro. O repositório já inclui a série de 2015-01 a 2026-09.
 
+Para a [relação de troca](#relação-de-troca-no-porto), o projeto baixa também a
+exportação mensal de soja em grão (NCM 12019000), com valor US$ FOB e peso.
+
 ### Produtos acompanhados
 
 | Posição (SH4) | Conteúdo | Grupo |
@@ -45,13 +48,15 @@ Requer Python 3.10 ou mais recente.
 python -m venv .venv
 source .venv/bin/activate        # no Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python -m src.ingest --inicio 2015-01   # baixa só os meses que faltam em data/raw/
+python -m src.ingest --inicio 2015-01   # baixa só os meses que faltam em data/raw/ e data/raw_soja/
 python -m src.transform                 # gera as tabelas de data/processed/
 ```
 
-A ingestão é incremental: só consulta os meses que ainda não estão em `data/raw/`, uma
-consulta por ano. Ao final, imprime um resumo do período. Saída da carga de 2015-01 a
-2026-09:
+A ingestão é incremental: só consulta os meses que ainda não estão no disco, uma consulta
+por ano e por série (importação de fertilizantes e exportação de soja), com o mesmo cliente
+e o mesmo limite de requisições. Se a API disser que publicou um mês e ele não vier em
+alguma das séries, o comando termina com erro (código 1). Ao final, imprime um resumo do
+período. Saída da carga de 2015-01 a 2026-09:
 
 ```text
 Resumo 2015-01 a 2026-09 (Fonte: Comex Stat/MDIC)
@@ -69,12 +74,16 @@ Resumo 2015-01 a 2026-09 (Fonte: Comex Stat/MDIC)
     3. 1017700 PORTO DE RIO GRANDE              60.390.026 t   14,9%
     4. 0927700 PORTO DE SAO FRANCISCO DO SUL    27.426.288 t    6,8%
     5. 0727600 PORTO DE VITORIA                 23.347.338 t    5,8%
+Resumo soja em grão (NCM 12019000, exportação) 2015-01 a 2026-09 (Fonte: Comex Stat/MDIC)
+  Meses: 141 | Total: 988.154.583 t | US$ FOB 421.488.513.355 | US$ 427/t
 ```
 
 | Opção da ingestão | O que faz |
 | --- | --- |
 | `--inicio AAAA-MM` | primeiro mês (a série mensal começa em 1997-01) |
 | `--fim AAAA-MM` | último mês; o padrão é o último mês publicado pelo MDIC |
+| `--serie todas\|fertilizantes\|soja` | série a baixar (padrão: `todas`) |
+| `--ultimo-gravado` | só imprime o último mês já gravado em todas as séries, sem chamar a API |
 | `--forcar` | baixa de novo meses já gravados (o MDIC pode revisar meses recentes) |
 | `--atualizar-ncm` | regenera `data/ncm_fertilizantes.csv` a partir da API |
 | `--pausa SEG` | pausa mínima entre chamadas à API (padrão: 10 s) |
@@ -89,6 +98,8 @@ O [dashboard](https://alicecullen-html.github.io/radar-fertilizantes-br/) é uma
 - toneladas mensais por grupo (N, P, K e NPK);
 - share por país de origem e ranking de portos (URF), com variação sobre o ano anterior;
 - preço implícito US$/t FOB x CIF e frete US$/t;
+- [relação de troca no porto](#relação-de-troca-no-porto) entre soja e KCl, ureia e MAP, com a
+  média histórica como referência;
 - concentração de fornecedores (HHI) por ano.
 
 Os filtros de grupo e período valem para todos os gráficos e ficam na URL (por exemplo,
@@ -132,8 +143,12 @@ from src.ingest import ler_raw
 df = ler_raw()
 ```
 
-A série de 2015-01 a 2026-09 tem 61.460 linhas e ocupa 1,6 MB, por isso `data/raw/`
-continua versionado. Se passar de ~20 MB, a pasta vai para o `.gitignore` e os dados
+A exportação de soja fica em `data/raw_soja/ano=AAAA/exportacoes.parquet`, uma linha por
+mês, com `mes`, `co_ncm` (12019000), `vl_fob` e `kg_liquido`. Para ler:
+`from src.ingest import ler_soja`.
+
+A série de 2015-01 a 2026-09 tem 61.460 linhas e ocupa 1,6 MB (mais 100 KB da soja), por
+isso `data/raw/` e `data/raw_soja/` continuam versionados. Se passar de ~20 MB, a pasta vai para o `.gitignore` e os dados
 passam a ser gerados localmente com os comandos acima. Os totais anuais de kg, US$ FOB,
 US$ CIF, frete e seguro foram conferidos, até a unidade, com uma consulta agregada
 independente à API, que filtra pelas posições SH4 em vez da lista de NCMs.
@@ -150,7 +165,8 @@ independente à API, que filtra pelas posições SH4 em vez da lista de NCMs.
 | `share_urf_ano.csv` | ano × grupo × URF | o mesmo, por URF |
 | `hhi_ano_grupo.csv` | ano × grupo | HHI, número de origens, país líder e seu share, CR3 |
 | `sazonalidade_grupo.csv` | grupo × mês | média de toneladas por mês do calendário e índice sazonal |
-| `dashboard.json` | — | export compacto para o dashboard: séries mensais, resumo anual, top 10 origens e URFs, sazonalidade |
+| `troca_mensal.csv` | mês × produto | [relação de troca](#relação-de-troca-no-porto): preço CIF do fertilizante, preço FOB da soja, t de soja por t e sacas por t |
+| `dashboard.json` | — | export compacto para o dashboard: séries mensais, resumo anual, top 10 origens e URFs, sazonalidade, relação de troca |
 
 Como os números são calculados:
 
@@ -168,6 +184,32 @@ Como os números são calculados:
   índice sazonal é a média do mês ÷ média dos 12 meses × 100.
 - `n_meses` marca anos parciais. As saídas são determinísticas: os mesmos dados geram
   arquivos idênticos.
+
+### Relação de troca no porto
+
+Quantas toneladas de soja exportada pagam 1 t de fertilizante importado, mês a mês
+(`src/troca.py`):
+
+```text
+relação de troca = preço CIF do fertilizante (US$/t) ÷ preço FOB da soja (US$/t)
+```
+
+| Produto | NCM | Grupo |
+| --- | --- | --- |
+| KCl (cloreto de potássio) | 31042090 | K |
+| Ureia (mais de 45% de N) | 31021010 | N |
+| MAP (fosfato monoamônico) | 31054000 | P |
+| Soja em grão, exceto para semeadura (exportação) | 12019000 | — |
+
+Os NCMs foram conferidos na tabela auxiliar de NCM da API. Os preços são implícitos
+(valor ÷ toneladas) do mês inteiro, e as sacas são de 60 kg. A média histórica de
+referência é a média simples das relações mensais de toda a série (2015-01 em diante).
+
+**É uma relação "no porto", não o preço ao produtor.** Compara a soja no embarque (FOB) com
+o fertilizante no desembarque (CIF). Ficam de fora o frete interno nos dois sentidos,
+impostos, armazenagem, margens da revenda e das tradings, prêmios de porto e o descasamento
+entre a compra do adubo e a venda da safra. Serve para ver a direção e a intensidade do
+poder de compra da soja frente ao adubo importado, não para orçar a compra de uma fazenda.
 
 ## Observações sobre os dados e a API
 
