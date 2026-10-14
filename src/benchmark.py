@@ -13,9 +13,10 @@
   Grava data/raw_cambio/ptax_venda_media_mensal.csv.
 
 As duas fontes usam o mesmo cliente: pausa entre chamadas, novas tentativas com espera
-exponencial em HTTP 429, 5xx, falha de rede e corpo inesperado (o firewall do BCB às vezes
-responde com uma página HTML e HTTP 200), timeout e verificação TLS sempre ligada. Nenhuma
-das duas pede chave.
+exponencial em HTTP 429, 5xx, falha de rede (inclusive corte no meio do corpo e erro TLS
+transitório) e corpo inesperado (o firewall do BCB às vezes responde com uma página HTML e
+HTTP 200), timeout, limite de tamanho do corpo e verificação TLS sempre ligada. Nenhuma das
+duas pede chave.
 
 Uso (pela CLI da ingestão):
     python -m src.ingest --inicio 2015-01 --serie benchmark
@@ -33,13 +34,16 @@ import logging
 import os
 import random
 import re
+import ssl
 import time
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
 import pandas as pd
 import requests
+from urllib3.util import parse_url
 
 from . import config
 
@@ -97,19 +101,22 @@ class ClienteFontes:
             try:
                 resp = self._seguir(url, params, esperado)
                 if resp.status_code == 200:
+                    _ler_corpo(resp, config.PINK_MAX_BYTES if esperado == "xlsx" else config.MAX_BYTES_PAGINA)
                     _conferir_corpo(resp, esperado)
                     return resp
                 if resp.status_code != 429 and resp.status_code < 500:
                     raise ErroFonte(f"HTTP {resp.status_code} em {_sem_query(url)}")
                 motivo = f"HTTP {resp.status_code}"
                 sugerida = resp.headers.get("Retry-After", "")
-                if sugerida.isdigit():
-                    espera = max(espera, float(sugerida))
+                if sugerida.isdigit():  # com teto: um Retry-After de uma hora não segura o job até o timeout
+                    espera = max(espera, min(float(sugerida), config.BACKOFF_MAX_S))
             except _CorpoInesperado as exc:
                 motivo = str(exc)
             except requests.exceptions.SSLError as exc:
-                raise ErroFonte(f"Falha na verificação TLS de {urlsplit(url).hostname}: {exc}") from exc
-            except (requests.ConnectionError, requests.Timeout) as exc:
+                if _falha_de_certificado(exc):
+                    raise ErroFonte(f"Falha na verificação TLS de {urlsplit(url).hostname}: {exc}") from exc
+                motivo = f"erro TLS transitório ({exc})"
+            except (requests.ConnectionError, requests.Timeout, requests.exceptions.ChunkedEncodingError, requests.exceptions.ContentDecodingError) as exc:
                 motivo = f"falha de rede ({exc})"
             if tentativa < self.max_tentativas:
                 log.warning("%s em %s; tentativa %d/%d em %.0f s", motivo, _sem_query(url), tentativa + 1, self.max_tentativas, espera)
@@ -118,14 +125,18 @@ class ClienteFontes:
 
     def _seguir(self, url: str, params: dict | None, esperado: str) -> requests.Response:
         for _ in range(4):  # até 3 redirecionamentos, sempre dentro dos hosts permitidos
-            _conferir_host(url)
+            _conferir_host(url, params)
             self._aguardar_pausa()
             resp = self.sessao.request(
-                "GET", url, params=params, headers={"Accept": _ACCEPT[esperado]}, timeout=config.TIMEOUT_S, allow_redirects=False, verify=True
+                "GET", url, params=params, headers={"Accept": _ACCEPT[esperado]}, timeout=config.TIMEOUT_S,
+                allow_redirects=False, verify=True, stream=True,
             )
             if resp.status_code not in (301, 302, 303, 307, 308):
                 return resp
-            url, params = urljoin(url, resp.headers.get("Location", "")), None
+            try:
+                url, params = urljoin(url, resp.headers.get("Location", "")), None
+            except ValueError as exc:
+                raise ErroFonte(f"redirecionamento inválido a partir de {_sem_query(url)}") from exc
         raise ErroFonte(f"redirecionamentos demais a partir de {_sem_query(url)}")
 
     def _aguardar_pausa(self) -> None:
@@ -148,17 +159,58 @@ _ACCEPT = {
 }
 
 
-def _conferir_host(url: str) -> None:
-    partes = urlsplit(url)
-    if partes.scheme != "https" or partes.hostname not in config.HOSTS_FONTES:
+def _conferir_host(url: str, params: dict | None = None) -> None:
+    """Só https e só os hosts permitidos, conferidos na URL que o requests vai de fato usar:
+    "https://outro.example\\@api.bcb.gov.br/" parece do BCB para o urlsplit, mas o requests a
+    envia para outro.example. Barra invertida, "@", espaço e caractere de controle reprovam."""
+    try:
+        netloc = urlsplit(url).netloc
+    except ValueError as exc:
+        raise ErroFonte(f"endereço inválido: {url[:200]!r}") from exc
+    if re.search(r"[\\@\s\x00-\x1f\x7f]", netloc) or "\\" in url:
+        raise ErroFonte(f"endereço com caractere não permitido: {_sem_query(url)!r}")
+    try:
+        preparada = requests.Request("GET", url, params=params).prepare().url
+        hosts = {urlsplit(url).hostname, urlsplit(preparada).hostname, parse_url(preparada).host}
+        esquemas = {urlsplit(url).scheme, urlsplit(preparada).scheme}
+    except (ValueError, requests.exceptions.RequestException) as exc:
+        raise ErroFonte(f"endereço inválido: {_sem_query(url)!r}") from exc
+    if esquemas != {"https"} or len(hosts) != 1 or not hosts <= set(config.HOSTS_FONTES):
         raise ErroFonte(f"endereço fora das fontes permitidas: {_sem_query(url)}")
+
+
+def _falha_de_certificado(exc: BaseException) -> bool:
+    """Erro de verificação do certificado (aborta) ou erro TLS transitório (repete)."""
+    vistos = set()
+    while exc is not None and id(exc) not in vistos:
+        vistos.add(id(exc))
+        if isinstance(exc, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(exc):
+            return True
+        exc = exc.__cause__ or exc.__context__ or (exc.args[0] if exc.args and isinstance(exc.args[0], BaseException) else None)
+    return False
+
+
+def _ler_corpo(resp, limite: int) -> None:
+    """Lê o corpo em blocos e para no limite: um arquivo enorme não chega inteiro à memória."""
+    tamanho = str(resp.headers.get("Content-Length", ""))
+    if tamanho.isdigit() and int(tamanho) > limite:
+        raise ErroFonte(f"a resposta tem {tamanho} bytes, acima do limite de {limite}")
+    if hasattr(resp, "iter_content") and not getattr(resp, "_content_consumed", False):
+        partes, total = [], 0
+        for parte in resp.iter_content(chunk_size=1 << 16):
+            total += len(parte)
+            if total > limite:
+                resp.close()
+                raise ErroFonte(f"a resposta passou de {limite} bytes; nada foi lido além disso")
+            partes.append(parte)
+        resp._content, resp._content_consumed = b"".join(partes), True
+    elif len(resp.content) > limite:
+        raise ErroFonte(f"a resposta tem {len(resp.content)} bytes, acima do limite de {limite}")
 
 
 def _conferir_corpo(resp: requests.Response, esperado: str) -> None:
     corpo = resp.content
     if esperado == "xlsx":
-        if len(corpo) > config.PINK_MAX_BYTES:
-            raise ErroFonte(f"o arquivo da Pink Sheet tem {len(corpo)} bytes, acima do limite de {config.PINK_MAX_BYTES}")
         if not corpo.startswith(b"PK\x03\x04"):  # xlsx é um zip
             raise _CorpoInesperado("o arquivo da Pink Sheet não veio como xlsx")
     elif esperado == "json":
@@ -177,7 +229,10 @@ def _conferir_corpo(resp: requests.Response, esperado: str) -> None:
 
 
 def _sem_query(url: str) -> str:
-    p = urlsplit(url)
+    try:
+        p = urlsplit(url)
+    except ValueError:
+        return url[:200]
     return f"{p.scheme}://{p.netloc}{p.path}"
 
 
@@ -218,7 +273,7 @@ def url_do_arquivo_pink(html: str, pagina: str = config.PINK_PAGINA) -> str:
             if urlsplit(urljoin(pagina, h)).path.endswith("/" + config.PINK_NOME_ARQUIVO)
         }
     )
-    validos = [u for u in candidatos if urlsplit(u).scheme == "https" and urlsplit(u).hostname == config.PINK_HOST_ARQUIVO]
+    validos = [u for u in candidatos if _host_seguro(u) == config.PINK_HOST_ARQUIVO]
     if len(validos) != 1:
         raise ErroFonte(
             f"a página {config.PINK_PAGINA} deveria ter um link para {config.PINK_NOME_ARQUIVO} em"
@@ -226,6 +281,15 @@ def url_do_arquivo_pink(html: str, pagina: str = config.PINK_PAGINA) -> str:
             " O layout da página pode ter mudado."
         )
     return validos[0]
+
+
+def _host_seguro(url: str) -> str | None:
+    """O host da URL se ela passar em _conferir_host; senão None."""
+    try:
+        _conferir_host(url)
+    except ErroFonte:
+        return None
+    return urlsplit(url).hostname
 
 
 def _nome_coluna(valor) -> str:
@@ -241,13 +305,22 @@ def ler_xlsx_pink(conteudo: bytes) -> tuple[pd.DataFrame, str | None]:
     from openpyxl import load_workbook  # só a ingestão do Banco Mundial precisa
 
     try:
+        with zipfile.ZipFile(io.BytesIO(conteudo)) as arquivo:
+            descompactado = sum(info.file_size for info in arquivo.infolist())
+    except (zipfile.BadZipFile, OSError) as exc:
+        raise ErroFonte(f"não foi possível abrir o xlsx da Pink Sheet ({type(exc).__name__})") from exc
+    if descompactado > config.PINK_MAX_DESCOMPACTADO:
+        raise ErroFonte(f"o xlsx da Pink Sheet descompacta para {descompactado} bytes, acima do limite de {config.PINK_MAX_DESCOMPACTADO}")
+    try:
         livro = load_workbook(io.BytesIO(conteudo), read_only=True, data_only=True)
     except Exception as exc:  # zip ou XML inválido: o arquivo não é o esperado
         raise ErroFonte(f"não foi possível abrir o xlsx da Pink Sheet ({type(exc).__name__})") from exc
     try:
         if config.PINK_ABA not in livro.sheetnames:
             raise ErroFonte(f"a Pink Sheet não tem a aba {config.PINK_ABA!r} (abas: {livro.sheetnames})")
-        linhas = list(livro[config.PINK_ABA].iter_rows(values_only=True))
+        folha = livro[config.PINK_ABA]
+        folha.reset_dimensions()  # não confia na dimensão gravada na aba, que pode cortar linhas
+        linhas = list(folha.iter_rows(values_only=True))
     finally:
         livro.close()
 
@@ -255,7 +328,10 @@ def ler_xlsx_pink(conteudo: bytes) -> tuple[pd.DataFrame, str | None]:
     for linha in linhas[:10]:
         achado = next((_RE_ATUALIZADO.search(str(c)) for c in linha if c and _RE_ATUALIZADO.search(str(c))), None)
         if achado:
-            atualizado = datetime.strptime(achado.group(1), "%B %d, %Y").strftime("%Y-%m-%d")
+            try:
+                atualizado = datetime.strptime(achado.group(1), "%B %d, %Y").strftime("%Y-%m-%d")
+            except ValueError:  # "Sept 02, 2026": a data é só registro, não trava a ingestão
+                log.warning("Pink Sheet: data de atualização em formato inesperado: %r", achado.group(1))
             break
 
     cabecalho = next((i for i, linha in enumerate(linhas[:20]) if any(_nome_coluna(c) in config.PINK_SERIES for c in linha)), None)
@@ -273,22 +349,30 @@ def ler_xlsx_pink(conteudo: bytes) -> tuple[pd.DataFrame, str | None]:
         if unidade != "($/mt)":
             raise ErroFonte(f"a unidade de {_nome_coluna(nome)!r} na Pink Sheet é {unidade!r}, e não ($/mt)")
         colunas[serie] = j
-    faltando = [nome for nome, serie in config.PINK_SERIES.items() if serie not in colunas]
+    faltando = [nome for nome, serie in config.PINK_SERIES.items() if serie not in colunas and serie in config.PINK_OBRIGATORIAS]
     if faltando:
         raise ErroFonte(f"a Pink Sheet não tem as colunas {faltando}; o layout pode ter mudado")
+    for nome, serie in config.PINK_SERIES.items():
+        if serie not in colunas:  # só ingerida, não comparada: o resto segue sem ela
+            log.warning("Pink Sheet sem a coluna %r; ela fica vazia nesta ingestão.", nome)
 
     registros = []
-    for linha in linhas[cabecalho + 2 :]:
+    dados = linhas[cabecalho + 2 :]
+    for n, linha in enumerate(dados):
         periodo = str(linha[0] or "").strip() if linha else ""
         if not periodo:
             continue
         achado = _RE_PERIODO_PINK.match(periodo)
         if not achado:
+            # Nota no rodapé da aba, depois dos dados: para aí. Período estranho no meio é erro.
+            depois = (str(r[0] or "").strip() for r in dados[n + 1 :] if r)
+            if registros and not any(_RE_PERIODO_PINK.match(d) for d in depois):
+                break
             raise ErroFonte(f"período inesperado na Pink Sheet: {periodo!r}")
         registro = {"mes": f"{achado.group(1)}-{achado.group(2)}"}
-        for serie, j in colunas.items():
-            valor = linha[j] if j < len(linha) else None
-            registro[serie] = float(valor) if isinstance(valor, (int, float)) and not isinstance(valor, bool) else float("nan")
+        for serie in config.PINK_SERIES.values():
+            j = colunas.get(serie)
+            registro[serie] = _numero(linha[j] if j is not None and j < len(linha) else None)
         registros.append(registro)
     df = pd.DataFrame(registros, columns=COLUNAS_PINK)
     if df.empty:
@@ -298,10 +382,29 @@ def ler_xlsx_pink(conteudo: bytes) -> tuple[pd.DataFrame, str | None]:
     return df, atualizado
 
 
+def _numero(valor) -> float:
+    """Número da célula; texto numérico ("170") também vale. "..", "…" e vazio viram NaN."""
+    if isinstance(valor, bool):
+        return float("nan")
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    try:
+        return float(str(valor).strip().replace(",", "")) if valor is not None else float("nan")
+    except ValueError:
+        return float("nan")
+
+
 def ultimo_mes_completo(df: pd.DataFrame) -> str | None:
     """Último mês em que as séries comparadas com o Brasil têm valor."""
     completos = df.dropna(subset=list(config.PINK_OBRIGATORIAS))
     return None if completos.empty else str(completos["mes"].iloc[-1])
+
+
+def _fonte_gravada(raw_dir: Path) -> dict:
+    try:
+        return json.loads((Path(raw_dir) / config.PINK_FONTE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
 
 
 def ler_pink(raw_dir: Path = config.RAW_BENCHMARK_DIR) -> pd.DataFrame:
@@ -349,11 +452,22 @@ def ingerir_pink(
     if not forcar and fim is not None and ultimo_gravado is not None and ultimo_gravado >= fim:
         log.info("Pink Sheet: nada a baixar, %s já está gravado em %s.", fim, raw_dir)
         return inicio, fim, []
+    if fim is not None and ultimo_gravado is not None and fim < ultimo_gravado:
+        # O arquivo vem sempre inteiro e é regravado inteiro: um --fim antes do gravado (para
+        # rebaixar revisões do Comex Stat, por exemplo) não pode apagar os meses seguintes.
+        log.info("Pink Sheet: --fim %s é anterior ao gravado; regravando até %s.", fim, ultimo_gravado)
+        fim = ultimo_gravado
     html = cliente.get(config.PINK_PAGINA, esperado="html").text
     url = url_do_arquivo_pink(html)
     log.info("Pink Sheet: baixando %s", url)
     conteudo = cliente.get(url, esperado="xlsx").content
     df, atualizado = ler_xlsx_pink(conteudo)
+    anterior = _fonte_gravada(raw_dir).get("atualizado_em")
+    if atualizado and anterior and atualizado < anterior:
+        raise ErroFonte(
+            f"a edição baixada da Pink Sheet ({atualizado}) é anterior à gravada ({anterior}): um cache antigo"
+            " desfaria as revisões. Nada foi gravado."
+        )
     publicado = ultimo_mes_completo(df)
     if publicado is None:
         raise ErroFonte("a Pink Sheet não tem nenhum mês com ureia, DAP, TSP e KCl")
@@ -500,8 +614,7 @@ def ingerir_ptax(
         log.info("PTAX: nada a baixar, %s a %s já está em %s.", inicio, fim, raw_dir)
         return inicio, fim
     novos = []
-    for i in range(0, len(faltam), 12 * config.SGS_JANELA_ANOS):
-        janela = faltam[i : i + 12 * config.SGS_JANELA_ANOS]
+    for janela in _janelas(faltam, 12 * config.SGS_JANELA_ANOS):
         log.info("PTAX: consultando %s a %s...", janela[0], janela[-1])
         df = consultar_ptax(cliente, janela[0], janela[-1])
         novos.append(df[df["mes"].isin(janela)])
@@ -519,6 +632,18 @@ def ingerir_ptax(
     _gravar_csv(junto, Path(raw_dir) / config.PTAX_ARQUIVO)
     log.info("PTAX: +%d meses (%s a %s).", len(novo), novo["mes"].min(), novo["mes"].max())
     return inicio, fim
+
+
+def _janelas(meses: list[str], tamanho: int) -> list[list[str]]:
+    """Trechos de meses seguidos, cada um com até `tamanho` meses: 2015 e 2026-09 faltando
+    viram duas consultas, e não uma de onze anos."""
+    trechos: list[list[str]] = []
+    for mes in meses:
+        if trechos and len(trechos[-1]) < tamanho and _meses(trechos[-1][-1], mes)[1:2] == [mes]:
+            trechos[-1].append(mes)
+        else:
+            trechos.append([mes])
+    return trechos
 
 
 def resumo_ptax(df: pd.DataFrame, inicio: str, fim: str) -> str:

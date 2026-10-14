@@ -5,6 +5,7 @@ com o layout do arquivo real (CMO-Historical-Data-Monthly.xlsx, edição de outu
 """
 
 import io
+import ssl
 import json
 
 import openpyxl
@@ -404,3 +405,141 @@ def test_cli_falha_com_codigo_1_se_a_fonte_falhar(quatro_series, monkeypatch):
     monkeypatch.setattr(benchmark, "ClienteFontes", lambda: c)
     assert ingest.main(["--inicio", "2026-09", "--serie", "benchmark"]) == 1
     assert not (quatro_series["raw_benchmark"] / config.PINK_ARQUIVO).exists()
+
+
+# --- Revisão adversarial da fase 6 -------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://outro.exemplo\\@api.bcb.gov.br/dados",  # urlsplit lê o BCB; o requests vai a outro.exemplo
+        "https://usuario@api.bcb.gov.br/dados",
+        "https://api.bcb.gov.br\\x/dados",
+        "https://[x]/dados",
+        "http://api.bcb.gov.br/dados",
+    ],
+)
+def test_cliente_recusa_endereco_que_engana_a_lista_de_hosts(url):
+    with pytest.raises(benchmark.ErroFonte):
+        benchmark._conferir_host(url)
+    c, _ = cliente(Resposta(302, b"", {"Location": url}))
+    with pytest.raises(benchmark.ErroFonte):
+        c.get("https://api.bcb.gov.br/dados", esperado="json")
+    assert len(c.sessao.chamadas) == 1  # não chega a pedir o endereço do redirecionamento
+
+
+def test_link_com_barra_invertida_na_pagina_nao_conta():
+    html = f'<a href="https://outro.exemplo\\@thedocs.worldbank.org/x/{config.PINK_NOME_ARQUIVO}">x</a>'
+    with pytest.raises(benchmark.ErroFonte, match="tem 0"):
+        benchmark.url_do_arquivo_pink(html)
+
+
+def test_cliente_repete_corte_no_meio_do_corpo_e_tls_transitorio_mas_nao_certificado():
+    c, esperas = cliente(requests.exceptions.ChunkedEncodingError("IncompleteRead"), requests.exceptions.SSLError(ssl.SSLEOFError(8, "EOF")), Resposta(200, PAGINA))
+    assert c.get(config.PINK_PAGINA, esperado="html").status_code == 200 and len(esperas) == 2
+    c, _ = cliente(requests.exceptions.SSLError(ssl.SSLCertVerificationError(1, "[SSL: CERTIFICATE_VERIFY_FAILED]")))
+    with pytest.raises(benchmark.ErroFonte, match="verificação TLS"):
+        c.get(config.PINK_PAGINA, esperado="html")
+
+
+def test_retry_after_tem_teto():
+    c, esperas = cliente(Resposta(429, b"", {"Retry-After": "3600"}), Resposta(200, sgs(("2026-09", 5.1))))
+    c.get("https://api.bcb.gov.br/dados/x", esperado="json")
+    assert esperas[0] <= config.BACKOFF_MAX_S + 1
+
+
+class RespostaEmBlocos(Resposta):
+    """Como a do requests com stream=True: o corpo só existe depois de lido em blocos."""
+
+    def __init__(self, blocos, headers=None):
+        super().__init__(200, b"", headers)
+        self.blocos, self.lidos, self._content_consumed = blocos, 0, False
+
+    @property
+    def content(self):
+        return self._content
+
+    @content.setter
+    def content(self, valor):
+        self._content = valor
+
+    def iter_content(self, chunk_size=1):
+        for bloco in self.blocos:
+            self.lidos += 1
+            yield bloco
+
+    def close(self):
+        pass
+
+
+def test_download_para_no_limite_sem_ler_o_resto(monkeypatch):
+    monkeypatch.setattr(config, "MAX_BYTES_PAGINA", 1000)
+    grande = RespostaEmBlocos([b"<html>" + b"x" * 600] * 50)
+    c, _ = cliente(grande)
+    with pytest.raises(benchmark.ErroFonte, match="passou de 1000 bytes"):
+        c.get(config.PINK_PAGINA, esperado="html")
+    assert grande.lidos == 2  # parou no segundo bloco
+    c, _ = cliente(Resposta(200, b"<html>", {"Content-Length": "999999"}))
+    with pytest.raises(benchmark.ErroFonte, match="acima do limite"):
+        c.get(config.PINK_PAGINA, esperado="html")
+    c, _ = cliente(RespostaEmBlocos([b"<html><body>", b"ok</body></html>"]))
+    assert c.get(config.PINK_PAGINA, esperado="html").text == "<html><body>ok</body></html>"
+
+
+def test_xlsx_que_descompacta_demais_e_recusado(monkeypatch):
+    monkeypatch.setattr(config, "PINK_MAX_DESCOMPACTADO", 1000)
+    with pytest.raises(benchmark.ErroFonte, match="descompacta"):
+        benchmark.ler_xlsx_pink(xlsx_pink())
+
+
+def _editar(arquivo, editar):
+    livro = openpyxl.load_workbook(io.BytesIO(arquivo))
+    editar(livro["Monthly Prices"])
+    saida = io.BytesIO()
+    livro.save(saida)
+    return saida.getvalue()
+
+
+def test_layout_tolerante_no_que_nao_e_comparado(caplog):
+    # nota no rodapé da aba, número gravado como texto e data em formato inesperado
+    arquivo = _editar(xlsx_pink(atualizado="Sept 02, 2026"), lambda f: (f.append(["Note: prices are monthly averages."]), f.cell(row=8, column=3, value="170")))
+    df, atualizado = benchmark.ler_xlsx_pink(arquivo)
+    assert df["mes"].iloc[-1] == "2026-09" and atualizado is None and df["rocha_fosfatica"].iloc[1] == 170.0
+    # período estranho no meio continua sendo erro
+    no_meio = _editar(xlsx_pink(), lambda f: (f.append(["Note"]), f.append(["2026M10", 70.5, 1, 2, 3, 4, 5])))
+    with pytest.raises(benchmark.ErroFonte, match="período inesperado"):
+        benchmark.ler_xlsx_pink(no_meio)
+    # sem a coluna da rocha fosfática (só ingerida): aviso, e as séries comparadas seguem
+    caplog.set_level("WARNING")
+    sem_rocha = xlsx_pink(nomes=["Crude oil, average", "Outra coisa", "DAP", "TSP", "Urea ", "Potassium chloride **"])
+    df, _ = benchmark.ler_xlsx_pink(sem_rocha)
+    assert df["rocha_fosfatica"].isna().all() and df["kcl"].notna().all() and "Phosphate rock" in caplog.text
+
+
+def test_fim_anterior_ao_gravado_nao_apaga_a_pink(tmp_path):
+    _pink(tmp_path, xlsx_pink())
+    (inicio, fim, _), _c = _pink(tmp_path, xlsx_pink(), fim="2020-12", forcar=True)
+    assert fim == "2026-09" and benchmark.ultimo_pink_gravado(tmp_path) == "2026-09"
+
+
+def test_edicao_mais_antiga_que_a_gravada_e_recusada(tmp_path):
+    _pink(tmp_path, xlsx_pink(atualizado="November 03, 2026"))
+    antes = (tmp_path / config.PINK_ARQUIVO).read_bytes()
+    with pytest.raises(benchmark.ErroFonte, match="anterior à gravada"):
+        _pink(tmp_path, xlsx_pink(atualizado="October 02, 2026"), forcar=True)
+    assert (tmp_path / config.PINK_ARQUIVO).read_bytes() == antes
+
+
+def test_ptax_consulta_trechos_seguidos(tmp_path):
+    gravados = meses("2016-01", "2026-08")
+    benchmark._gravar_csv(pd.DataFrame({"mes": gravados, "brl_por_usd": [ptax(m) for m in gravados]}), tmp_path / config.PTAX_ARQUIVO)
+    c, _ = cliente(
+        Resposta(200, sgs(("2026-09", ptax("2026-09")))),
+        Resposta(200, sgs(*[(m, ptax(m)) for m in meses("2015-01", "2015-12")])),
+        Resposta(200, sgs(("2026-09", ptax("2026-09")))),
+    )
+    benchmark.ingerir_ptax(c, "2015-01", raw_dir=tmp_path)
+    janelas = [(ch["params"]["dataInicial"], ch["params"]["dataFinal"]) for ch in c.sessao.chamadas[1:]]
+    assert janelas == [("01/01/2015", "31/12/2015"), ("01/09/2026", "30/09/2026")]
+    assert len(benchmark.ler_ptax(tmp_path)) == len(meses("2015-01", "2026-09"))

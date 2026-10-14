@@ -78,6 +78,8 @@ PINK_HOST_ARQUIVO = "thedocs.worldbank.org"
 PINK_NOME_ARQUIVO = "CMO-Historical-Data-Monthly.xlsx"
 PINK_ABA = "Monthly Prices"
 PINK_MAX_BYTES = 20 * 1024 * 1024
+PINK_MAX_DESCOMPACTADO = 200 * 1024 * 1024  # o xlsx real descompacta para poucos MB
+MAX_BYTES_PAGINA = 5 * 1024 * 1024  # página do Banco Mundial e JSON do SGS
 # Nome da coluna no xlsx (sem espaços nem asteriscos nas pontas) -> coluna gravada.
 PINK_SERIES = {
     "Urea": "ureia",
