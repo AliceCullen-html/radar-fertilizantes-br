@@ -8,7 +8,8 @@
 
 Radar das importações brasileiras de fertilizantes, feito apenas com dados públicos do
 [Comex Stat](https://comexstat.mdic.gov.br/), do Ministério do Desenvolvimento, Indústria,
-Comércio e Serviços (MDIC).
+Comércio e Serviços (MDIC). Os dados e o dashboard se atualizam sozinhos todo mês
+([fase 4](#atualização-automática-fase-4)).
 
 **Fonte: Comex Stat/MDIC.**
 
@@ -17,7 +18,8 @@ Comércio e Serviços (MDIC).
 O Brasil importa a maior parte dos fertilizantes que usa. Este projeto baixa, mês a mês,
 as importações de adubos minerais e químicos e organiza os dados para responder perguntas
 como: de onde vem o potássio? Por quais portos entra a ureia? Quanto se paga, em média,
-pela tonelada de MAP?
+pela tonelada de MAP? Quanto custa o frete de cada rota, do país de origem ao porto? E
+quantas toneladas de soja exportada pagam uma tonelada de adubo importado?
 
 Cada linha traz país de origem, NCM, UF, via de transporte e URF (unidade da Receita
 Federal onde a carga foi desembaraçada), com valor US$ FOB, peso líquido em kg, valor
@@ -218,6 +220,8 @@ Como os números são calculados:
 
 ### Rotas e frete por rota
 
+[![Diagrama de fluxo das importações de 2026 (jan-set), das maiores origens para as maiores URFs, e a tabela de frete por rota](dashboard/print-rotas.png)](https://alicecullen-html.github.io/radar-fertilizantes-br/)
+
 Uma rota é o par país de origem → URF de desembaraço, somado no ano (`rotas_ano.csv`). O
 frete US$/t da rota é o frete total ÷ toneladas, isto é, a média ponderada pelo peso.
 
@@ -236,6 +240,8 @@ frete US$/t da rota é o frete total ÷ toneladas, isto é, a média ponderada p
   (coluna `relevante`), estão no CSV.
 
 ### Relação de troca no porto
+
+[![Relação de troca no porto entre soja e KCl, ureia e MAP, de 2015 a 2026, com a média histórica de cada produto](dashboard/print-troca.png)](https://alicecullen-html.github.io/radar-fertilizantes-br/)
 
 Quantas toneladas de soja exportada pagam 1 t de fertilizante importado, mês a mês
 (`src/troca.py`):
@@ -316,7 +322,11 @@ apenas de variáveis de ambiente. Os nomes estão em [`.env.example`](.env.examp
 - [x] **Fase 2:** `src/transform.py` com preço US$/t, shares com variação anual, HHI,
   sazonalidade e o `dashboard.json`.
 - [x] **Fase 3:** [dashboard estático](https://alicecullen-html.github.io/radar-fertilizantes-br/) no GitHub Pages, lendo `data/processed/dashboard.json`.
-- [ ] **Fase 4:** GitHub Action mensal para atualizar os dados.
+- [x] Rotas origem → porto (diagrama de fluxo e frete por rota) e relação de troca soja x
+  fertilizante no porto.
+- [x] **Fase 4:** [atualização automática mensal](#atualização-automática-fase-4) da
+  importação de fertilizantes e da exportação de soja, com commit do github-actions[bot]
+  e novo deploy do dashboard.
 - [ ] **Fase 5:** boletim mensal com IA (opcional; a chave vem só de variável de ambiente).
 
 ## Fonte dos dados
