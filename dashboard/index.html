@@ -572,10 +572,29 @@ const pluginRotulosFinais = {
     });
     itens.sort((a, b) => a.y - b.y);
     const altura = 14;
-    for (let k = 1; k < itens.length; k++) itens[k].y = Math.max(itens[k].y, itens[k - 1].y + altura);
-    const excesso = itens.length ? itens[itens.length - 1].y - (bottom - 4) : 0;
-    if (excesso > 0) for (const it of itens) it.y -= excesso;
-    for (let k = itens.length - 2; k >= 0; k--) itens[k].y = Math.min(itens[k].y, itens[k + 1].y - altura);
+    // Rótulos que se sobrepõem formam um grupo centrado na média das pontas das linhas, para o
+    // traço até o rótulo ficar curto e não parecer um salto da série no último mês.
+    const grupos = itens.map((it) => [it]);
+    const posicionar = (g) => {
+      const centro = g.reduce((s, it) => s + it.alvo, 0) / g.length;
+      g.forEach((it, k) => { it.y = centro + (k - (g.length - 1) / 2) * altura; });
+    };
+    grupos.forEach(posicionar);
+    for (let k = 1; k < grupos.length; ) {
+      const anterior = grupos[k - 1];
+      if (grupos[k][0].y - anterior[anterior.length - 1].y < altura) {
+        grupos.splice(k - 1, 2, anterior.concat(grupos[k]));
+        posicionar(grupos[k - 1]);
+        k = Math.max(1, k - 1);
+      } else k++;
+    }
+    // Dentro da área do gráfico: sobe o que passou do fundo e desce o que passou do topo.
+    for (let k = itens.length - 1; k >= 0; k--) {
+      itens[k].y = Math.min(itens[k].y, k === itens.length - 1 ? bottom - 4 : itens[k + 1].y - altura);
+    }
+    for (let k = 0; k < itens.length; k++) {
+      itens[k].y = Math.max(itens[k].y, k === 0 ? top + 4 : itens[k - 1].y + altura);
+    }
     ctx.save();
     ctx.font = `12px ${Chart.defaults.font.family}`;
     ctx.textBaseline = "middle";
@@ -1309,6 +1328,16 @@ function desenharBenchmark(indices) {
     kpi("CIF em reais", nulo(fobUlt) ? "–" : reais(valor("cif_brl_t", ate)), nulo(ptax(ate)) ? "sem PTAX do mês" : `PTAX média R$ ${fmt4.format(ptax(ate))}`),
   );
 
+  // Os três gráficos dividem o eixo do tempo: mesma largura do eixo y e mesma margem direita (a
+  // dos rótulos do gráfico 1), para os meses e a mudança de base caírem na mesma vertical.
+  const margemBm = { padding: { right: estreito() ? 8 : 112 } };
+  const eixosBm = (formatarY) => {
+    const escalas = eixos({ formatarY, maxTicksX: estreito() ? 4 : 8 });
+    escalas.x.offset = false;
+    escalas.y.afterFit = (escala) => { escala.width = 48; };
+    return escalas;
+  };
+
   // Gráfico 1: FOB Brasil, CIF Brasil e benchmark
   const corCif = cor("--cif"), corBm = cor("--texto");
   legenda("legenda-bm", [
@@ -1341,9 +1370,9 @@ function desenharBenchmark(indices) {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { right: estreito() ? 8 : 112 } },
+      layout: margemBm,
       interaction: { mode: "index", intersect: false },
-      scales: eixos({ formatarY: (v) => fmt0.format(v), maxTicksX: estreito() ? 4 : 8 }),
+      scales: eixosBm((v) => fmt0.format(v)),
       // No celular a legenda acima identifica as linhas; o rótulo na ponta tomaria o gráfico.
       plugins: { legend: { display: false }, rotulosFinais: { ativo: !estreito() }, quebras: { marcas }, tooltip: { enabled: false, external: dicaPrecos } },
     },
@@ -1354,13 +1383,14 @@ function desenharBenchmark(indices) {
   texto("nota-spread", `FOB Brasil − benchmark quando o benchmark é FOB; CIF Brasil − benchmark quando ele já é um preço no destino. Acima de zero, o Brasil pagou mais que a referência.${nPequena ? ` ${nPequena} ${nPequena === 1 ? "mês" : "meses"} com menos de ${fmt0.format(bm.corte_amostra_t)} t ficam fora dos gráficos (estão na tabela).` : ""}`);
   const spreads = semPequena("spread_pct");
   document.getElementById("grafico-spread").setAttribute("aria-label", `${prod.nome}: spread em relação ao benchmark do Banco Mundial, em porcentagem, de ${rotulos[0]} a ${rotulos[rotulos.length - 1]}. A tabela abaixo traz os valores.`);
-  const escalasSpread = eixos({ formatarY: (v) => `${fmt0.format(v)}%`, maxTicksX: estreito() ? 4 : 8 });
+  const escalasSpread = eixosBm((v) => `${fmt0.format(v)}%`);
   escalasSpread.y.grid = { ...escalasSpread.y.grid, color: (c) => (c.tick?.value === 0 ? cor("--eixo") : cor("--grade")) };
   novoGrafico("grafico-spread", {
     type: "bar",
     data: { labels: rotulos, datasets: [{ label: "Spread", data: spreads, backgroundColor: corProd, borderRadius: 2, borderSkipped: "start", barPercentage: 0.9, categoryPercentage: 0.9 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
+      layout: margemBm,
       interaction: { mode: "index", intersect: false },
       scales: escalasSpread,
       plugins: {
@@ -1390,8 +1420,9 @@ function desenharBenchmark(indices) {
     data: { labels: rotulos, datasets: [linha("CIF em reais", semPequena("cif_brl_t"), corProd, null)] },
     options: {
       responsive: true, maintainAspectRatio: false,
+      layout: margemBm,
       interaction: { mode: "index", intersect: false },
-      scales: eixos({ formatarY: (v) => fmtCompacto.format(v), maxTicksX: estreito() ? 4 : 8 }),
+      scales: eixosBm((v) => fmtCompacto.format(v)),
       plugins: {
         legend: { display: false },
         tooltip: {
