@@ -938,13 +938,18 @@ function desenharSankey(bloco, g, ano) {
     for (const [caminho, x] of porFita) caminho.classList.toggle("ativa", f ? caminho === alvo : x[no.lado] === no.i);
   };
   const soltar = () => { caixa.classList.remove("focado"); esconderDica(); };
-  desenho.addEventListener("pointermove", (evento) => {
-    const alvo = porFita.has(evento.target) || alvos.has(evento.target) ? evento.target : null;
+  const mover = (evento) => {
+    // O percentual do rótulo é um <tspan>: conta como o próprio rótulo.
+    const t = evento.target.tagName === "tspan" ? evento.target.parentNode : evento.target;
+    const alvo = porFita.has(t) || alvos.has(t) ? t : null;
     if (!alvo) { soltar(); return; }
     destacar(alvo);
     posicionarDica(preencherDica(conteudo(alvo)), evento.clientX, evento.clientY);
-  });
-  desenho.addEventListener("pointerleave", soltar);
+  };
+  // No celular não há "hover": o toque abre a dica, que fecha ao tocar fora ou rolar a página.
+  desenho.addEventListener("pointermove", mover);
+  desenho.addEventListener("pointerdown", mover);
+  desenho.addEventListener("pointerleave", (evento) => { if (evento.pointerType !== "touch") soltar(); });
 }
 
 function tabelaRotas(bloco, g, ano) {
@@ -1093,11 +1098,13 @@ function desenharTroca(indices) {
   document.getElementById("kpis-troca").replaceChildren(...produtos.map((prod) => {
     const v = valor(prod, "razao", ate);
     const desvio = !nulo(v) && prod.media > 0 ? 100 * (v / prod.media - 1) : null;
+    const tFert = valor(prod, "t", ate);
+    const semValor = nulo(tFert) || tFert === 0 ? "sem importação" : "sem preço da soja";
     const ponto = el("span", { classe: "ponto" });
     ponto.style.background = prod.corSerie;
     return el("div", { classe: "kpi" },
       el("div", { classe: "rotulo titulo-produto" }, ponto, `${prod.nome} · ${rotuloMes(p[ate])}`),
-      el("div", { classe: "valor" }, nulo(v) ? "sem importação" : `${fmt2.format(v)} t de soja`),
+      el("div", { classe: "valor" }, nulo(v) ? semValor : `${fmt2.format(v)} t de soja`),
       el("div", { classe: "delta" }, nulo(v) ? `Média ${rotuloMedia(prod)}: ${tSoja(prod.media)}` : `${variacao(desvio)} vs média ${rotuloMedia(prod)} (${tSoja(prod.media)}) · ${fmt1.format(sacas(v))} sacas`));
   }));
   legenda("legenda-troca", [
@@ -1338,7 +1345,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   aplicarTema(temaSalvo());
   document.getElementById("botao-tema").addEventListener("click", alternarTema);
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (!temaSalvo()) { aplicarTema(null); if (dados) atualizar(); } });
-  window.addEventListener("scroll", () => { document.getElementById("dica").hidden = true; }, { passive: true });
+  // Rolar a página ou tocar fora do diagrama de rotas fecha a dica e o destaque abertos por toque.
+  const fecharDestaque = () => { esconderDica(); document.getElementById("sankey").classList.remove("focado"); };
+  window.addEventListener("scroll", fecharDestaque, { passive: true });
+  document.addEventListener("pointerdown", (evento) => { if (evento.pointerType === "touch" && !evento.target.closest?.("#sankey")) fecharDestaque(); });
   if (!window.Chart) {
     erro("Não foi possível carregar a biblioteca de gráficos (Chart.js). Verifique a conexão e recarregue a página.");
     return;

@@ -459,7 +459,7 @@ def _arredondar(df: pd.DataFrame) -> pd.DataFrame:
             df[coluna] = df[coluna].round(3)
         elif coluna.endswith("_usd_t") or coluna in ("hhi", "indice_sazonal"):
             df[coluna] = df[coluna].round(2)
-        elif coluna.endswith(("_pct", "_pp", "_por_t")):
+        elif coluna.endswith(("_pct", "_pp", "_por_t", "_pct_cif")):
             df[coluna] = df[coluna].round(4)
     return df
 
@@ -490,6 +490,11 @@ def gerar(
     return tabelas
 
 
+def _ultimo_mes(df: pd.DataFrame) -> int:
+    """Último mês dos dados como AAAAMM."""
+    return int((df["ano"].astype(int) * 100 + df["mes"].astype(int)).max())
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m src.transform",
@@ -513,6 +518,13 @@ def main(argv: list[str] | None = None) -> int:
             "Sem exportação de soja em %s; a relação de troca fica de fora."
             " Rode: python -m src.ingest --inicio 2015-01 --serie soja",
             args.raw_soja,
+        )
+    elif _ultimo_mes(soja) < _ultimo_mes(base):
+        log.warning(
+            "A soja em %s vai só até %d-%02d, antes do último mês das importações; a relação de"
+            " troca fica vazia nos meses sem soja. Rode: python -m src.ingest --inicio 2015-01 --serie soja",
+            args.raw_soja,
+            *divmod(_ultimo_mes(soja), 100),
         )
     tabelas = gerar(base, args.saida, soja)
     for nome, df in tabelas.items():
