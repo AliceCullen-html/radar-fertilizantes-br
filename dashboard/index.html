@@ -356,6 +356,8 @@ footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
         <p class="ressalva"><strong>Referência de outro lugar, não ágio.</strong> O benchmark do Banco Mundial (Pink Sheet) é o preço num porto de referência (Golfo dos EUA, Oriente Médio, Mar Negro, Vancouver) ou no destino (KCl desde 2020, TSP). A diferença para o preço do Brasil mistura origem, frete até o ponto de referência, prazo de contrato e defasagem entre o negócio e o desembarque.</p>
         <div class="chips" id="chips-bm" role="group" aria-label="Produto" style="margin-top: 12px"></div>
         <div class="kpi-linha" id="kpis-bm" style="margin-top: 12px"></div>
+        <p class="nota oculto" id="vazio-bm"></p>
+        <div id="graficos-bm">
         <h3 class="subtitulo">Preço do Brasil x benchmark (US$/t)</h3>
         <ul class="legenda" id="legenda-bm"></ul>
         <div class="grafico alto-300"><canvas id="grafico-bm" role="img"></canvas></div>
@@ -365,6 +367,7 @@ footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
         <h3 class="subtitulo">CIF em reais (R$/t, PTAX média do mês)</h3>
         <p class="nota" id="nota-brl"></p>
         <div class="grafico alto-260"><canvas id="grafico-brl" role="img"></canvas></div>
+        </div>
         <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-bm"></div></details>
       </div>
     </section>
@@ -422,7 +425,7 @@ const MENOS = "−";
 const nulo = (v) => v === null || v === undefined || Number.isNaN(v);
 const toneladas = (t) => (nulo(t) ? "–" : `${fmtCompacto.format(t)} t`);
 const dolares = (v) => (nulo(v) ? "–" : `US$ ${fmtCompacto.format(v)}`);
-const porTonelada = (v) => (nulo(v) ? "–" : `US$ ${fmt0.format(v)}/t`);
+const porTonelada = (v) => (nulo(v) ? "–" : `${Math.round(v) < 0 ? MENOS : ""}US$ ${fmt0.format(Math.abs(v))}/t`);
 const pct = (v) => (nulo(v) ? "–" : `${fmt1.format(v)}%`);
 function variacao(v, sufixo = "%") {
   if (nulo(v) || !Number.isFinite(v)) return "–";
@@ -561,7 +564,9 @@ const pluginRotulosFinais = {
       if (meta.hidden || !ds.rotuloFinal) return;
       let j = ds.data.length - 1;
       while (j >= 0 && nulo(ds.data[j])) j--;
-      if (j < 0) return;
+      // Série que termina antes do fim do período (amostra pequena, mês sem benchmark): sem
+      // rótulo, que ficaria na borda direita na altura de um mês antigo. A legenda a identifica.
+      if (j < 0 || j < ds.data.length - 1) return;
       const ponto = meta.data[j];
       let y = ponto.y;
       if (opcoes.empilhado) {
@@ -1282,7 +1287,10 @@ function desenharBenchmark(indices) {
   secao.classList.toggle("oculto", !bm || !chaves.length);
   document.getElementById("rodape-bm").classList.toggle("oculto", !bm);
   if (!bm || !chaves.length) return;
-  if (!chaves.includes(estado.bm)) estado.bm = chaves[0];
+  if (!chaves.includes(estado.bm)) {
+    estado.bm = chaves[0];
+    gravarUrl();  // a URL acompanha o produto mostrado (ex.: bm=dap com o filtro do grupo K)
+  }
   const prod = bm.produtos[estado.bm];
   const corProd = corGrupo(prod.grupo);
   const p = periodos();
@@ -1305,6 +1313,13 @@ function desenharBenchmark(indices) {
   }));
 
   const nPequena = indices.filter(pequena).length;
+  // Período sem nenhum mês comparável (só amostra pequena ou sem benchmark): no lugar de três
+  // gráficos vazios com eixos sem sentido, um aviso; a tabela continua com os meses.
+  const comparaveis = indices.filter((i) => !pequena(i) && !nulo(valor("spread_pct", i))).length;
+  document.getElementById("graficos-bm").classList.toggle("oculto", comparaveis === 0);
+  const vazio = document.getElementById("vazio-bm");
+  vazio.classList.toggle("oculto", comparaveis > 0);
+  texto("vazio-bm", comparaveis ? "" : `Nenhum mês do período tem importação comparável de ${prod.nome}: todos tiveram menos de ${fmt0.format(bm.corte_amostra_t)} t ou ficaram sem benchmark. A tabela abaixo traz os meses.`);
   const quebras = bm.quebras.filter((q) => q.produto === estado.bm);
   const marcas = quebras.map((q) => ({ indice: indices.findIndex((i) => p[i] === q.periodo), rotulo: estreito() ? q.para.split(" (")[0] : `nova base: ${q.para}` })).filter((m) => m.indice > 0);
   const bases = [...new Set(indices.map((i) => `${baseDe(i).base} (${baseDe(i).comparacao})`))];
@@ -1333,7 +1348,7 @@ function desenharBenchmark(indices) {
   const margemBm = { padding: { right: estreito() ? 8 : 112 } };
   const eixosBm = (formatarY) => {
     const escalas = eixos({ formatarY, maxTicksX: estreito() ? 4 : 8 });
-    escalas.x.offset = false;
+    escalas.x.offset = true;  // as barras das pontas inteiras; nas linhas, o mesmo deslocamento
     escalas.y.afterFit = (escala) => { escala.width = 48; };
     return escalas;
   };
@@ -1399,6 +1414,9 @@ function desenharBenchmark(indices) {
           enabled: false,
           external: dicaExterna((pontos) => {
             const i = indices[pontos[0].dataIndex];
+            if (pequena(i)) {
+              return { titulo: pontos[0].label, linhas: [], extras: [`Amostra pequena (${toneladas(valor("t", i))}): fora da comparação`] };
+            }
             const usd = valor("spread_usd_t", i);
             return {
               titulo: pontos[0].label,
