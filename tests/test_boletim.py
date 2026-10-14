@@ -4,6 +4,7 @@ Os testes com os dados versionados não fixam valores do último mês: o workflo
 suíte logo depois de gravar um mês novo, e um valor fixo derrubaria a atualização.
 """
 
+import copy
 import json
 import subprocess
 import sys
@@ -210,111 +211,118 @@ def test_rejeita_numero_literal_marcador_inexistente_e_tom(fatos, paragrafo, tre
     assert conteudo is None and any(trecho in e for e in erros), erros
 
 
-def test_rejeita_direcao_que_contradiz_o_sentido(fatos):
-    """Um modelo que escreve "alta" para uma queda (ou o contrário) reprova."""
-    sentido = fatos["var_t_total_mes_sentido"]["valor"]
-    errada, certa = ("alta", "queda") if sentido == "queda" else ("queda", "alta")
-    base = BASE
-    _, erros = boletim.validar(resposta(paragrafos=[*base, f"As compras tiveram {errada} de {{var_t_total_mes}}."]), fatos)
-    assert any("contradiz {var_t_total_mes}" in e for e in erros), erros
-    _, erros = boletim.validar(resposta(paragrafos=[*base, f"As compras tiveram {certa} de {{var_t_total_mes}}."]), fatos)
-    assert erros == []
-    # a direção da média histórica (_posicao) também é conferida
-    acima = fatos["desvio_troca_map_posicao"]["valor"].startswith("acima")
-    errada = "abaixo" if acima else "acima"
-    _, erros = boletim.validar(resposta(paragrafos=[*base, f"O MAP ficou {{desvio_troca_map}} {errada} da média."]), fatos)
-    assert any("contradiz {desvio_troca_map}" in e for e in erros), erros
-    # sigla MDIC não é algarismo romano; "segunda maior origem" e "a mais barata" não são direção
-    texto = "Dados do Comex Stat/MDIC: {var_t_total_mes_sentido} de {var_t_total_mes}."
-    _, erros = boletim.validar(resposta(paragrafos=[*base, texto]), fatos)
-    assert erros == []
-    texto = "A segunda maior origem, a mais barata das rotas, teve {var_t_total_mes_sentido} de {var_t_total_mes}."
-    _, erros = boletim.validar(resposta(paragrafos=[*base, texto]), fatos)
-    assert erros == []
+def valida(fatos, *paragrafos):
+    """Erros de uma resposta com BASE mais os parágrafos dados."""
+    return boletim.validar(resposta(paragrafos=[*BASE, *paragrafos]), fatos)[1]
 
 
-def _sentidos(fatos, chave):
-    """(palavra certa, palavra errada) para a direção de `chave`."""
-    sentido = fatos[f"{chave}_sentido"]["valor"]
-    assert sentido in ("alta", "queda"), f"{chave} sem direção nos dados; escolha outra chave para o teste"
-    return ("subiram", "caíram") if sentido == "alta" else ("caíram", "subiram")
-
-
-@pytest.mark.parametrize(
-    "molde, variacao",
-    [
-        ("As importações {palavra} {{var_t_total_mes}} sobre {{mes_ano_anterior}}.", "var_t_total_mes"),
-        ("As importações {palavra} em {{mes_referencia}} e somaram {{t_total_mes}}.", "var_t_total_mes"),  # o valor que variou
-        ("Em {{periodo_ytd}}, as compras {palavra} para {{t_total_ytd}}.", "var_t_total_ytd"),
-    ],
-)
-def test_direcao_conferida_tambem_no_valor_que_variou(fatos, molde, variacao):
-    certa, errada = _sentidos(fatos, variacao)
-    _, erros = boletim.validar(resposta(paragrafos=[*BASE, molde.format(palavra=errada)]), fatos)
-    assert any("contradiz" in e for e in erros), erros
-    _, erros = boletim.validar(resposta(paragrafos=[*BASE, molde.format(palavra=certa)]), fatos)
-    assert erros == [], erros
-
-
-@pytest.mark.parametrize(
-    "alta, queda",
-    [
-        ("ficaram {v} maiores que em {{mes_ano_anterior}}", "ficaram {v} menores que em {{mes_ano_anterior}}"),
-        ("tiveram {v} a mais que em {{mes_ano_anterior}}", "tiveram {v} a menos que em {{mes_ano_anterior}}"),
-        ("saltaram {v}", "tiveram alívio de {v}"),
-        ("tiveram variação positiva de {v}", "tiveram variação negativa de {v}"),
-        ("tiveram um incremento de {v}", "sofreram um tombo de {v}"),
-        ("tiveram recuperação de {v}", "recuaram {v}"),
-        ("ficaram mais caras, {v}", "ficaram mais baratas, {v}"),
-    ],
-)
-def test_sinonimos_e_comparativos_de_direcao(fatos, alta, queda):
-    sentido = fatos["var_t_total_mes_sentido"]["valor"]
-    errada = alta if sentido == "queda" else queda
-    certa = queda if sentido == "queda" else alta
-    texto = "As importações " + errada.format(v="{var_t_total_mes}") + "."
-    _, erros = boletim.validar(resposta(paragrafos=[*BASE, texto]), fatos)
-    assert any("contradiz {var_t_total_mes}" in e for e in erros), (texto, erros)
-    texto = "As importações " + certa.format(v="{var_t_total_mes}") + "."
-    _, erros = boletim.validar(resposta(paragrafos=[*BASE, texto]), fatos)
-    assert erros == [], (texto, erros)
+# --- Direção: só pelos marcadores _sentido e _posicao --------------------------------------
+# A IA não escreve a direção: toda palavra de direção ou comparação fora dos marcadores reprova,
+# e o _sentido (ou a _posicao) vai colado à sua variação. Assim nenhum teste depende de os
+# dados do último mês serem de alta, de queda ou de estabilidade.
 
 
 @pytest.mark.parametrize(
     "texto",
     [
+        "As importações subiram {var_t_total_mes_sentido} de {var_t_total_mes}.",
+        "As importações caíram, com {var_t_total_mes_sentido} de {var_t_total_mes}.",
+        "As importações de potássicos superaram as de {mes_ano_anterior}, {var_t_k_mes_sentido} de {var_t_k_mes}.",
+        "As importações ultrapassaram as do ano anterior: {var_t_total_ytd_sentido} de {var_t_total_ytd}.",
+        "As compras foram maiores, com {var_t_total_mes_sentido} de {var_t_total_mes}.",
+        "As compras foram menores que em {mes_ano_anterior}, {var_t_total_mes_sentido} de {var_t_total_mes}.",
+        "As compras tiveram {var_t_total_mes} a mais que em {mes_ano_anterior}, {var_t_total_mes_sentido}.",
+        "O frete médio desceu para {frete_medio_ytd}.",
+        "O frete médio teve um alívio: {var_frete_medio_ytd_sentido} de {var_frete_medio_ytd}.",
+        "O frete cortou {var_frete_medio_ytd_sentido} de {var_frete_medio_ytd}.",
+        "O preço afundou, {var_preco_cif_k_mes_sentido} de {var_preco_cif_k_mes}.",
+        "As compras de compostos minguaram, {var_t_npk_mes_sentido} de {var_t_npk_mes}.",
+        "As compras aceleraram, {var_t_total_mes_sentido} de {var_t_total_mes}.",
+        "As compras não caíram em {mes_referencia}: {var_t_total_mes_sentido} de {var_t_total_mes}.",
+        "A participação teve variação positiva, {var_t_total_mes_sentido} de {var_t_total_mes}.",
+        "O preço ficou mais caro, {var_preco_cif_total_mes_sentido} de {var_preco_cif_total_mes}.",
+        "No porto, a relação do MAP ficou aquém da média, {desvio_troca_map} {desvio_troca_map_posicao}.",
+        "No porto, a relação do MAP ficou acima da média, {desvio_troca_map} {desvio_troca_map_posicao}.",
+        "No porto, a relação do MAP melhorou, {desvio_troca_map} {desvio_troca_map_posicao}.",
+        "No porto, a relação do MAP está favorável, {desvio_troca_map} {desvio_troca_map_posicao}.",
         "As importações de potássicos cresceram em {mes_referencia}.",
-        "O frete subiu no ano, para um total de {n_rotas_ano} rotas.",
+        "O HHI dos potássicos recuou de {hhi_k_ano_anterior} para {hhi_k_ano}.",
         "A relação de troca no porto, que não é o preço ao produtor, subiu para {troca_map_ultimo}.",
     ],
 )
-def test_palavra_de_direcao_sem_variacao_na_frase_reprova(fatos, texto):
-    """Sem um marcador de variação na frase, não há como conferir a direção."""
-    _, erros = boletim.validar(resposta(paragrafos=[*BASE, texto]), fatos)
-    assert any("indica direção" in e for e in erros), erros
+def test_palavra_de_direcao_fora_dos_marcadores_reprova(fatos, texto):
+    erros = valida(fatos, texto)
+    assert any("palavra de direção" in e for e in erros), (texto, erros)
 
 
-@pytest.mark.parametrize("sinal", ["+", "-", "−", "– ", "±"])
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "As importações somaram {t_total_mes} em {mes_referencia}, {var_t_total_mes_sentido} de {var_t_total_mes} sobre {mes_ano_anterior}.",
+        "O preço médio CIF dos nitrogenados ficou em {preco_cif_n_mes}, com {var_preco_cif_n_mes_sentido} de {var_preco_cif_n_mes} na comparação anual.",
+        "O frete médio de {periodo_ytd} foi de {frete_medio_ytd}, {var_frete_medio_ytd_sentido} de {var_frete_medio_ytd} sobre {periodo_ytd_anterior}.",
+        "Os potássicos tiveram {var_t_k_mes} ({var_t_k_mes_sentido}) sobre {mes_ano_anterior}, e os nitrogenados, {var_t_n_mes_sentido} de {var_t_n_mes}.",
+        "A maior origem dos potássicos respondeu por {share_lider_k_ano} do volume.",
+        "A segunda maior parte do volume, {share_n_ytd}, foi de nitrogenados.",
+        "O HHI dos potássicos ficou em {hhi_k_ano}, {hhi_k_ano_posicao} de alta concentração, de {limiar_hhi}, contra {hhi_k_ano_anterior} no ano anterior inteiro.",
+        "No porto, uma tonelada de MAP equivalia a {troca_map_ultimo}, {desvio_troca_map} {desvio_troca_map_posicao}, de {troca_map_media}.",
+        "No porto, uma tonelada de KCl valia {troca_kcl_ultimo}, ou {sacas_kcl_ultimo}; não é o preço ao produtor.",
+        "A rota de menor frete entre as maiores foi {rota_frete_min_ano}, a {frete_rota_min_ano}.",
+        "O preço FOB da soja exportada ficou em {soja_fob_ultimo}, com {var_soja_fob_ano_sentido} de {var_soja_fob_ano} — sobre o mesmo mês do ano anterior.",
+        "Este boletim não traz recomendação de compra ou venda; o volume foi de {t_total_mes}.",
+    ],
+)
+def test_frases_corretas_com_a_direcao_pelos_marcadores_passam(fatos, texto):
+    assert valida(fatos, texto) == []
+
+
+def test_validacao_nao_depende_da_direcao_dos_dados(fatos):
+    """Regressão: com o último mês em estabilidade, a mesma resposta continua valendo."""
+    estavel = copy.deepcopy(fatos)
+    for chave in [k for k in estavel if k.endswith("_sentido")]:
+        estavel[chave] = {**estavel[chave], "valor": "estabilidade"}
+    assert boletim.validar(resposta(), estavel)[1] == []
+    assert boletim.validar(resposta(), fatos)[1] == []
+
+
+@pytest.mark.parametrize(
+    "texto, trecho",
+    [
+        ("As compras tiveram {var_t_k_mes_sentido} de {var_t_n_mes} e {var_t_n_mes_sentido} de {var_t_k_mes}.", "colado"),
+        ("Os nitrogenados variaram {var_t_n_mes} em {mes_referencia}.", "vai sem sinal"),
+        ("A participação teve {var_t_total_mes_sentido} em {mes_referencia} e chegou a {share_n_ytd}.", "colado"),
+        ("No porto, a relação do MAP ficou {desvio_troca_map} de {troca_map_media}.", "vai sem sinal"),
+        ("O HHI dos potássicos ficou {hhi_k_ano_posicao}.", "colado"),
+    ],
+)
+def test_sentido_e_posicao_colados_a_propria_variacao(fatos, texto, trecho):
+    erros = valida(fatos, texto)
+    assert any(trecho in e for e in erros), erros
+
+
+@pytest.mark.parametrize("sinal", ["+", "-", "−", "± ", "+ ", "menos ", "mais ", "˗", "⁻", "&minus;"])
 def test_rejeita_sinal_antes_de_variacao(fatos, sinal):
-    texto = f"As toneladas variaram {sinal}{{var_t_total_mes}} sobre {{mes_ano_anterior}}."
-    _, erros = boletim.validar(resposta(paragrafos=[*BASE, texto]), fatos)
-    assert any("sinal antes de {var_t_total_mes}" in e for e in erros), erros
-    # hífen entre marcadores sem direção continua valendo
+    texto = f"As toneladas tiveram {{var_t_total_mes_sentido}} de {sinal}{{var_t_total_mes}} sobre {{mes_ano_anterior}}."
+    assert valida(fatos, texto), texto
+    # hífen entre marcadores sem direção e travessão com espaço continuam valendo
     texto = "Entre {ano_anterior}-{ano_referencia}, o frete médio de {periodo_ytd_anterior} foi de {frete_medio_ytd_anterior}."
-    _, erros = boletim.validar(resposta(paragrafos=[*BASE, texto]), fatos)
-    assert erros == [], erros
+    assert valida(fatos, texto) == []
 
 
 @pytest.mark.parametrize(
     "texto, trecho",
     [
         ("O produtor precisou de {troca_kcl_ultimo} para pagar uma tonelada de KCl.", "no porto"),
-        ("No porto, o produtor precisou de {troca_kcl_ultimo} por tonelada de KCl, ou {sacas_kcl_ultimo}.", "preço ao produtor"),
-        ("A relação de troca do MAP ficou {desvio_troca_map} {desvio_troca_map_posicao} de {troca_map_media}.", "no porto"),
+        ("No porto, o produtor precisou de {troca_kcl_ultimo} por tonelada de KCl, ou {sacas_kcl_ultimo}.", "Não fale em produtor"),
+        ("No porto, a relação do KCl foi de {troca_kcl_ultimo}, e não há dúvida de que é isso que o produtor paga.", "Não fale em produtor"),
+        ("No porto, a tonelada de KCl custou {troca_kcl_ultimo} ao sojicultor.", "Não fale em produtor"),
+        ("Na porteira, a tonelada de KCl custou {sacas_kcl_ultimo} ao cooperado, medido no porto.", "Não fale em produtor"),
+        ("A relação de troca do MAP ficou {desvio_troca_map} {desvio_troca_map_posicao}.", "no porto"),
+        ("A relação de troca do produtor de soja é medida com a soja a {soja_fob_ultimo}.", "no porto"),
     ],
 )
 def test_relacao_de_troca_exige_no_porto_e_nao_vira_preco_ao_produtor(fatos, texto, trecho):
-    _, erros = boletim.validar(resposta(paragrafos=[*BASE, texto]), fatos)
+    erros = valida(fatos, texto)
     assert any(trecho in e for e in erros), erros
 
 
@@ -323,23 +331,107 @@ def test_relacao_de_troca_exige_no_porto_e_nao_vira_preco_ao_produtor(fatos, tex
     [
         "O Brasil importou {t_total_mes}.\n\nEm {mes_referencia} houve {var_t_total_mes_sentido} de {var_t_total_mes}.",
         "Destaques de {periodo_ytd}:\n- potássicos com {share_k_ytd}\n- nitrogenados com {share_n_ytd}",
-        "O Brasil importou \u202e{t_total_mes}\u202c em {mes_referencia}.",
-        "O volume do\u200bbrou em {mes_referencia}, para {t_total_mes}.",
+        "O Brasil importou ‮{t_total_mes}‬ em {mes_referencia}.",
+        "O volume do​brou em {mes_referencia}, para {t_total_mes}.",
         "O Brasil importou {t_total_mes} em {mes_referencia}\u0007.",
+        "As compras somaram trê️s mil em {mes_referencia}, ou {t_total_mes}.",  # seletor de variação
+        "Em ago͏sto, o Brasil importou {t_total_mes}.",  # combining grapheme joiner
+        "Volume ▲ em {mes_referencia}: {t_total_mes}.",
+        "O frete chegou a 💯 em {mes_referencia}, com {frete_medio_ytd}.",
+        "O volume dоbrou: {t_total_mes} em {mes_referencia}.",  # "о" cirílico
+        "As compras somaram ƻ,Ʒ Mt em {mes_referencia}, com {t_total_mes}.",  # ƻ e Ʒ
+        "O peso do frete foi de {frete_pct_cif_ytd}, &half; do preço de {preco_fob_total_mes}.",
+        "Detalhes com @radar sobre {t_total_mes} em {mes_referencia}.",
     ],
 )
-def test_rejeita_quebra_de_linha_e_caractere_invisivel(fatos, lead):
+def test_rejeita_caractere_fora_do_permitido(fatos, lead):
     _, erros = boletim.validar(resposta(lead=lead), fatos)
-    assert any("caractere invisível" in e for e in erros), erros
+    assert any("caractere fora do permitido" in e or "dígito" in e for e in erros), erros
 
 
-def test_rejeita_paragrafo_so_com_marcador_ou_invisivel_e_letra_de_outro_alfabeto(fatos):
-    _, erros = boletim.validar(resposta(paragrafos=[*BASE, "{t_total_mes}"]), fatos)
-    assert any("só marcadores" in e for e in erros), erros
-    _, erros = boletim.validar(resposta(paragrafos=[*BASE, "\u200b"]), fatos)
-    assert erros, erros
-    _, erros = boletim.validar(resposta(paragrafos=[*BASE, "O volume d\u043ebrou: {t_total_mes}."]), fatos)  # "о" cirílico
-    assert any("alfabeto latino" in e for e in erros), erros
+@pytest.mark.parametrize(
+    "texto, trecho",
+    [
+        ("Detalhes em https://exemplo.invalid sobre {t_total_mes}.", "link"),
+        ("Veja www.exemplo.invalid com {t_total_mes}.", "link"),
+        ("- Destaques de {periodo_ytd}, com {t_total_ytd}.", "lista"),
+        ("O frete médio foi de USD lOO por tonelada, ou {frete_medio_ytd}.", "letras no lugar"),
+        ("O Egito foi a vigésima origem dos fosfatados, com {share_p_ytd}.", "por extenso"),
+        ("O frete é o quíntuplo do de {ano_anterior}, ou {frete_medio_ytd}.", "por extenso"),
+        ("As compras somaram um milhar de navios, ou {t_total_mes}.", "por extenso"),
+        ("O volume de {t_total_ytd} é o maior da série histórica.", "série"),
+        ("Nunca antes o Brasil importou tanto, {t_k_ytd} no ano.", "contagem"),
+        ("O volume de {t_total_ytd} não tem precedentes.", "contagem"),
+        ("Na comparação mensal, as compras tiveram {var_t_total_mes_sentido} de {var_t_total_mes}.", "mês anterior"),
+        ("Sobre o mês precedente, as compras tiveram {var_t_total_mes_sentido} de {var_t_total_mes}.", "mês anterior"),
+        ("No último biênio, as compras somaram {t_total_ytd}.", "período"),
+        ("O momento é propício: as compras somaram {t_total_mes}.", "termo proibido"),
+        ("Convém travar o preço com o frete a {frete_medio_ytd}.", "termo proibido"),
+    ],
+)
+def test_rejeita_links_listas_numeros_disfarcados_recordes_e_periodos(fatos, texto, trecho):
+    erros = valida(fatos, texto)
+    assert any(trecho in e for e in erros), erros
+
+
+def test_maximo_da_serie_so_com_a_chave_que_o_traz(fatos):
+    assert valida(fatos, "No porto, o máximo da série do MAP foi {troca_map_max}, em {troca_map_max_mes}.") == []
+
+
+@pytest.mark.parametrize(
+    "texto, trecho",
+    [
+        ("As compras somaram {n_origens_k_ano}{var_frete_medio_ytd} no ano.", "colados"),
+        ("O frete médio das rotas foi de USD {hhi_n_ano} por tonelada.", "unidade inventada"),
+        ("O Brasil importou {n_rotas_ano} toneladas de compostos.", "unidade inventada"),
+    ],
+)
+def test_rejeita_numero_composto_ou_com_unidade_inventada(fatos, texto, trecho):
+    erros = valida(fatos, texto)
+    assert any(trecho in e for e in erros), erros
+    assert valida(fatos, "Os potássicos vieram de {n_origens_k_ano} países, em {n_rotas_ano} rotas no ano.") == []
+
+
+def test_nomes_de_pais_porto_grupo_produto_e_periodo_ligados_aos_numeros(fatos):
+    lider = fatos["lider_k_ano"]["valor"]
+    outro = next(n for n in sorted(set().union(*fatos.entidades.values())) if n != lider and n not in fatos["rota_1_ano"]["valor"])
+    assert valida(fatos, f"{lider} liderou os potássicos, com {{share_lider_k_ano}}.") == []
+    erros = valida(fatos, f"{outro} liderou os potássicos, com {{share_lider_k_ano}}.")
+    assert any(f"cita '{outro}'" in e for e in erros), erros
+    fora = sorted(fatos.outros_nomes)[0]
+    erros = valida(fatos, f"{fora} também vendeu potássicos ao Brasil.")
+    assert any("não está no pacote" in e for e in erros), erros
+    erros = valida(fatos, "As importações de nitrogenados tiveram {var_t_k_mes_sentido} de {var_t_k_mes}.")
+    assert any("nitrogenados" in e for e in erros), erros
+    erros = valida(fatos, "As importações de ureia somaram {t_n_mes} em {mes_referencia}.")
+    assert any("ureia" in e for e in erros), erros
+    erros = valida(fatos, "Em {mes_ano_anterior}, o Brasil importou {t_total_mes}.")
+    assert any("período anterior" in e for e in erros), erros
+
+
+def test_log_da_tentativa_reprovada_fica_numa_linha(fatos, caplog):
+    """Texto da IA com '::comando::' não vira comando do runner do Actions no log."""
+    ruim = resposta(titulo="Importações {mes_referencia} {\n::warning title=x::injetado}")
+    with pytest.raises(boletim.ErroBoletim):
+        boletim.gerar(fatos, ProvedorFalso(ruim, ruim))
+    assert not any(linha.lstrip().startswith("::") for r in caplog.records for linha in r.getMessage().splitlines())
+
+
+@pytest.mark.parametrize("mes", ["2015-01", "2015-07", "2016-01", "2020-06"])
+def test_mock_passa_em_qualquer_mes_dos_dados(tmp_path, mes):
+    assert boletim.main(["--mock", "--mes", mes, "--saida", str(tmp_path)]) == 0
+    assert (tmp_path / f"{mes}.md").exists()
+
+
+def test_nota_fixa_da_relacao_de_troca_no_boletim(tmp_path, ultimo_mes):
+    assert boletim.main(["--mock", "--saida", str(tmp_path)]) == 0
+    latest = json.loads((tmp_path / "latest.json").read_text(encoding="utf-8"))
+    md = (tmp_path / f"{ultimo_mes}.md").read_text(encoding="utf-8")
+    assert latest["nota"] == boletim.NOTA_TROCA and boletim.NOTA_TROCA in md
+
+
+def test_rejeita_paragrafo_so_com_marcador(fatos):
+    assert any("só marcadores" in e for e in valida(fatos, "{t_total_mes}"))
 
 
 def test_raciocinio_em_think_antes_do_json_e_ignorado(fatos):

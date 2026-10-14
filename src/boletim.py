@@ -8,12 +8,13 @@ Fluxo:
 2. Pede à IA um JSON com título, lead e 4 a 6 parágrafos que citam números SÓ por
    marcadores {chave}. Número literal é proibido.
 3. Valida a resposta, com a mesma regra para todos os provedores: todo marcador existe no
-   pacote; nenhum dígito, número por extenso, nome de mês, contagem, unidade ou sinal fora dos
-   marcadores; toda palavra de direção (subiu, queda...) na mesma frase de uma variação do
-   pacote e coerente com ela; a relação de troca sempre com a ressalva "no porto"; texto simples
-   numa linha só (sem Markdown, HTML ou caractere invisível); sem os termos de uma lista fixa de
-   recomendação e tom alarmista; e tamanho máximo. Se reprovar, tenta mais uma vez com os erros
-   no prompt; se reprovar de novo, falha sem publicar nada.
+   pacote; fora dos marcadores, só letras e pontuação comum, sem dígito, número por extenso,
+   nome de mês, contagem, recorde, unidade, sinal ou palavra de direção (a direção entra só
+   pelos marcadores _sentido e _posicao, colados à própria variação); país, porto, grupo,
+   produto e período escritos por extenso ligados aos números da frase; a relação de troca
+   sempre "no porto" e nunca como preço ao produtor; texto numa linha só, sem Markdown, HTML ou
+   link; sem os termos de uma lista fixa de recomendação e tom alarmista; e tamanho máximo. Se
+   reprovar, tenta mais uma vez com os erros no prompt; se reprovar de novo, falha sem publicar.
 4. Troca os marcadores pelos valores e grava boletins/AAAA-MM.md e boletins/latest.json.
 
 --mock usa uma resposta fixa de exemplo, sem chamar nenhuma API, e grava em boletins/mock/
@@ -48,6 +49,10 @@ RODAPE = "Texto gerado por IA a partir de dados do Comex Stat/MDIC; números ins
 FONTE = "Comex Stat/MDIC"
 REPOSITORIO = "https://github.com/AliceCullen-html/radar-fertilizantes-br"
 DASHBOARD = "https://alicecullen-html.github.io/radar-fertilizantes-br/"
+NOTA_TROCA = (
+    "Relação de troca medida no porto: soja exportada (FOB) x fertilizante importado (CIF). Não é o"
+    " preço pago pelo produtor, que inclui frete interno, impostos e margens."
+)
 
 MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
 GRUPOS = {"TOTAL": "todos os grupos", "N": "nitrogenados (N)", "P": "fosfatados (P)", "K": "potássicos (K)", "NPK": "compostos (NPK)"}
@@ -167,38 +172,33 @@ def nome_urf(nome: str) -> str:
 class Fatos(dict):
     """chave -> {"valor": texto pt-BR, "descricao": o que é}. Chaves só com [a-z0-9_].
 
-    `periodo` guarda o mês de referência (AAAA-MM). `direcao` liga cada chave que tem direção
-    (a variação e o valor a que ela se refere) à chave _sentido ou _posicao que a confirma.
+    `periodo` guarda o mês de referência (AAAA-MM). `entidades` liga cada chave aos países e
+    portos a que o número se refere, e `outros_nomes` guarda países e portos dos dados que não
+    estão no pacote: a validação confere os nomes escritos por extenso contra eles.
     """
 
     periodo = ""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.direcao: dict[str, str] = {}
+        self.entidades: dict[str, set[str]] = {}
+        self.outros_nomes: set[str] = set()
 
-    def add(self, chave: str, valor: str | None, descricao: str) -> None:
+    def add(self, chave: str, valor: str | None, descricao: str, entidades: tuple[str, ...] = ()) -> None:
         if valor is None:
             return
         if not re.fullmatch(r"[a-z0-9_]+", chave):
             raise ValueError(f"chave inválida no pacote de fatos: {chave!r}")
         self[chave] = {"valor": valor, "descricao": descricao}
+        if entidades:
+            self.entidades[chave] = set(entidades)
 
-    def add_var(self, chave: str, variacao: float | None, descricao: str, pp: bool = False, nivel: tuple[str, ...] = ()) -> None:
-        """Variação sem sinal, mais a direção em {chave}_sentido. `nivel`: as chaves do valor que
-        variou (ex.: t_k_mes para var_t_k_mes), conferidas contra a mesma direção."""
+    def add_var(self, chave: str, variacao: float | None, descricao: str, pp: bool = False, entidades: tuple[str, ...] = ()) -> None:
+        """Variação sem sinal, mais a direção em {chave}_sentido."""
         if variacao is None:
             return
-        self.add(chave, fmt_pp(abs(variacao)) if pp else fmt_pct(abs(variacao)), f"{descricao} (sem sinal; direção em {chave}_sentido)")
-        self.add(f"{chave}_sentido", sentido(variacao), f"Direção de {chave}: alta, queda ou estabilidade")
-        for k in (chave, *nivel):
-            self.direcao[k] = f"{chave}_sentido"
-
-    def add_posicao(self, chave: str, valor: str, descricao: str, de: tuple[str, ...]) -> None:
-        """Posição (acima/abaixo de uma referência) das chaves `de`, conferida como direção."""
-        self.add(chave, valor, descricao)
-        for k in de:
-            self.direcao[k] = chave
+        self.add(chave, fmt_pp(abs(variacao)) if pp else fmt_pct(abs(variacao)), f"{descricao} (sem sinal; a direção vai em {chave}_sentido, colado a ele)", entidades)
+        self.add(f"{chave}_sentido", sentido(variacao), f"Direção de {chave}: alta, queda ou estabilidade", entidades)
 
     def valores(self) -> dict[str, str]:
         return {k: v["valor"] for k, v in self.items()}
@@ -266,11 +266,11 @@ def montar_fatos(painel: dict, troca: list[dict], mes: str | None = None) -> Fat
         if t_mes:
             f.add(f"t_{k}_mes", fmt_t(t_mes), f"Toneladas importadas em {mes_extenso(mes)}, {nome}")
         if i_ant is not None:
-            f.add_var(f"var_t_{k}_mes", _var_pct(t_mes, s["t"][i_ant]), f"Variação das toneladas de {mes_extenso(mes)} sobre {mes_extenso(anterior)}, {nome}", nivel=(f"t_{k}_mes",))
+            f.add_var(f"var_t_{k}_mes", _var_pct(t_mes, s["t"][i_ant]), f"Variação das toneladas de {mes_extenso(mes)} sobre {mes_extenso(anterior)}, {nome}")
         if t_ytd:
             f.add(f"t_{k}_ytd", fmt_t(t_ytd), f"Toneladas importadas de {acum}, {nome}")
         if tem_ytd_ant:
-            f.add_var(f"var_t_{k}_ytd", _var_pct(t_ytd, _soma(s["t"], ytd_ant)), f"Variação das toneladas de {acum} sobre {acum_ant}, {nome}", nivel=(f"t_{k}_ytd",))
+            f.add_var(f"var_t_{k}_ytd", _var_pct(t_ytd, _soma(s["t"], ytd_ant)), f"Variação das toneladas de {acum} sobre {acum_ant}, {nome}")
         if g != "TOTAL" and t_ytd_total:
             f.add(f"share_{k}_ytd", fmt_pct(100 * t_ytd / t_ytd_total), f"Participação dos {nome} nas toneladas totais de {acum}")
 
@@ -278,7 +278,7 @@ def montar_fatos(painel: dict, troca: list[dict], mes: str | None = None) -> Fat
         if cif(i) is not None:
             f.add(f"preco_cif_{k}_mes", fmt_usd_t(cif(i)), f"Preço médio CIF (valor ÷ toneladas) em {mes_extenso(mes)}, {nome}")
             if i_ant is not None:
-                f.add_var(f"var_preco_cif_{k}_mes", _var_pct(cif(i), cif(i_ant)), f"Variação do preço CIF de {mes_extenso(mes)} sobre {mes_extenso(anterior)}, {nome}", nivel=(f"preco_cif_{k}_mes",))
+                f.add_var(f"var_preco_cif_{k}_mes", _var_pct(cif(i), cif(i_ant)), f"Variação do preço CIF de {mes_extenso(mes)} sobre {mes_extenso(anterior)}, {nome}")
 
     t = mensal["TOTAL"]
     if t["t"][i]:
@@ -295,7 +295,7 @@ def montar_fatos(painel: dict, troca: list[dict], mes: str | None = None) -> Fat
         if t_ant:
             frete_ant = _soma(t["frete_musd"], ytd_ant) * 1e6 / t_ant
             f.add("frete_medio_ytd_anterior", fmt_usd_t(frete_ant), f"Frete médio por tonelada de {acum_ant}")
-            f.add_var("var_frete_medio_ytd", _var_pct(frete_ytd, frete_ant), f"Variação do frete médio de {acum} sobre {acum_ant}", nivel=("frete_medio_ytd",))
+            f.add_var("var_frete_medio_ytd", _var_pct(frete_ytd, frete_ant), f"Variação do frete médio de {acum} sobre {acum_ant}")
 
     # --- Origens, concentração e portos no acumulado do ano. Esses blocos do dashboard.json
     # cobrem todos os meses do ano nos dados: só valem se o ano termina no mês pedido.
@@ -313,17 +313,16 @@ def montar_fatos(painel: dict, troca: list[dict], mes: str | None = None) -> Fat
                 pais, s_pais = r[1], slug(r[1])
                 ordem = ["maior", "segunda maior", "terceira maior"][pos]
                 if pos == 0:
-                    f.add(f"lider_{k}_ano", pais, f"Maior país de origem de {acum}, {nome}")
-                    f.add(f"share_lider_{k}_ano", fmt_pct(r[3]), f"Participação de {pais}, maior origem, nas toneladas de {acum}, {nome}")
-                f.add(f"share_{s_pais}_{k}_ano", fmt_pct(r[3]), f"Participação de {pais} ({ordem} origem) nas toneladas de {acum}, {nome}")
-                niveis = (f"share_{s_pais}_{k}_ano", f"share_lider_{k}_ano") if pos == 0 else (f"share_{s_pais}_{k}_ano",)
-                f.add_var(f"var_share_{s_pais}_{k}_ano", r[5], f"Variação da participação de {pais} sobre {acum_ant}, {nome}", pp=True, nivel=niveis)
-                f.add_var(f"var_t_{s_pais}_{k}_ano", r[4], f"Variação das toneladas vindas de {pais} sobre {acum_ant}, {nome}")
+                    f.add(f"lider_{k}_ano", pais, f"Maior país de origem de {acum}, {nome}", (pais,))
+                    f.add(f"share_lider_{k}_ano", fmt_pct(r[3]), f"Participação de {pais}, maior origem, nas toneladas de {acum}, {nome}", (pais,))
+                f.add(f"share_{s_pais}_{k}_ano", fmt_pct(r[3]), f"Participação de {pais} ({ordem} origem) nas toneladas de {acum}, {nome}", (pais,))
+                f.add_var(f"var_share_{s_pais}_{k}_ano", r[5], f"Variação da participação de {pais} sobre {acum_ant}, {nome}", pp=True, entidades=(pais,))
+                f.add_var(f"var_t_{s_pais}_{k}_ano", r[4], f"Variação das toneladas vindas de {pais} sobre {acum_ant}, {nome}", entidades=(pais,))
             a = anual[g]
             if a["hhi"][ia] is not None:
                 f.add(f"hhi_{k}_ano", _num(a["hhi"][ia]), f"Concentração de fornecedores (HHI, 0 a 10.000) de {acum}, {nome}")
                 lado = "acima do limiar" if a["hhi"][ia] > LIMIAR_HHI else "abaixo do limiar" if a["hhi"][ia] < LIMIAR_HHI else "no limiar"
-                f.add_posicao(f"hhi_{k}_ano_posicao", lado, f"Posição do HHI de {acum} frente ao limiar de alta concentração (limiar_hhi), {nome}", de=(f"hhi_{k}_ano",))
+                f.add(f"hhi_{k}_ano_posicao", lado, f"Posição de hhi_{k}_ano frente ao limiar de alta concentração (limiar_hhi), colada a hhi_{k}_ano, {nome}")
                 if ia > 0 and a["hhi"][ia - 1] is not None:
                     f.add(f"hhi_{k}_ano_anterior", _num(a["hhi"][ia - 1]), f"HHI do ano {ano - 1} inteiro, {nome}")
                 f.add(f"cr3_{k}_ano", fmt_pct(a["cr3_pct"][ia]), f"Participação somada das três maiores origens de {acum}, {nome}")
@@ -333,28 +332,29 @@ def montar_fatos(painel: dict, troca: list[dict], mes: str | None = None) -> Fat
             nome_p, s_p = nome_urf(r[1]), slug(nome_urf(r[1]))
             ordem = ["maior", "segunda maior", "terceira maior"][pos]
             if pos == 0:
-                f.add("porto_lider_ano", nome_p, f"URF (porto) que mais recebeu fertilizantes de {acum}")
-                f.add("share_porto_lider_ano", fmt_pct(r[3]), f"Participação de {nome_p} nas toneladas de {acum}")
-            f.add(f"share_porto_{s_p}_ano", fmt_pct(r[3]), f"Participação da URF {nome_p} ({ordem}) nas toneladas de {acum}")
-            niveis = (f"share_porto_{s_p}_ano", "share_porto_lider_ano") if pos == 0 else (f"share_porto_{s_p}_ano",)
-            f.add_var(f"var_share_porto_{s_p}_ano", r[5], f"Variação da participação de {nome_p} sobre {acum_ant}", pp=True, nivel=niveis)
+                f.add("porto_lider_ano", nome_p, f"URF (porto) que mais recebeu fertilizantes de {acum}", (nome_p,))
+                f.add("share_porto_lider_ano", fmt_pct(r[3]), f"Participação de {nome_p} nas toneladas de {acum}", (nome_p,))
+            f.add(f"share_porto_{s_p}_ano", fmt_pct(r[3]), f"Participação da URF {nome_p} ({ordem}) nas toneladas de {acum}", (nome_p,))
+            f.add_var(f"var_share_porto_{s_p}_ano", r[5], f"Variação da participação de {nome_p} sobre {acum_ant}", pp=True, entidades=(nome_p,))
 
     # --- Rotas país de origem -> URF no acumulado do ano
     rotas = (painel.get("rotas") or {}).get("dados", {}).get(str(ano), {}).get("TOTAL")
     if ano_ate_o_mes and rotas and rotas.get("rotas"):
         for pos, r in enumerate(rotas["rotas"][:3], start=1):
-            f.add(f"rota_{pos}_ano", f"{r[0]} → {nome_urf(r[2])}", f"Rota (país de origem → URF) número {pos} em toneladas de {acum}")
-            f.add(f"t_rota_{pos}_ano", fmt_t(r[3]), f"Toneladas da rota {pos} de {acum}")
+            ponta = (r[0], nome_urf(r[2]))
+            f.add(f"rota_{pos}_ano", f"{r[0]} → {nome_urf(r[2])}", f"Rota (país de origem → URF) número {pos} em toneladas de {acum}", ponta)
+            f.add(f"t_rota_{pos}_ano", fmt_t(r[3]), f"Toneladas da rota {pos} de {acum}", ponta)
             if r[5] is not None:
-                f.add(f"frete_rota_{pos}_ano", fmt_usd_t(r[5]), f"Frete médio por tonelada da rota {pos} de {acum}")
+                f.add(f"frete_rota_{pos}_ano", fmt_usd_t(r[5]), f"Frete médio por tonelada da rota {pos} de {acum}", ponta)
         com_frete = [r for r in rotas["rotas"] if r[5] is not None]
         if com_frete:
             caro, barato = max(com_frete, key=lambda r: r[5]), min(com_frete, key=lambda r: r[5])
             so_maiores = "entre as rotas de maior volume listadas no dashboard, não entre todas as rotas relevantes (n_rotas_relevantes_ano)"
-            f.add("rota_frete_max_ano", f"{caro[0]} → {nome_urf(caro[2])}", f"Rota de maior frete por tonelada de {acum}, {so_maiores}")
-            f.add("frete_rota_max_ano", fmt_usd_t(caro[5]), f"Frete por tonelada da rota rota_frete_max_ano, {so_maiores}")
-            f.add("rota_frete_min_ano", f"{barato[0]} → {nome_urf(barato[2])}", f"Rota de menor frete por tonelada de {acum}, {so_maiores}")
-            f.add("frete_rota_min_ano", fmt_usd_t(barato[5]), f"Frete por tonelada da rota rota_frete_min_ano, {so_maiores}")
+            pontas_caro, pontas_barato = (caro[0], nome_urf(caro[2])), (barato[0], nome_urf(barato[2]))
+            f.add("rota_frete_max_ano", f"{caro[0]} → {nome_urf(caro[2])}", f"Rota de maior frete por tonelada de {acum}, {so_maiores}", pontas_caro)
+            f.add("frete_rota_max_ano", fmt_usd_t(caro[5]), f"Frete por tonelada da rota rota_frete_max_ano, {so_maiores}", pontas_caro)
+            f.add("rota_frete_min_ano", f"{barato[0]} → {nome_urf(barato[2])}", f"Rota de menor frete por tonelada de {acum}, {so_maiores}", pontas_barato)
+            f.add("frete_rota_min_ano", fmt_usd_t(barato[5]), f"Frete por tonelada da rota rota_frete_min_ano, {so_maiores}", pontas_barato)
         if rotas.get("frete_relevantes") is not None:
             f.add("frete_rotas_relevantes_ano", fmt_usd_t(rotas["frete_relevantes"]), f"Frete médio das rotas com volume relevante de {acum}")
         f.add("n_rotas_relevantes_ano", _num(rotas["n_relevantes"]), f"Rotas com volume relevante (acima do corte) de {acum}")
@@ -366,6 +366,12 @@ def montar_fatos(painel: dict, troca: list[dict], mes: str | None = None) -> Fat
 
     # --- Relação de troca no porto (soja FOB x fertilizante CIF), do troca_mensal.csv
     _fatos_troca(f, troca, mes)
+
+    # Países e portos dos dados que não estão no pacote: citar algum deles reprova.
+    no_pacote = set().union(*f.entidades.values()) if f.entidades else set()
+    todos = {r[1] for por_ano in painel.get("origens", {}).get("dados", {}).values() for linhas in por_ano.values() for r in (linhas or [])}
+    todos |= {nome_urf(r[1]) for por_ano in painel.get("urfs", {}).get("dados", {}).values() for linhas in por_ano.values() for r in (linhas or [])}
+    f.outros_nomes = {n for n in todos if n and n != "Outros" and n not in no_pacote}
     return f
 
 
@@ -390,7 +396,7 @@ def _fatos_troca(f: Fatos, troca: list[dict], mes: str) -> None:
         f.add(f"cif_{prod}_ultimo", fmt_usd_t(numero(atual["preco_cif_fert_usd_t"])), f"Preço CIF de {nome} em {mes_extenso(mes)}")
         f.add(f"troca_{prod}_media", fmt_razao(media), f"Média histórica da relação de troca de {nome} ({serie[0]['periodo']} a {mes}, média simples dos meses)")
         f.add(f"desvio_troca_{prod}", fmt_pct(abs(desvio)), f"Distância da relação de {nome} em {mes_extenso(mes)} para a média histórica (sem sinal; posição em desvio_troca_{prod}_posicao)")
-        f.add_posicao(f"desvio_troca_{prod}_posicao", posicao(desvio), f"Posição da relação de {nome} frente à média histórica", de=(f"desvio_troca_{prod}", f"troca_{prod}_media"))
+        f.add(f"desvio_troca_{prod}_posicao", posicao(desvio), f"Posição da relação de {nome} frente à média histórica, colada a desvio_troca_{prod}")
         lado = (valor > media) - (valor < media)
         seguidos = 0
         for r in reversed(razoes):
@@ -399,7 +405,8 @@ def _fatos_troca(f: Fatos, troca: list[dict], mes: str) -> None:
             else:
                 break
         if seguidos:
-            f.add(f"meses_seguidos_troca_{prod}", f"{seguidos} {'mês' if seguidos == 1 else 'meses'}", f"Meses seguidos, até {mes_extenso(mes)}, com a relação de {nome} do mesmo lado ({'acima' if lado > 0 else 'abaixo'}) da média histórica")
+            f.add(f"meses_seguidos_troca_{prod}", f"{seguidos} {'mês' if seguidos == 1 else 'meses'}", f"Meses seguidos, até {mes_extenso(mes)}, com a relação de {nome} do mesmo lado da média histórica (o lado vai em meses_seguidos_troca_{prod}_posicao, colado a ele)")
+            f.add(f"meses_seguidos_troca_{prod}_posicao", "acima da média histórica" if lado > 0 else "abaixo da média histórica", f"Lado da média histórica em que a relação de {nome} ficou nesses meses seguidos")
         maior = max(serie, key=lambda r: numero(r["t_soja_por_t"]))
         f.add(f"troca_{prod}_max", fmt_razao(numero(maior["t_soja_por_t"])), f"Maior relação de troca de {nome} na série")
         f.add(f"troca_{prod}_max_mes", mes_extenso(maior["periodo"]), f"Mês da maior relação de troca de {nome} na série")
@@ -411,7 +418,7 @@ def _fatos_troca(f: Fatos, troca: list[dict], mes: str) -> None:
             soja = numero(atual["preco_fob_soja_usd_t"])
             f.add("soja_fob_ultimo", fmt_usd_t(soja), f"Preço FOB da soja em grão exportada em {mes_extenso(mes)}")
             if anterior:
-                f.add_var("var_soja_fob_ano", _var_pct(soja, numero(anterior["preco_fob_soja_usd_t"])), "Variação do preço FOB da soja sobre o mesmo mês do ano anterior", nivel=("soja_fob_ultimo",))
+                f.add_var("var_soja_fob_ano", _var_pct(soja, numero(anterior["preco_fob_soja_usd_t"])), "Variação do preço FOB da soja sobre o mesmo mês do ano anterior")
             f.add("periodo_media_troca", f"{mes_extenso(serie[0]['periodo'])} a {mes_extenso(mes)}", "Período da média histórica da relação de troca")
 
 
@@ -423,17 +430,17 @@ Você recebe um PACOTE DE FATOS em JSON: cada chave tem um valor já formatado e
 
 Regras invioláveis. Um programa confere a resposta e a reprova se qualquer uma for descumprida:
 1. Todo número entra SOMENTE como marcador {chave}, com a chave exatamente como está no pacote. O programa troca o marcador pelo valor. Isso vale para anos, meses, percentuais, toneladas, preços, contagens e sacas. Nunca escreva o nome de um mês: use {mes_referencia}, {mes_ano_anterior}, {periodo_ytd} e afins.
-2. Nenhum dígito fora dos marcadores, nem números por extenso (dois, três, dez, mil, milhões, zero, meia, dobro, dobrou, triplicou, metade, um terço...), algarismos romanos ou posições além de "terceiro". Também não escreva contagens nem períodos que o pacote não traz: "terceiro mês seguido", "consecutivo", "pela primeira vez", "recorde", "inédito", semestre, trimestre, década, século.
-3. Os valores já trazem a unidade (%, t, US$/t, p.p.). Não escreva %, "por cento", US$ ou p.p. fora dos marcadores, nem sinal (+ ou −) antes de um marcador.
-4. Variações vêm sem sinal. A direção está na chave com sufixo _sentido (alta, queda ou estabilidade) ou _posicao. Toda palavra de direção (alta, queda, subiu, caiu, cresceu, recuou, avançou, maior que, mais barato e afins) precisa estar na mesma frase de um marcador de variação, do seu _sentido ou do valor que variou, e ser coerente com ele: o programa reprova a palavra que contradiz a direção e a palavra de direção sem esse marcador na frase. As variações mensais são sobre o mesmo mês do ano anterior ({mes_ano_anterior}), não sobre o mês anterior.
-5. Use só os fatos do pacote. Não cite causas, eventos, empresas ou previsões que não estejam nele. Pode comparar os fatos entre si.
+2. Nenhum dígito fora dos marcadores, nem números por extenso (dois, três, dez, mil, milhões, zero, meia, dobro, dobrou, triplicou, metade, um terço...), algarismos romanos ou posições além de "terceiro". Também não escreva contagens, recordes nem períodos que o pacote não traz: "terceiro mês seguido", "consecutivo", "pela primeira vez", "recorde", "inédito", "o maior da série", "nunca antes", semestre, trimestre, década, "comparação mensal", "mês anterior".
+3. Os valores já trazem a unidade (%, t, US$/t, p.p.). Não escreva %, "por cento", US$, "toneladas" ou p.p. junto de um marcador, nem sinal (+, −, "menos") antes de um marcador, nem dois marcadores colados.
+4. A direção entra SÓ pelos marcadores com sufixo _sentido (alta, queda ou estabilidade) e _posicao (acima ou abaixo de uma referência), sempre colados à sua variação: "{var_x_sentido} de {var_x}" ou "{desvio_x} {desvio_x_posicao}". Toda variação (var_) e toda distância (desvio_) vai com o seu _sentido ou _posicao ao lado. Fora dos marcadores, NÃO escreva palavras de direção ou comparação: subiu, caiu, cresceu, recuou, avançou, superou, aumento, redução, alta, queda, acima, abaixo, aquém, maior que, menor que, mais caro, mais barato, melhorou, piorou, favorável e afins.
+5. Use só os fatos do pacote. Não cite causas, eventos, empresas ou previsões que não estejam nele. Ao escrever o nome de um país, porto, grupo (nitrogenados, fosfatados, potássicos, compostos) ou produto (ureia, KCl, MAP), os números da mesma frase precisam ser dele: use as chaves dele. Não cite países ou portos que não estão no pacote. As variações do mês são sobre o mesmo mês do ano anterior ({mes_ano_anterior}).
 6. Tom de analista: neutro e objetivo, sem recomendação de compra ou venda e sem adjetivos alarmistas (como alarmante, explosão, disparada, colapso, catastrófico, crítico, preocupante).
-7. Todo título, lead ou parágrafo que citar a relação de troca (chaves troca_, sacas_, desvio_troca_ e meses_seguidos_troca_) precisa dizer nele mesmo que ela é medida "no porto" (soja FOB x fertilizante CIF) e que não é o preço ao produtor.
-8. Texto simples, cada campo numa linha só: sem quebra de linha, sem Markdown, sem HTML, sem listas, sem asteriscos, sem colchetes.
+7. Todo título, lead ou parágrafo que citar a relação de troca (chaves troca_, sacas_, desvio_troca_ e meses_seguidos_troca_) precisa dizer nele mesmo que ela é medida "no porto". Não fale em produtor, agricultor ou fazenda: o programa acrescenta a ressalva de que ela não é o preço ao produtor (se quiser repeti-la, escreva exatamente "não é o preço ao produtor").
+8. Texto simples, cada campo numa linha só: só letras, espaços e pontuação comum. Sem Markdown, HTML, links, emojis, setas, listas, asteriscos, colchetes ou "&".
 
 Formato: responda SOMENTE com um objeto JSON com as chaves "titulo" (até 100 caracteres), "lead" (uma ou duas frases, até 350 caracteres) e "paragrafos" (lista de 4 a 6 parágrafos curtos, cada um com até 600 caracteres).
 
-Exemplo de frase válida: "As importações somaram {t_total_mes} em {mes_referencia}, {var_t_total_mes_sentido} de {var_t_total_mes} sobre {mes_ano_anterior}."
+Exemplos de frases válidas: "As importações somaram {t_total_mes} em {mes_referencia}, {var_t_total_mes_sentido} de {var_t_total_mes} sobre {mes_ano_anterior}." e "No porto, uma tonelada de MAP equivalia a {troca_map_ultimo}, {desvio_troca_map} {desvio_troca_map_posicao}."
 """
 
 
@@ -455,74 +462,124 @@ def montar_prompt(fatos: Fatos, erros: list[str] | None = None, anterior: str | 
 
 MARCADOR = re.compile(r"\{([^{}]*)\}")
 CHAVE_VALIDA = re.compile(r"[a-z0-9_]+")
+# Fora dos marcadores, só letras do português (Latin-1, depois de NFC) e esta pontuação. O resto
+# (emoji, seta, sinal matemático, caractere invisível ou combinante, letra de outro alfabeto,
+# "&", "@"...) reprova.
+LETRA = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]")
+PONTUACAO = set(" \u00a0.,;:!?()\"'“”‘’«»-–—/")
 POR_EXTENSO = re.compile(
     r"\b(zero|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|quatorze|catorze|quinze|"
     r"dezesseis|dezessete|dezoito|dezenove|vinte|trinta|quarenta|cinquenta|sessenta|setenta|oitenta|noventa|"
     r"cem|cento|duzent\w*|trezent\w*|quatrocent\w*|quinhent\w*|seiscent\w*|setecent\w*|oitocent\w*|novecent\w*|"
-    r"mil|milh[ãa]o|milh[õo]es|bilh[ãa]o|bilh[õo]es|trilh[ãa]o|trilh[õo]es|mi|bi|tri|dobro|triplo|qu[aá]druplo|metade|"
+    r"mil|milhar|milh[ãa]o|milh[õo]es|bilh[ãa]o|bilh[õo]es|trilh[ãa]o|trilh[õo]es|mi|bi|tri|porcento|dobro|metade|"
     r"meia|meio\s+(?:ponto|por\s*cento|milh\w*|bilh\w*)|e\s+meio|dezenas?|centenas?|milhares|ter[çc]os?|d[uú]zias?|"
     # multiplicativos e ordinais além do terceiro (o pacote só traz as três maiores posições)
-    r"dobr(?:ou|aram|am|ando|ado|ada|ados|adas|ar|ará|aria)|duplic\w*|triplic\w*|quadruplic\w*|quintuplic\w*|"
-    r"quart[oa]s?|quint[oa]s?|sext[oa]s?|s[eé]tim[oa]s?|oitav[oa]s?|non[oa]s?|d[eé]cim[oa]s?)\b",
+    r"dobr(?:ou|aram|am|ando|ado|ada|ados|adas|ar|ará|aria)|duplic\w*|triplic\w*|quadruplic\w*|quintuplic\w*|\w*[uú]pl[oa]s?|"
+    r"quart[oa]s?|quint[oa]s?|sext[oa]s?|s[eé]tim[oa]s?|oitav[oa]s?|non[oa]s?|d[eé]cim[oa]s?|\w*g[eé]sim[oa]s?|"
+    r"cent[eé]sim\w*|mil[eé]sim\w*|"
+    # inglês
+    r"one|two|three|four|five|six|seven|eight|nine|ten|hundred|thousand|million|billion)\b",
     re.IGNORECASE,
 )
+HOMOGLIFOS = re.compile(r"\b[lIO0]{2,}\b")  # "lOO" no lugar de 100; sensível a maiúsculas
 # Algarismos romanos com duas letras ou mais (XXI, IV...), em maiúsculas; MDIC não casa.
 ROMANOS = re.compile(r"\b(?=[MDCLXVI]{2,}\b)M{0,4}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})(?<=[MDCLXVI])\b")
 # Meses e períodos só entram por marcador ({mes_referencia}, {periodo_ytd}...).
 MESES_E_PERIODOS = re.compile(
     r"\b(janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|"
-    r"semestr\w*|trimestr\w*|bimestr\w*|quinzena\w*|d[eé]cadas?|dec[eê]nios?|s[eé]culos?)\b",
+    r"semestr\w*|trimestr\w*|bimestr\w*|quinzena\w*|d[eé]cadas?|dec[eê]nios?|s[eé]culos?|bi[eê]nios?|tri[eê]nios?|retrasad\w*)\b",
     re.IGNORECASE,
 )
-MES_ANTERIOR = re.compile(r"\bm[eê]s\s+(anterior|passado)\b", re.IGNORECASE)
+MES_ANTERIOR = re.compile(
+    r"\bm[eê]s\s+(?:\w+\s+)?(?:anterior|passado|precedente|pr[eé]vio)\b|\b(?:compara[çc][ãa]o|varia[çc][ãa]o)\s+mensal\b|"
+    r"\bna\s+margem\b|\b[uú]ltimos\s+meses\b",
+    re.IGNORECASE,
+)
 # Contagens e recordes que o pacote não traz (a única contagem é meses_seguidos_troca_*).
 CONTAGENS = re.compile(
     r"\b((?:primeir|segund|terceir)[oa]s?\s+(?:m[eê]s|meses|anos?|vez|vezes|trimestres?|semestres?|semanas?|altas?|quedas?|aumentos?|recuos?)|"
     r"(?:m[eê]s|meses|anos?|vezes|trimestres?|semestres?|semanas?|altas?|quedas?)\s+(?:seguid|consecutiv)\w*|"
-    r"consecutiv\w*|em\s+sequ[eê]ncia|recordes?|in[eé]dit\w*)\b",
+    r"consecutiv\w*|em\s+sequ[eê]ncia|recordes?|in[eé]dit\w*|nunca\s+antes|j[aá]\s+(?:registrad|vist)\w*|"
+    r"sem\s+precedentes?|n[ãa]o\s+tem\s+precedentes?)\b",
     re.IGNORECASE,
 )
-# Palavras de direção. As de mudança (subiu, queda...) precisam de um marcador de variação na
-# mesma frase; as de posição (acima, maior que...) são conferidas quando ficam junto de um.
-_MUDANCA_ALTA = (
-    r"alta|altas|aument\w*|cresc\w*|subi\w*|sob(?:e|em)|avan[çc]\w*|expans\w*|expandi\w*|elev(?:ou|aram|ação|ações)|"
-    r"ganh\w*|acr[eé]scimos?|valoriz\w*|encarec\w*|salt(?:o|os|ou|aram)|increment\w*|recupera\w*|positiv\w*|"
-    r"amplia\w*|ampliou|(?<!\bo )(?<!\ba )(?<!\bos )(?<!\bas )mais\s+car[oa]s?"
-)
-_POSICAO_ALTA = r"acima|superior\w*|maior(?:es)?\s+(?:do\s+)?que|(?<!\bo )(?<!\ba )(?<!\bos )(?<!\bas )mais\s+alt[oa]s?"
-_MUDANCA_QUEDA = (
-    r"queda|quedas|ca[ií](?:u|ram|r|a|am|em|ndo|do|da|dos|das)?|recu(?:o|os|ou|aram|ar|ando|ada|ado)|"
-    r"redu(?:ziu|ziram|zir|ção|ções|zida|zido|zidas|zidos)|diminu\w*|retra(?:ção|ções|iu|íram|ída|ído)|perd\w*|"
-    r"baix(?:a|as|ou|aram)|decl[ií]n\w*|desvaloriz\w*|barate\w*|encolh\w*|negativ\w*|al[ií]vio|tomb(?:o|os|ou|aram)|"
-    r"ced(?:eu|eram)|contra[íi]\w*|contra[çc][ãa]o|enfraquec\w*|(?<!\bo )(?<!\ba )(?<!\bos )(?<!\bas )mais\s+barat[oa]s?"
-)
-_POSICAO_QUEDA = r"abaixo|inferior\w*|menor(?:es)?\s+(?:do\s+)?que|(?<!\bo )(?<!\ba )(?<!\bos )(?<!\bas )mais\s+baix[oa]s?"
-PALAVRAS_ALTA = re.compile(rf"\b(?:{_MUDANCA_ALTA}|{_POSICAO_ALTA})\b", re.IGNORECASE)
-PALAVRAS_QUEDA = re.compile(rf"\b(?:{_MUDANCA_QUEDA}|{_POSICAO_QUEDA})\b", re.IGNORECASE)
-PALAVRAS_MUDANCA = re.compile(rf"\b(?:{_MUDANCA_ALTA}|{_MUDANCA_QUEDA})\b", re.IGNORECASE)
-# "{var_x} maior que..." e "{var_x} a menos": comparativo logo depois do marcador.
-LOGO_DEPOIS_ALTA = re.compile(r"^\s*(?:a\s+)?(maior|mais|superior|acima)\b", re.IGNORECASE)
-LOGO_DEPOIS_QUEDA = re.compile(r"^\s*(?:a\s+)?(menor|menos|inferior|abaixo)\b", re.IGNORECASE)
-FIM_DE_ORACAO = re.compile(r"[.;:!?]")
-# Sinal colado antes de um marcador com direção: "+{var_x}" publicaria o sinal que a IA escolheu.
-SINAL_ANTES = re.compile(r"[+\-±‐-―−﹣＋－]\s*$")
+# "o maior da série", "máxima histórica": só com as chaves que trazem o máximo e a média da série.
+HISTORICO = re.compile(r"\b(?:s[eé]rie|hist[oó]ria)\b|\bm[aá]xim[ao]s?\s+hist[oó]ric\w*|\bm[ií]nim[ao]s?\s+hist[oó]ric\w*", re.IGNORECASE)
+CHAVES_HISTORICO = re.compile(r"^(troca_[a-z]+_(max|max_mes|media)|periodo_media_troca)$")
+# Palavras de direção e de comparação: a direção entra só pelos marcadores _sentido e _posicao.
+_ANTES_SUPERLATIVO = r"(?<!\bo )(?<!\ba )(?<!\bos )(?<!\bas )"
+_DIRECAO = [
+    # para cima
+    r"alta(?!\s+concentra)", r"altas", r"aument\w*", r"cresc\w*", r"subi\w*", r"sob(?:e|em)", r"avan[çc]\w*", r"expans\w*",
+    r"expandi\w*", r"elev(?:a|am|ou|aram|ando|ação|ações)", r"ganh\w*", r"acr[eé]scim\w*", r"valoriz\w*", r"encarec\w*",
+    r"salt(?:a|am|o|os|ou|aram)", r"increment\w*", r"recupera\w*", r"positiv\w*", r"amplia\w*", r"ampliou",
+    r"super(?:a|am|ou|aram|ando|ar)", r"ultrapass\w*", r"exced\w*", r"pul(?:a|am|ou|aram)", r"acelera\w*", r"multiplic\w*",
+    r"engord\w*", r"escal(?:a|am|ou|aram|ada)",
+    # para baixo
+    r"queda", r"quedas", r"ca[ií](?:u|ram|r|a|am|em|ndo|do|da|dos|das)?", r"caem",
+    r"recu(?:a|am|e|em|o|os|ou|aram|ar|ando|ada|ado|ava|avam)", r"redu(?:z|zem|ziu|ziram|zir|zindo|ção|ções|zida|zido|zidas|zidos)",
+    r"diminu\w*", r"retra(?:i|em|ção|ções|iu|íram|ída|ído|indo)", r"perd\w*", r"baix(?:a(?!\s+concentra)|as|am|ou|aram)",
+    r"decl[ií]n\w*", r"desvaloriz\w*", r"barate\w*", r"encolh\w*", r"negativ\w*", r"al[ií]vio", r"tomb(?:a|am|o|os|ou|aram)",
+    r"ced(?:e|em|eu|eram)", r"contra[íi]\w*", r"contra[çc][ãa]o", r"enfraquec\w*", r"desc(?:e|em|eu|eram|ida|idas|endo)",
+    r"cort(?:a|am|ou|aram)", r"afund\w*", r"mingu\w*", r"desacelera\w*", r"emagrec\w*",
+    # posição e comparação
+    r"acima", r"abaixo", r"aqu[eé]m", r"superior\w*", r"inferior\w*", r"pior(?:ou|aram|a|am)", r"melhor(?:ou|aram|a|am)",
+    r"desfavor[aá]ve(?:l|is)", r"favor[aá]ve(?:l|is)",
+    _ANTES_SUPERLATIVO + r"(?<!\bde )(?<!segunda )(?<!segundo )(?<!terceira )(?<!terceiro )(?:maior|menor|pior|melhor)(?:es)?",
+    _ANTES_SUPERLATIVO + r"(?:mais|menos)\s+(?:car|barat|alt|baix|elevad|fort|frac|concentrad|competitiv)\w*",
+    r"a\s+(?:mais|menos)\s+(?:que|do\s+que|sobre|frente|em\s+rela\w*)",
+]
+DIRECAO = re.compile(r"\b(?:" + "|".join(_DIRECAO) + r")\b", re.IGNORECASE)
 UNIDADES = re.compile(r"%|US\$|R\$|\bp\.\s?p\.|\bpor\s*cento\b|\bpontos?\s+percentua\w*", re.IGNORECASE)
-MARCACAO = re.compile(r"[*#`<>\[\]|_~{}]")
+LINKS = re.compile(r"https?:|://|\bwww\.|\S@\S|\.(?:com|br|org|net|gov|io)\b", re.IGNORECASE)
+MARCACAO = re.compile(r"[*#`<>\[\]|_~{}&]|^\s*[-+]\s")
 PROIBIDOS = re.compile(
-    r"\b(recomend\w*|aconselh\w*|sugerimos|compre|comprem|venda agora|vender agora|oportunidade de compra|"
+    r"\b(recomend\w*|aconselh\w*|sugerimos|sugere-se|compre|comprem|venda agora|vender agora|oportunidade de compra|"
     r"vale\s+a\s+pena|antecipar\s+(?:as\s+)?compras|hora\s+de\s+(?:comprar|vender)|"
-    r"momento\s+(?:é\s+)?(?:favor[aá]vel|ideal|oportuno|certo)\s+para|aproveit(?:ar|e|em)\b|"
+    r"momento\s+(?:é\s+)?(?:favor[aá]vel|ideal|oportuno|certo)\s+para|aproveit(?:ar|e|em)\b|prop[ií]ci\w*|conv[ée]m|"
+    r"dev(?:e|em)\s+(?:comprar|vender|travar|antecipar|aguardar|adiar)|trav(?:ar|e|em)\s+(?:o\s+)?pre[çc]o|"
     r"alarmant\w*|catastr[oó]f\w*|desastr\w*|colaps\w*|explos\w*|explod\w*|dispar(ou|aram|ada|adas|ado|ados)|"
-    r"despenc\w*|desab(ou|aram)|assustador\w*|dram[aá]tic\w*|p[aâ]nico|caos|ca[oó]tic\w*|vertiginos\w*|"
-    r"preocupant\w*|cr[ií]tic[oa]s?|grav[ií]ssim\w*)\b",
+    r"despenc\w*|desab(ou|aram)|assustador\w*|dram[aá]tic\w*|dr[aá]stic\w*|brusc\w*|crise|p[aâ]nico|caos|ca[oó]tic\w*|"
+    r"vertiginos\w*|preocupant\w*|cr[ií]tic[oa]s?|grav[ií]ssim\w*)\b",
     re.IGNORECASE,
 )
-# Quebra de linha, tabulação, controles bidi, largura zero, hífen suave, uso privado...
-INVISIVEIS = {"Cc", "Cf", "Co", "Cs", "Zl", "Zp"}
+AVISO_SEM_RECOMENDACAO = re.compile(
+    r"\bn[ãa]o\s+(?:traz|faz|cont[eé]m|constitui|é)\s+(?:nenhuma\s+)?recomenda[çc](?:ão|ões)\s+de\s+compra\s+(?:ou|e)\s+venda\b",
+    re.IGNORECASE,
+)
+GRUDADOS = re.compile(r"\}[.,]?\{")
+# Marcadores que são só número (HHI, contagens, anos) não levam unidade inventada.
+UNIDADE_DEPOIS = re.compile(r"^\s*(?:de\s+)?(?:t|toneladas?|kg|quilos?|d[oó]lar\w*|usd|reais|sacas?)\b", re.IGNORECASE)
+UNIDADE_ANTES = re.compile(r"(?:\busd|\bd[oó]lar\w*|\$)\s*$", re.IGNORECASE)
+CITA_TROCA = re.compile(r"\brela[çc][ãa]o\s+de\s+troca\b|\bpoder\s+de\s+compra\b", re.IGNORECASE)
 CHAVES_TROCA = re.compile(r"^(troca|sacas|desvio_troca|meses_seguidos_troca)_")
 NO_PORTO = re.compile(r"\bno\s+porto\b", re.IGNORECASE)
-PRODUTOR = re.compile(r"\b(produtor\w*|agricultor\w*|fazendas?|lavouras?)\b", re.IGNORECASE)
-NEGACAO = re.compile(r"\bn[ãa]o\b", re.IGNORECASE)
+PRODUTOR = re.compile(
+    r"\b(produtor\w*|agricultor\w*|fazendas?|fazendeir\w*|lavouras?|sojicultor\w*|cooperad[oa]s?|porteira|pecuarist\w*|rura(?:l|is))\b",
+    re.IGNORECASE,
+)
+RESSALVA = re.compile(
+    r"\bn[ãa]o\s+(?:é|representa|equivale\s+a|corresponde\s+a|reflete)\s+(?:o\s+)?(?:pre[çc]o|custo)\s+(?:pago\s+)?(?:ao|pelo|do)\s+$",
+    re.IGNORECASE,
+)
+FIM_DE_FRASE = re.compile(r"[.!?;]")
+# Grupos e produtos escritos por extenso, e a parte da chave que diz de qual grupo ou produto é.
+GRUPOS_TEXTO = {
+    "n": re.compile(r"\bnitrogenad\w*", re.IGNORECASE),
+    "p": re.compile(r"\bfosfatad\w*", re.IGNORECASE),
+    "k": re.compile(r"\bpot[aá]ss\w*", re.IGNORECASE),
+    "npk": re.compile(r"\bcompost[oa]s?\b|\bNPK\b"),
+}
+GRUPO_DA_CHAVE = re.compile(r"(?:^|_)(n|p|k|npk|total)_(?:mes|ytd|ano)(?:_|$)")
+PRODUTOS_TEXTO = {
+    "ureia": re.compile(r"\bureia\b", re.IGNORECASE),
+    "kcl": re.compile(r"\bKCl\b|\bcloreto\s+de\s+pot[aá]ssio\b", re.IGNORECASE),
+    "map": re.compile(r"\bMAP\b|\bmonoam[ôo]nico\b"),
+    "dap": re.compile(r"\bDAP\b|\bdiam[ôo]nico\b"),
+    "tsp": re.compile(r"\bTSP\b|\bsuperfosfato\s+triplo\b"),
+}
+PRODUTO_DA_CHAVE = re.compile(r"(?:^|_)(kcl|ureia|map|dap|tsp)(?:_|$)")
+PASSADO = {"mes_ano_anterior", "periodo_ytd_anterior", "ano_anterior"}
 MODELO_VALIDO = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,99}")
 
 
@@ -549,8 +606,13 @@ def extrair_json(texto: str) -> dict:
     raise ValueError("a resposta não contém um objeto JSON")
 
 
+def _uma_linha(texto: str) -> str:
+    """Escapa quebras de linha: no log do Actions, uma linha que começa com '::' vira comando."""
+    return texto.replace("\r", "\\r").replace("\n", "\\n")
+
+
 def _trecho(texto: str, inicio: int, fim: int) -> str:
-    return "…" + texto[max(0, inicio - 25) : fim + 25].replace("\n", " ") + "…"
+    return "…" + _uma_linha(texto[max(0, inicio - 25) : fim + 25]) + "…"
 
 
 def _apagar_marcadores(texto: str) -> str:
@@ -558,122 +620,181 @@ def _apagar_marcadores(texto: str) -> str:
     return MARCADOR.sub(lambda m: " " * len(m.group(0)), texto)
 
 
-def _erros_do_texto(campo: str, texto: str, fatos: Fatos) -> tuple[list[str], int]:
-    erros = []
-    invisivel = next((ch for ch in texto if unicodedata.category(ch) in INVISIVEIS), None)
-    if invisivel is not None:
-        erros.append(f"{campo}: quebra de linha, tabulação ou caractere invisível (U+{ord(invisivel):04X}); cada campo é uma linha só de texto simples")
-    marcadores = MARCADOR.findall(texto)
-    desconhecidos = [m for m in marcadores if not CHAVE_VALIDA.fullmatch(m) or m not in fatos]
-    if desconhecidos:
-        lista = ", ".join("{" + m + "}" for m in sorted(set(desconhecidos))[:10])
-        erros.append(f"{campo}: marcadores que não existem no pacote: {lista}")
-    resto = MARCADOR.sub(" ", texto)
-    fora_do_latim = next((ch for ch in resto if unicodedata.category(ch).startswith("L") and not unicodedata.name(ch, "").startswith("LATIN")), None)
-    if fora_do_latim is not None:
-        erros.append(f"{campo}: letra fora do alfabeto latino ({fora_do_latim!r})")
-    if not re.search(r"[^\W\d_]", resto):
-        erros.append(f"{campo}: só marcadores, sem texto")
-    numerico = next((i for i, ch in enumerate(resto) if unicodedata.numeric(ch, None) is not None), None)
-    if numerico is not None:  # dígitos de qualquer escrita, sobrescritos (²), frações (½), Ⅻ...
-        erros.append(f"{campo}: dígito fora de marcador em {_trecho(resto, numerico, numerico + 1)!r}")
-    normal = unicodedata.normalize("NFKC", resto)  # letras de largura total, ligaduras...
-    for padrao, motivo in [
-        (ROMANOS, "algarismo romano"),
-        (POR_EXTENSO, "número por extenso"),
-        (MESES_E_PERIODOS, "mês ou período por extenso (use {mes_referencia}, {mes_ano_anterior}, {periodo_ytd}...)"),
-        (MES_ANTERIOR, "as variações mensais são sobre o mesmo mês do ano anterior ({mes_ano_anterior}), não sobre o mês anterior"),
-        (CONTAGENS, "contagem, sequência ou recorde que o pacote não traz"),
-        (UNIDADES, "unidade (%, por cento, US$ ou p.p.) fora de marcador"),
-        (MARCACAO, "caractere de marcação ou chave malformada"),
-        (PROIBIDOS, "termo proibido (recomendação ou tom alarmista)"),
-    ]:
-        achado = padrao.search(normal)
-        if achado:
-            erros.append(f"{campo}: {motivo} em {_trecho(normal, achado.start(), achado.end())!r}")
-    for achado in MARCADOR.finditer(texto):
-        if _direcao_de(achado.group(1), fatos) and SINAL_ANTES.search(texto[: achado.start()]):
-            erros.append(f"{campo}: sinal antes de {{{achado.group(1)}}}; as variações vão sem sinal e a direção vem do _sentido")
-    if any(CHAVES_TROCA.match(m) for m in marcadores):
-        if not NO_PORTO.search(resto):
-            erros.append(f"{campo}: cita a relação de troca sem dizer que ela é medida no porto (e não é o preço ao produtor)")
-        for achado in PRODUTOR.finditer(resto):
-            if not NEGACAO.search(resto[max(0, achado.start() - 40) : achado.start()]):
-                erros.append(f"{campo}: apresenta a relação de troca como preço ao produtor em {_trecho(resto, achado.start(), achado.end())!r}")
-    erros += _direcoes_contraditorias(campo, texto, fatos)
-    return erros, len(marcadores)
+def _numerico(chave: str, fatos: Fatos) -> bool:
+    return chave in fatos and any(c.isdigit() for c in fatos[chave]["valor"])
 
 
 def _direcao_de(chave: str, fatos: Fatos) -> str | None:
-    """A chave _sentido ou _posicao que dá a direção de `chave` (ela mesma, se já for uma)."""
-    if chave.endswith(("_sentido", "_posicao")) and chave in fatos:
-        return chave
-    referencia = fatos.direcao.get(chave) if isinstance(fatos, Fatos) else None
-    return referencia if referencia in fatos else None
+    """Para uma variação (var_) ou distância (desvio_), a chave _sentido ou _posicao que a acompanha."""
+    for sufixo in ("_sentido", "_posicao"):
+        if f"{chave}{sufixo}" in fatos:
+            return f"{chave}{sufixo}"
+    return None
 
 
-def _esperado(referencia: str, fatos: Fatos) -> str:
-    valor = fatos[referencia]["valor"]
-    if referencia.endswith("_sentido"):
-        return {"alta": "alta", "queda": "queda"}.get(valor, "nenhuma")
-    return "alta" if valor.startswith("acima") else "queda" if valor.startswith("abaixo") else "nenhuma"
+def _sinal_antes(prefixo: str) -> str | None:
+    """O sinal colado antes de um marcador ("-{x}", "+ {x}", "menos {x}"), ou None."""
+    p = unicodedata.normalize("NFKC", prefixo)
+    if p and (unicodedata.category(p[-1]) in ("Pd", "Sm") or p[-1] in "+±"):
+        return p[-1]  # traço ou sinal colado no marcador
+    sem_espaco = p.rstrip()
+    if sem_espaco and sem_espaco != p and (unicodedata.category(sem_espaco[-1]) == "Sm" or sem_espaco[-1] in "+±"):
+        return sem_espaco[-1]  # "+ {x}"; travessão com espaço é pontuação
+    achado = re.search(r"\b(menos|mais)\s*$", p, re.IGNORECASE)
+    return achado.group(1) if achado else None
 
 
-def _direcoes_contraditorias(campo: str, texto: str, fatos: Fatos) -> list[str]:
-    """Confere as palavras de direção contra o _sentido (ou a _posicao) dos marcadores.
-
-    - Para cada marcador com direção (variação, o seu _sentido, o valor que variou ou uma
-      posição frente a uma referência), vale a palavra de direção mais próxima antes dele, na
-      mesma oração; sem ela, um comparativo logo depois ("{var_x} maior") ou a palavra nos
-      primeiros caracteres depois. Palavra contrária à direção reprova.
-    - Toda palavra de mudança (subiu, caiu, alta, queda...) precisa, na mesma oração, de um
-      marcador cuja direção seja um _sentido: sem ele não há como conferir e reprova."""
+def _erros_do_texto(campo: str, texto: str, fatos: Fatos) -> tuple[list[str], int]:
     erros = []
-    limpo = _apagar_marcadores(texto)  # palavras dentro de marcadores não contam
+    marcadores = MARCADOR.findall(texto)
+    desconhecidos = [m for m in marcadores if not CHAVE_VALIDA.fullmatch(m) or m not in fatos]
+    if desconhecidos:
+        lista = ", ".join(repr("{" + m + "}") for m in sorted(set(desconhecidos))[:10])
+        erros.append(f"{campo}: marcadores que não existem no pacote: {lista}")
+    resto = MARCADOR.sub(" ", texto)
+    numerico = next((i for i, ch in enumerate(resto) if unicodedata.numeric(ch, None) is not None), None)
+    if numerico is not None:  # dígitos de qualquer escrita, sobrescritos (²), frações (½), Ⅻ...
+        erros.append(f"{campo}: dígito fora de marcador em {_trecho(resto, numerico, numerico + 1)!r}")
+    estranho = next((ch for ch in resto if not (LETRA.fullmatch(ch) or ch in PONTUACAO or ch.isdigit())), None)
+    if estranho is not None:
+        nome = unicodedata.name(estranho, "sem nome")
+        erros.append(
+            f"{campo}: caractere fora do permitido (U+{ord(estranho):04X} {nome}); use só letras, espaços e pontuação"
+            " comum, numa linha só, sem emoji, seta, símbolo, Markdown, '&' ou '@'"
+        )
+    if not re.search(r"[^\W\d_]", resto):
+        erros.append(f"{campo}: só marcadores, sem texto")
+    normal = unicodedata.normalize("NFKC", resto)
+    for padrao, motivo in [
+        (ROMANOS, "algarismo romano"),
+        (POR_EXTENSO, "número por extenso"),
+        (HOMOGLIFOS, "letras no lugar de algarismos"),
+        (MESES_E_PERIODOS, "mês ou período por extenso (use {mes_referencia}, {mes_ano_anterior}, {periodo_ytd}...)"),
+        (MES_ANTERIOR, "as variações do mês são sobre o mesmo mês do ano anterior ({mes_ano_anterior}), não sobre o mês anterior"),
+        (CONTAGENS, "contagem, sequência ou recorde que o pacote não traz"),
+        (UNIDADES, "unidade (%, por cento, US$ ou p.p.) fora de marcador: o valor já traz a unidade"),
+        (LINKS, "link, endereço ou menção"),
+        (MARCACAO, "caractere de marcação, '&' ou início de lista"),
+        (PROIBIDOS, "termo proibido (recomendação ou tom alarmista)"),
+    ]:
+        alvo = AVISO_SEM_RECOMENDACAO.sub(" ", normal) if padrao is PROIBIDOS else normal
+        achado = padrao.search(alvo)
+        if achado:
+            erros.append(f"{campo}: {motivo} em {_trecho(alvo, achado.start(), achado.end())!r}")
+    direcao = DIRECAO.search(normal)
+    if direcao:
+        erros.append(
+            f"{campo}: palavra de direção ou comparação '{direcao.group(0)}' fora dos marcadores, em"
+            f" {_trecho(normal, direcao.start(), direcao.end())!r}. A direção entra só pelo marcador _sentido"
+            " (\"{var_x_sentido} de {var_x}\") ou _posicao (\"{desvio_x} {desvio_x_posicao}\"); reescreva sem a palavra"
+        )
+    if GRUDADOS.search(texto):
+        achado = GRUDADOS.search(texto)
+        erros.append(f"{campo}: dois marcadores colados em {_trecho(texto, achado.start() - 20, achado.end() + 20)!r}; separe-os com texto")
     for achado in MARCADOR.finditer(texto):
         chave = achado.group(1)
-        referencia = _direcao_de(chave, fatos)
-        if referencia is None:
+        if chave not in fatos:
             continue
-        esperado = _esperado(referencia, fatos)
-        antes = limpo[: achado.start()]
-        corte = max((m.end() for m in FIM_DE_ORACAO.finditer(antes)), default=0)
-        janela = antes[max(corte, len(antes) - 60) :]
-        palavras = [(m.start(), "alta", m.group(0)) for m in PALAVRAS_ALTA.finditer(janela)]
-        palavras += [(m.start(), "queda", m.group(0)) for m in PALAVRAS_QUEDA.finditer(janela)]
-        if not palavras:
-            depois = limpo[achado.end() :]
-            depois = depois[: next((m.start() for m in FIM_DE_ORACAO.finditer(depois)), len(depois))]
-            logo = LOGO_DEPOIS_ALTA.match(depois) or LOGO_DEPOIS_QUEDA.match(depois)
-            if logo:
-                palavras = [(0, "alta" if LOGO_DEPOIS_ALTA.match(depois) else "queda", logo.group(1))]
-            else:
-                perto = depois[:25]
-                palavras = [(0, "alta", m.group(0)) for m in PALAVRAS_ALTA.finditer(perto)][:1]
-                palavras += [(0, "queda", m.group(0)) for m in PALAVRAS_QUEDA.finditer(perto)][:1]
-        if not palavras:
-            continue
-        _, direcao, palavra = max(palavras)
-        if direcao != esperado:
-            erros.append(f"{campo}: '{palavra}' contradiz {{{chave}}}, cuja direção é '{fatos[referencia]['valor']}'")
+        if _direcao_de(chave, fatos) and chave.startswith(("var_", "desvio_")):
+            sinal = _sinal_antes(texto[: achado.start()])
+            if sinal:
+                erros.append(f"{campo}: '{sinal}' antes de {{{chave}}}; o valor vai sem sinal e a direção vem do seu _sentido ou _posicao")
+        if re.fullmatch(r"[\d.]+", fatos[chave]["valor"]):
+            antes, depois = texto[: achado.start()], texto[achado.end() :]
+            if UNIDADE_DEPOIS.match(_apagar_marcadores(depois)) or UNIDADE_ANTES.search(_apagar_marcadores(antes)):
+                erros.append(f"{campo}: unidade inventada junto de {{{chave}}}, que é só um número ({fatos[chave]['valor']})")
+    cita_troca = any(CHAVES_TROCA.match(m) for m in marcadores) or CITA_TROCA.search(normal)
+    if cita_troca and not NO_PORTO.search(normal):
+        erros.append(f"{campo}: cita a relação de troca sem dizer, no mesmo campo, que ela é medida no porto")
+    for achado in PRODUTOR.finditer(normal):
+        if not RESSALVA.search(normal[: achado.start()]):
+            erros.append(
+                f"{campo}: '{achado.group(0)}' em {_trecho(normal, achado.start(), achado.end())!r}. Não fale em produtor:"
+                " o programa acrescenta a ressalva; se quiser repeti-la, escreva exatamente 'não é o preço ao produtor'"
+            )
+            break
+    erros += _ligacoes(campo, texto, fatos)
+    erros += _frases(campo, texto, fatos)
+    return erros, len(marcadores)
 
-    inicio = 0
-    for fim in [m.start() for m in FIM_DE_ORACAO.finditer(limpo)] + [len(limpo)]:
-        oracao = limpo[inicio:fim]
-        mudanca = PALAVRAS_MUDANCA.search(oracao)
-        if mudanca:
-            ancoras = [m.group(1) for m in MARCADOR.finditer(texto) if inicio <= m.start() < fim]
-            if not any((_direcao_de(k, fatos) or "").endswith("_sentido") for k in ancoras):
-                erros.append(
-                    f"{campo}: '{mudanca.group(0)}' indica direção, mas a frase não cita uma variação do pacote que a"
-                    " confirme; cite o marcador da variação (ou o seu _sentido) na mesma frase, ou tire a palavra"
-                )
-        inicio = fim + 1
+
+def _ligacoes(campo: str, texto: str, fatos: Fatos) -> list[str]:
+    """Cada _sentido ou _posicao colado à sua variação (e cada variação ou distância com o seu),
+    sem outro marcador entre eles: "{var_x_sentido} de {var_x}" ou "{desvio_x} {desvio_x_posicao}"."""
+    erros = []
+    marcas = [(m.start(), m.end(), m.group(1)) for m in MARCADOR.finditer(texto) if m.group(1) in fatos]
+
+    def colado(i: int, alvo: str) -> bool:
+        for j in (i - 1, i + 1):
+            if 0 <= j < len(marcas) and marcas[j][2] == alvo:
+                vao = texto[min(marcas[i][1], marcas[j][1]) : max(marcas[i][0], marcas[j][0])]
+                if len(vao) <= 30 and not FIM_DE_FRASE.search(vao):
+                    return True
+        return False
+
+    for i, (_, _, chave) in enumerate(marcas):
+        if chave.endswith(("_sentido", "_posicao")):
+            base = chave.rsplit("_", 1)[0]
+            if base in fatos and not colado(i, base):
+                exemplo = f"{{{chave}}} de {{{base}}}" if chave.endswith("_sentido") else f"{{{base}}} {{{chave}}}"
+                erros.append(f"{campo}: {{{chave}}} precisa vir colado a {{{base}}}, sem outro marcador entre eles, como em \"{exemplo}\"")
+        elif chave.startswith(("var_", "desvio_")) and _direcao_de(chave, fatos) and not colado(i, _direcao_de(chave, fatos)):
+            erros.append(f"{campo}: {{{chave}}} vai sem sinal; ponha {{{_direcao_de(chave, fatos)}}} colado a ele para dar a direção")
     return erros
 
 
+def _frases(campo: str, texto: str, fatos: Fatos) -> list[str]:
+    """Nomes de países, portos, grupos e produtos, e o período, ligados aos números da frase."""
+    erros = []
+    limpo = _apagar_marcadores(texto)
+    inicio = 0
+    for fim in [m.end() for m in FIM_DE_FRASE.finditer(limpo)] + [len(limpo)]:
+        frase = unicodedata.normalize("NFC", limpo[inicio:fim])
+        chaves = [m.group(1) for m in MARCADOR.finditer(texto) if inicio <= m.start() < fim and m.group(1) in fatos]
+        inicio = fim
+        numeros = [k for k in chaves if _numerico(k, fatos)]
+        trecho = frase.strip()[:80]
+        # países e portos
+        citados = set().union(*(fatos.entidades.get(k, set()) for k in chaves)) if chaves else set()
+        for nome in sorted(fatos.outros_nomes):
+            if re.search(rf"(?<!\w){re.escape(nome)}(?!\w)", frase):
+                erros.append(f"{campo}: '{nome}' não está no pacote de fatos; cite só países e portos do pacote")
+        if numeros:
+            no_pacote = set().union(*fatos.entidades.values()) if fatos.entidades else set()
+            for nome in sorted(no_pacote - citados):
+                if re.search(rf"(?<!\w){re.escape(nome)}(?!\w)", frase):
+                    erros.append(f"{campo}: a frase cita '{nome}', mas nenhum número dela é de {nome} em {trecho!r}; use as chaves de {nome}")
+        # grupos
+        grupos_chaves = {g.group(1) for k in chaves if (g := GRUPO_DA_CHAVE.search(k))}
+        grupos_texto = {g for g, rx in GRUPOS_TEXTO.items() if rx.search(frase)}
+        if numeros and grupos_chaves - {"total"}:
+            for g in sorted(grupos_texto - grupos_chaves):
+                erros.append(f"{campo}: a frase fala dos {_NOME_GRUPO[g]}, mas nenhum número dela é dos {_NOME_GRUPO[g]} em {trecho!r}")
+            if grupos_texto:
+                for g in sorted(grupos_chaves - grupos_texto - {"total"}):
+                    erros.append(f"{campo}: {_NOME_GRUPO[g]} ganham números de outro grupo em {trecho!r}; cada grupo com as suas chaves")
+        # produtos
+        produtos_chaves = {g.group(1) for k in chaves if (g := PRODUTO_DA_CHAVE.search(k))}
+        for prod, rx in PRODUTOS_TEXTO.items():
+            if numeros and rx.search(frase) and prod not in produtos_chaves:
+                erros.append(f"{campo}: a frase fala de {prod.upper() if prod != 'ureia' else 'ureia'}, mas nenhum número dela é desse produto em {trecho!r}")
+        # período: valor do período atual numa frase sobre o passado
+        if PASSADO & set(chaves):
+            atuais = [k for k in numeros if re.search(r"_(mes|ytd)$", k) and not k.startswith("var_")]
+            comparacao = [k for k in chaves if k.startswith("var_") or (k.endswith("_anterior") and k not in PASSADO)]
+            if atuais and not comparacao:
+                erros.append(f"{campo}: {{{atuais[0]}}} é do período atual, mas a frase o põe no período anterior em {trecho!r}")
+        # recorde e máximo da série só com as chaves que os trazem
+        if HISTORICO.search(frase) and not any(CHAVES_HISTORICO.match(k) for k in chaves):
+            erros.append(f"{campo}: 'série' ou 'história' só com {{troca_*_max}}, {{troca_*_media}} ou {{periodo_media_troca}}, que trazem esses valores")
+    return erros
+
+
+_NOME_GRUPO = {"n": "nitrogenados", "p": "fosfatados", "k": "potássicos", "npk": "compostos", "total": "todos os grupos"}
+
+
 def substituir(texto: str, fatos: Fatos) -> str:
-    return MARCADOR.sub(lambda m: fatos[m.group(1)]["valor"], texto)
+    return re.sub(r"p\.p\.\.", "p.p.", MARCADOR.sub(lambda m: fatos[m.group(1)]["valor"], texto))
 
 
 def validar(resposta: str, fatos: Fatos) -> tuple[dict | None, list[str]]:
@@ -695,6 +816,9 @@ def validar(resposta: str, fatos: Fatos) -> tuple[dict | None, list[str]]:
     if erros:
         return None, erros
 
+    # Acentos compostos (NFC): "ã" decomposto vira um caractere só, e o que sobrar de combinante reprova.
+    titulo, lead = unicodedata.normalize("NFC", titulo), unicodedata.normalize("NFC", lead)
+    paragrafos = [unicodedata.normalize("NFC", p) for p in paragrafos]
     campos = [("titulo", titulo), ("lead", lead), *((f"paragrafo {n}", p) for n, p in enumerate(paragrafos, 1))]
     total_marcadores = 0
     for campo, texto in campos:
@@ -722,6 +846,8 @@ def validar(resposta: str, fatos: Fatos) -> tuple[dict | None, list[str]]:
     if erros:
         return None, erros
     final["marcadores"] = {m: fatos[m]["valor"] for _, texto in campos for m in MARCADOR.findall(texto)}
+    if any(CHAVES_TROCA.match(m) for m in final["marcadores"]):
+        final["nota"] = NOTA_TROCA
     return final, []
 
 
@@ -748,8 +874,8 @@ class ProvedorMock:
             " preço ao produtor, uma tonelada de MAP equivalia a {troca_map_ultimo} em {mes_referencia_curto},"
             " {desvio_troca_map} {desvio_troca_map_posicao} de {troca_map_media}."
             if tem_troca
-            else "A concentração de fornecedores de potássicos, medida pelo HHI, ficou em {hhi_k_ano} no ano; acima de"
-            " {limiar_hhi}, um mercado é considerado altamente concentrado."
+            else "A concentração de fornecedores de potássicos, medida pelo HHI, ficou em {hhi_k_ano} no ano,"
+            " {hhi_k_ano_posicao} de alta concentração, de {limiar_hhi}."
             if '"hhi_k_ano"' in usuario
             else "Os nitrogenados somaram {t_n_mes} em {mes_referencia_curto}, e os potássicos, {t_k_mes}."
         )
@@ -758,11 +884,17 @@ class ProvedorMock:
             "lead": (
                 "O Brasil importou {t_total_mes} de fertilizantes em {mes_referencia}, uma {var_t_total_mes_sentido}"
                 " de {var_t_total_mes} sobre {mes_ano_anterior}."
+                if '"var_t_total_mes"' in usuario
+                else "O Brasil importou {t_total_mes} de fertilizantes em {mes_referencia}."
             ),
             "paragrafos": [
-                "No acumulado de {periodo_ytd}, as compras somaram {t_total_ytd}, com {var_t_total_ytd_sentido} de"
-                " {var_t_total_ytd} sobre o mesmo período de {ano_anterior}. Os potássicos responderam por {share_k_ytd}"
-                " do volume e os nitrogenados por {share_n_ytd}.",
+                (
+                    "No acumulado de {periodo_ytd}, as compras somaram {t_total_ytd}, com {var_t_total_ytd_sentido} de"
+                    " {var_t_total_ytd} sobre o mesmo período de {ano_anterior}."
+                    if '"var_t_total_ytd"' in usuario
+                    else "No acumulado de {periodo_ytd}, as compras somaram {t_total_ytd}."
+                )
+                + " Os potássicos responderam por {share_k_ytd} do volume e os nitrogenados por {share_n_ytd}.",
                 "O preço médio CIF de todos os grupos ficou em {preco_cif_total_mes} no mês. No ano, o frete médio foi de"
                 " {frete_medio_ytd}, o equivalente a {frete_pct_cif_ytd} do valor CIF.",
                 origem,
@@ -789,7 +921,7 @@ def gerar(fatos: Fatos, provedor) -> dict:
         if not erros:
             conteudo["modelo"] = _nome_do_modelo(resposta.modelo, getattr(provedor, "modelo", None))
             return conteudo
-        log.warning("Tentativa %d/%d reprovada na validação:\n  %s", tentativa, TENTATIVAS, "\n  ".join(erros))
+        log.warning("Tentativa %d/%d reprovada na validação:\n  %s", tentativa, TENTATIVAS, "\n  ".join(_uma_linha(e) for e in erros))
     raise ErroBoletim(f"resposta reprovada na validação após {TENTATIVAS} tentativas; nada foi publicado.")
 
 
@@ -815,6 +947,8 @@ def markdown(conteudo: dict, meta: dict) -> str:
     ]
     for paragrafo in conteudo["paragrafos"]:
         linhas += [paragrafo, ""]
+    if conteudo.get("nota"):
+        linhas += [f"*{conteudo['nota']}*", ""]
     linhas += ["<details>", "<summary>Números citados (inseridos pelo programa a partir do pacote de fatos)</summary>", ""]
     linhas += ["| Marcador | Valor |", "| --- | --- |"]
     linhas += [f"| `{chave}` | {valor} |" for chave, valor in conteudo["marcadores"].items()]
@@ -861,6 +995,8 @@ def escrever(conteudo: dict, fatos: Fatos, saida: Path, provedor: str, mock: boo
         "dashboard": dashboard,
     }
     ultimo = {**meta, "titulo": conteudo["titulo"], "lead": conteudo["lead"], "paragrafos": conteudo["paragrafos"], "marcadores": conteudo["marcadores"]}
+    if conteudo.get("nota"):
+        ultimo["nota"] = conteudo["nota"]
     _gravar(arquivo, markdown(conteudo, meta))
     latest = Path(saida) / "latest.json"
     atual = _mes_do_latest(latest)

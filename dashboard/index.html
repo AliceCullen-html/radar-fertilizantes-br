@@ -1379,7 +1379,8 @@ function desenharBoletim(b) {
   document.getElementById("texto-boletim").replaceChildren(...b.paragrafos.map((p) => el("p", {}, String(p))));
   const data = /^\d{4}-\d{2}-\d{2}/.test(b.gerado_em ?? "") ? `${b.gerado_em.slice(8, 10)}/${b.gerado_em.slice(5, 7)}/${b.gerado_em.slice(0, 4)}` : null;
   const detalhes = [b.modelo ? `modelo ${b.modelo}` : null, data ? `gerado em ${data}` : null].filter(Boolean).join(", ");
-  texto("rodape-boletim", `${b.rodape || "Texto gerado por IA a partir de dados do Comex Stat/MDIC; números inseridos e verificados automaticamente."} Fonte: ${b.fonte || "Comex Stat/MDIC"}.${detalhes ? ` (${detalhes})` : ""}`);
+  const nota = typeof b.nota === "string" && b.nota ? `${b.nota} ` : "";
+  texto("rodape-boletim", `${nota}${b.rodape || "Texto gerado por IA a partir de dados do Comex Stat/MDIC; números inseridos e verificados automaticamente."} Fonte: ${b.fonte || "Comex Stat/MDIC"}.${detalhes ? ` (${detalhes})` : ""}`);
   const links = [];
   if (/^boletins\/\d{4}-\d{2}\.md$/.test(b.arquivo ?? "")) links.push(el("a", { href: `${REPOSITORIO}/blob/main/${b.arquivo}` }, "Boletim com os números citados"));
   links.push(el("a", { href: `${REPOSITORIO}/tree/main/boletins` }, "Histórico de boletins"));
