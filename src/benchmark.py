@@ -67,6 +67,15 @@ class _CorpoInesperado(Exception):
 # --- Cliente HTTP ---------------------------------------------------------------------
 
 
+class _SessaoSemRedirecionar(requests.Session):
+    """Sessão que não interpreta o Location: com allow_redirects=False o requests ainda lê o
+    corpo inteiro do 3xx e analisa o Location (ValueError fora do nosso controle). Quem segue
+    o redirecionamento é ClienteFontes._seguir, que confere o host antes."""
+
+    def get_redirect_target(self, resp):
+        return None
+
+
 class ClienteFontes:
     """GET nas fontes externas, com o mesmo padrão do cliente do Comex Stat.
 
@@ -85,7 +94,7 @@ class ClienteFontes:
         dormir=time.sleep,
         relogio=time.monotonic,
     ):
-        self.sessao = sessao if sessao is not None else requests.Session()
+        self.sessao = sessao if sessao is not None else _SessaoSemRedirecionar()
         self.sessao.headers.update({"User-Agent": config.USER_AGENT})
         self.pausa = pausa
         self.max_tentativas = max_tentativas
@@ -127,14 +136,19 @@ class ClienteFontes:
         for _ in range(4):  # até 3 redirecionamentos, sempre dentro dos hosts permitidos
             _conferir_host(url, params)
             self._aguardar_pausa()
-            resp = self.sessao.request(
-                "GET", url, params=params, headers={"Accept": _ACCEPT[esperado]}, timeout=config.TIMEOUT_S,
-                allow_redirects=False, verify=True, stream=True,
-            )
+            try:
+                resp = self.sessao.request(
+                    "GET", url, params=params, headers={"Accept": _ACCEPT[esperado]}, timeout=config.TIMEOUT_S,
+                    allow_redirects=False, verify=True, stream=True,
+                )
+            except ValueError as exc:  # sessão comum: o requests analisa o Location do 3xx sozinho
+                raise ErroFonte(f"redirecionamento inválido a partir de {_sem_query(url)}") from exc
             if resp.status_code not in (301, 302, 303, 307, 308):
                 return resp
+            destino = resp.headers.get("Location", "")
+            resp.close()  # o corpo do 3xx não é lido
             try:
-                url, params = urljoin(url, resp.headers.get("Location", "")), None
+                url, params = urljoin(url, destino), None
             except ValueError as exc:
                 raise ErroFonte(f"redirecionamento inválido a partir de {_sem_query(url)}") from exc
         raise ErroFonte(f"redirecionamentos demais a partir de {_sem_query(url)}")
@@ -151,7 +165,8 @@ class ClienteFontes:
         return min(config.BACKOFF_MAX_S, config.BACKOFF_BASE_S * 2 ** (tentativa - 1)) + random.uniform(0, 1)
 
 
-# O firewall do BCB recusa (com uma página HTML) pedidos sem Accept de JSON.
+# Accept de JSON por garantia: o firewall do BCB às vezes devolve uma página HTML com HTTP 200
+# (visto em rajadas, sem relação confirmada com o Accept), e o cliente repete.
 _ACCEPT = {
     "json": "application/json",
     "html": "text/html,application/xhtml+xml",
@@ -266,13 +281,16 @@ def _meses(inicio: str, fim: str) -> list[str]:
 def url_do_arquivo_pink(html: str, pagina: str = config.PINK_PAGINA) -> str:
     """O link do xlsx mensal na página Commodity Markets: um só, no host do Banco Mundial."""
     hrefs = re.findall(r"""href\s*=\s*["']([^"']+)["']""", html, re.IGNORECASE)
-    candidatos = sorted(
-        {
-            urljoin(pagina, h)
-            for h in hrefs
-            if urlsplit(urljoin(pagina, h)).path.endswith("/" + config.PINK_NOME_ARQUIVO)
-        }
-    )
+    candidatos = set()
+    for h in hrefs:
+        try:  # um link malformado em outro ponto da página não derruba a ingestão
+            url = urljoin(pagina, h)
+            caminho = urlsplit(url).path
+        except ValueError:
+            continue
+        if caminho.endswith("/" + config.PINK_NOME_ARQUIVO):
+            candidatos.add(url)
+    candidatos = sorted(candidatos)
     validos = [u for u in candidatos if _host_seguro(u) == config.PINK_HOST_ARQUIVO]
     if len(validos) != 1:
         raise ErroFonte(
@@ -462,7 +480,10 @@ def ingerir_pink(
     log.info("Pink Sheet: baixando %s", url)
     conteudo = cliente.get(url, esperado="xlsx").content
     df, atualizado = ler_xlsx_pink(conteudo)
-    anterior = _fonte_gravada(raw_dir).get("atualizado_em")
+    # A data da última edição legível fica gravada à parte: uma edição com data ilegível
+    # (atualizado_em vazio) não apaga a referência que recusa um cache antigo depois.
+    gravada = _fonte_gravada(raw_dir)
+    anterior = max(filter(None, [gravada.get("atualizado_em"), gravada.get("ultima_data_conhecida")]), default=None)
     if atualizado and anterior and atualizado < anterior:
         raise ErroFonte(
             f"a edição baixada da Pink Sheet ({atualizado}) é anterior à gravada ({anterior}): um cache antigo"
@@ -503,6 +524,7 @@ def ingerir_pink(
         "pagina": config.PINK_PAGINA,
         "url": url,
         "atualizado_em": atualizado,
+        "ultima_data_conhecida": atualizado or anterior,
         "sha256": hashlib.sha256(conteudo).hexdigest(),
         "aba": config.PINK_ABA,
         "unidade": "US$ por tonelada métrica, nominal",

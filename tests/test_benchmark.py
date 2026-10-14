@@ -44,6 +44,9 @@ class Resposta:
     def json(self):
         return json.loads(self.content.decode("utf-8"))
 
+    def close(self):
+        pass
+
 
 class Sessao:
     """Devolve as respostas na ordem dada (ou levanta as exceções) e registra as chamadas."""
@@ -543,3 +546,78 @@ def test_ptax_consulta_trechos_seguidos(tmp_path):
     janelas = [(ch["params"]["dataInicial"], ch["params"]["dataFinal"]) for ch in c.sessao.chamadas[1:]]
     assert janelas == [("01/01/2015", "31/12/2015"), ("01/09/2026", "30/09/2026")]
     assert len(benchmark.ler_ptax(tmp_path)) == len(meses("2015-01", "2026-09"))
+
+
+# --- Verificação pós-push da fase 6 -------------------------------------------------------
+
+
+class CorpoContado(io.BytesIO):
+    """Corpo de resposta que registra se alguém o leu."""
+
+    def __init__(self, dados=b""):
+        super().__init__(dados)
+        self.lido = False
+
+    def read(self, *args, **kwargs):
+        self.lido = True
+        return super().read(*args, **kwargs)
+
+
+class AdaptadorFalso(requests.adapters.BaseAdapter):
+    """Responde no lugar da rede, dentro de uma Session de verdade do requests."""
+
+    def __init__(self, *respostas):
+        super().__init__()
+        self.respostas, self.pedidos, self.corpos = list(respostas), [], []
+
+    def send(self, request, **kwargs):
+        self.pedidos.append(request.url)
+        status, headers, corpo = self.respostas.pop(0)
+        r = requests.Response()
+        r.status_code, r.url, r.request = status, request.url, request
+        r.headers.update(headers)
+        r.raw = CorpoContado(corpo)
+        self.corpos.append(r.raw)
+        return r
+
+    def close(self):
+        pass
+
+
+@pytest.mark.parametrize("sessao", [None, requests.Session], ids=["sessao_padrao", "sessao_comum"])
+@pytest.mark.parametrize("destino", ["https://[x]/dados", "https://[::1", "https://outro.exemplo/dados"])
+def test_redirecionamento_invalido_vira_errofonte_com_o_requests_de_verdade(sessao, destino):
+    c = benchmark.ClienteFontes(sessao=sessao() if sessao else None, pausa=0, dormir=lambda s: None)
+    adaptador = AdaptadorFalso((302, {"Location": destino}, b"x" * 100_000))
+    c.sessao.mount("https://", adaptador)
+    with pytest.raises(benchmark.ErroFonte):
+        c.get("https://api.bcb.gov.br/dados", esperado="json")
+    assert adaptador.pedidos == ["https://api.bcb.gov.br/dados"]
+    if sessao is None:  # a sessão do cliente nem lê o corpo do 3xx
+        assert not adaptador.corpos[0].lido
+
+
+def test_redirecionamento_valido_continua_sendo_seguido():
+    c = benchmark.ClienteFontes(pausa=0, dormir=lambda s: None)
+    adaptador = AdaptadorFalso((301, {"Location": "/dados?x=1"}, b""), (200, {}, b'[{"data": "01/09/2026", "valor": "5,1"}]'))
+    c.sessao.mount("https://", adaptador)
+    assert c.get("https://api.bcb.gov.br/inicio", esperado="json").json()[0]["valor"] == "5,1"
+    assert adaptador.pedidos == ["https://api.bcb.gov.br/inicio", "https://api.bcb.gov.br/dados?x=1"]
+
+
+@pytest.mark.parametrize("ruim", ["https://[object Object]", "//[url]/x", "https://[2001:db8::1/outro", "https://[insira o link]"])
+def test_link_malformado_em_outro_ponto_da_pagina_nao_derruba_a_pink(ruim):
+    html = PAGINA.replace("</body>", f'<a href="{ruim}">x</a></body>')
+    assert benchmark.url_do_arquivo_pink(html) == URL_XLSX
+
+
+def test_edicao_antiga_recusada_mesmo_depois_de_uma_data_ilegivel(tmp_path):
+    _pink(tmp_path, xlsx_pink(atualizado="November 03, 2026"))
+    _pink(tmp_path, xlsx_pink(atualizado="Nov 9, 2026"), forcar=True)  # data ilegível: aceita, com aviso
+    fonte = json.loads((tmp_path / config.PINK_FONTE).read_text(encoding="utf-8"))
+    assert fonte["atualizado_em"] is None and fonte["ultima_data_conhecida"] == "2026-11-03"
+    with pytest.raises(benchmark.ErroFonte, match="anterior à gravada"):
+        _pink(tmp_path, xlsx_pink(atualizado="October 02, 2026"), forcar=True)
+    (_, fim, _), _c = _pink(tmp_path, xlsx_pink(atualizado="December 02, 2026"), forcar=True)
+    fonte = json.loads((tmp_path / config.PINK_FONTE).read_text(encoding="utf-8"))
+    assert fim == "2026-09" and fonte["atualizado_em"] == fonte["ultima_data_conhecida"] == "2026-12-02"
