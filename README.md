@@ -117,6 +117,34 @@ cada push na `main` que altere `dashboard/` ou o `dashboard.json` (ou manualment
 Actions → Pages → Run workflow). Ele não usa nenhum segredo; o único pré-requisito é, em
 **Settings → Pages**, escolher **Source: GitHub Actions**.
 
+## Atualização automática (fase 4)
+
+O workflow [`atualizacao.yml`](.github/workflows/atualizacao.yml) mantém os dados em dia
+sem intervenção. O Comex Stat publica o mês anterior nos primeiros dias úteis, então o
+workflow roda uma vez por dia, do dia 1 ao dia 15 de cada mês (11h17 UTC):
+
+1. Confere se o mês anterior já está gravado nas duas séries
+   (`python -m src.ingest --ultimo-gravado`). Se estiver, encerra sem chamar a API: na
+   prática, as checagens param assim que o mês novo entra.
+2. Se faltar, roda a ingestão incremental (importação de fertilizantes e exportação de
+   soja), o `python -m src.transform` e os testes.
+3. Só se a API trouxe mês novo, faz um commit `chore(dados): atualização AAAA-MM` como
+   `github-actions[bot]`, só com arquivos de `data/`, e publica o dashboard.
+
+Se a API falhar, ou disser que publicou um mês que não vem na consulta, o job termina em
+vermelho, com o erro no log, e nada é commitado: a ingestão grava em disco no runner, mas o
+commit só acontece no fim, depois do transform e dos testes. A próxima execução tenta de
+novo.
+
+O workflow não usa nenhum segredo. O push usa o `GITHUB_TOKEN` do próprio Actions, com
+permissão de escrita só no conteúdo, e o token só entra no passo do push. Como pushes feitos
+com esse token não disparam outros workflows, o deploy do Pages é chamado pelo próprio
+workflow. Para rodar fora do calendário: Actions → Atualização mensal → Run workflow.
+
+A ingestão é incremental e não baixa de novo meses já gravados. Se o MDIC revisar um mês,
+rode localmente `python -m src.ingest --inicio AAAA-MM --fim AAAA-MM --forcar` e o
+transform, e faça o commit.
+
 ## Dados brutos
 
 Ficam em Parquet, particionados por ano no estilo Hive:

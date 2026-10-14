@@ -24,6 +24,10 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
 
 - Commits saem SOMENTE com a identidade git do mantenedor:
   `Marcus Santos <77951123+AliceCullen-html@users.noreply.github.com>`.
+- Única exceção, autorizada pelo mantenedor: os commits automáticos da fase 4
+  (`.github/workflows/atualizacao.yml`) saem como
+  `github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>`, sempre com a
+  mensagem `chore(dados): atualização AAAA-MM` e só com arquivos de `data/`.
 - NÃO adicionar `Co-Authored-By: Claude`, "Generated with Claude Code", link de sessão
   nem nenhum trailer ou menção ao Claude em mensagens de commit ou descrições de PR.
   O `.claude/settings.json` desliga essa atribuição (`includeCoAuthoredBy: false` e
@@ -73,13 +77,19 @@ feito só com dados públicos do Comex Stat/MDIC. **O repositório é PÚBLICO.*
   `/dashboard/`. O deploy é feito pelo `.github/workflows/pages.yml` (push na main que mude
   `dashboard/` ou o `dashboard.json`, ou manual), sem segredos. Pré-requisito: Settings →
   Pages → Source: "GitHub Actions".
+- Fase 4: `.github/workflows/atualizacao.yml` roda nos dias 1 a 15 de cada mês. Se o mês
+  anterior já está gravado (`--ultimo-gravado`), encerra sem chamar a API; senão faz a
+  ingestão incremental das duas séries, o transform e os testes e, só se entrou mês novo,
+  commita como github-actions[bot] e chama o `pages.yml` (via `workflow_call`, porque
+  pushes com o GITHUB_TOKEN não disparam outros workflows). Falha da API = job vermelho,
+  nada commitado. O token só entra no passo do push (`persist-credentials: false`).
 - Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):
   N azul, P laranja, K água, NPK amarelo, "Todos" violeta. Não reordenar.
 - Não commitar dados grandes: se `data/raw/` passar de ~20 MB, colocá-lo no `.gitignore`
   e explicar no README como gerar.
 - Roadmap: 1 ingestão (feita) → 2 transform (feita) → 3 dashboard no
-  GitHub Pages (feito) → 4 GitHub Action mensal → 5 boletim com IA opcional. Não adiantar fases
-  sem pedido.
+  GitHub Pages (feito) → 4 GitHub Action mensal (feita) → 5 boletim com IA opcional. Não
+  adiantar fases sem pedido.
 
 ## Fatos da API (verificados em outubro de 2026)
 

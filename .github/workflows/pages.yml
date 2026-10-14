@@ -1,6 +1,8 @@
 # Publica o dashboard (dashboard/ + data/processed/dashboard.json) no GitHub Pages.
 # Não usa nenhum segredo: o deploy se autentica com o token OIDC do próprio Actions.
 # Pré-requisito único: Settings → Pages → Source: "GitHub Actions".
+# Também é chamado pela atualização mensal (atualizacao.yml), porque commits feitos com o
+# GITHUB_TOKEN não disparam o evento push.
 name: Pages
 
 on:
@@ -11,6 +13,12 @@ on:
       - "data/processed/dashboard.json"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Commit a publicar (padrão: o do evento)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -28,6 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0 # histórico para achar a data da última atualização dos dados
           persist-credentials: false
       - uses: actions/configure-pages@v6

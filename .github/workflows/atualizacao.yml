@@ -1,0 +1,129 @@
+# Fase 4: atualização automática mensal dos dados.
+#
+# O Comex Stat publica o mês anterior nos primeiros dias úteis. Entre os dias 1 e 15, o
+# workflow roda uma vez por dia:
+#   1. se o mês anterior já está gravado nas duas séries, encerra sem chamar a API;
+#   2. senão, roda a ingestão incremental (importação de fertilizantes e exportação de
+#      soja), o transform e os testes;
+#   3. só se a API trouxe mês novo, commita "chore(dados): atualização AAAA-MM" como
+#      github-actions[bot] e publica o dashboard (pages.yml).
+# Se a API falhar ou não devolver o mês que diz ter publicado, o workflow falha com o erro
+# no log e nada é commitado.
+#
+# Não usa nenhum segredo. O push usa o GITHUB_TOKEN do próprio workflow, que só entra no
+# passo do push (o checkout não grava a credencial, então os passos que rodam Python e
+# dependências não têm acesso a ela).
+name: Atualização mensal
+
+on:
+  schedule:
+    - cron: "17 11 1-15 * *" # dias 1 a 15 de cada mês, 11h17 UTC (8h17 em Brasília)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atualizacao
+  cancel-in-progress: false
+
+jobs:
+  atualizar:
+    name: Ingestão, transform e commit
+    # Só na main: o commit vai direto para ela.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    outputs:
+      publicou: ${{ steps.commit.outputs.publicou }}
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Instalar dependências
+        run: python -m pip install -r requirements.txt "pytest>=8"
+
+      - name: Conferir se falta o mês anterior
+        id: checar
+        run: |
+          esperado="$(date -u -d "$(date -u +%Y-%m-01) -1 month" +%Y-%m)"
+          gravado="$(python -m src.ingest --ultimo-gravado)"
+          echo "Mês esperado: ${esperado}. Último mês gravado nas duas séries: ${gravado:-nenhum}."
+          if [[ -n "${gravado}" && ! "${gravado}" < "${esperado}" ]]; then
+            echo "Dados já atualizados até ${gravado}: nada a fazer até o próximo mês." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "falta=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "falta=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ingestão incremental (fertilizantes e soja)
+        if: steps.checar.outputs.falta == 'true'
+        run: |
+          set -o pipefail
+          # Só baixa os meses que ainda não estão em data/raw/ e data/raw_soja/.
+          if ! python -m src.ingest --inicio 2015-01 2>&1 | tee ingest.log; then
+            echo "::error title=Falha na ingestão::A API do Comex Stat falhou ou não devolveu o último mês publicado (detalhes no log deste passo). Nada foi commitado; a próxima execução agendada tenta de novo."
+            exit 1
+          fi
+
+      - name: Transform e testes
+        if: steps.checar.outputs.falta == 'true'
+        run: |
+          python -m src.transform
+          python -m pytest -q
+
+      - name: Commitar e publicar o mês novo
+        id: commit
+        if: steps.checar.outputs.falta == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ -z "$(git status --porcelain -- data/raw data/raw_soja)" ]]; then
+            echo "A API ainda não publicou mês novo; nada a commitar. Nova checagem amanhã." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "publicou=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mes="$(python -m src.ingest --ultimo-gravado)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- data/raw data/raw_soja data/processed
+          git commit -m "chore(dados): atualização ${mes}"
+          auth="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+          echo "::add-mask::${auth}"
+          if ! GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
+               GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${auth}" git push origin HEAD:main; then
+            echo "::error title=Push recusado::A main mudou durante a atualização. Nada foi publicado; a próxima execução refaz a atualização."
+            exit 1
+          fi
+          {
+            echo "### Atualização ${mes}"
+            echo
+            echo '```text'
+            grep -E "^(Resumo|  )" ingest.log || true
+            echo '```'
+            echo
+            echo "Fonte: Comex Stat/MDIC."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "publicou=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # Commits feitos com o GITHUB_TOKEN não disparam outros workflows, então o deploy do
+  # dashboard é chamado daqui, com o commit que acabou de entrar na main.
+  publicar:
+    name: Publicar o dashboard
+    needs: atualizar
+    if: needs.atualizar.outputs.publicou == 'true'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml
+    with:
+      ref: ${{ needs.atualizar.outputs.sha }}
