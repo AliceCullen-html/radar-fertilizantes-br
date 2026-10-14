@@ -302,7 +302,7 @@ def _num(valor, casas: int = 2):
     """Número pronto para JSON: arredondado, e None no lugar de NaN ou infinito."""
     if valor is None or pd.isna(valor) or math.isinf(valor):
         return None
-    return int(round(valor)) if casas == 0 else round(float(valor), casas)
+    return int(round(valor)) if casas == 0 else round(float(valor), casas) + 0.0  # + 0.0: sem "-0.0"
 
 
 def _texto(valor):
@@ -463,11 +463,11 @@ def _arredondar(df: pd.DataFrame) -> pd.DataFrame:
         elif coluna.startswith("toneladas"):
             df[coluna] = df[coluna].round(3)
         elif coluna.endswith("_usd_t") or coluna in ("hhi", "indice_sazonal"):
-            df[coluna] = df[coluna].round(2)
+            df[coluna] = df[coluna].round(2) + 0.0  # + 0.0: sem "-0.0" no CSV
         elif coluna.endswith(("_pct", "_pp", "_por_t", "_pct_cif", "_brl_usd")):
-            df[coluna] = df[coluna].round(4)
+            df[coluna] = df[coluna].round(4) + 0.0
         elif coluna.endswith("_brl_t"):
-            df[coluna] = df[coluna].round(2)
+            df[coluna] = df[coluna].round(2) + 0.0
     return df
 
 

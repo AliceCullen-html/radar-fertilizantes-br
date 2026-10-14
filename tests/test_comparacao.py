@@ -179,3 +179,9 @@ def test_dados_versionados_tem_as_quebras_certas():
     fob = df["comparacao"] == "FOB×FOB"
     assert df.loc[~fob, "spread_fob_usd_t"].isna().all()
     assert (df.loc[~fob, "spread_usd_t"] - df.loc[~fob, "custo_posto_usd_t"]).abs().max() < 0.01 or df.loc[~fob, "spread_usd_t"].isna().all()
+
+
+def test_sem_menos_zero_no_json_e_no_csv():
+    assert str(transform._num(-0.004, 2)) == "0.0" and transform._num(-0.4, 0) == 0
+    df = transform._arredondar(pd.DataFrame({"spread_usd_t": [-0.004], "spread_pct": [-0.00001]}))
+    assert df.to_csv(index=False).splitlines()[1] == "0.0,0.0"

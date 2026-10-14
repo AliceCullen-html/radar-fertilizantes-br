@@ -177,14 +177,15 @@ def bloco_dashboard(df: pd.DataFrame, periodos: list[str], num, fonte_pink: dict
             "serie": SERIES_PINK[info["serie"]],
             "bases": bases,
             "t": [num(v, 0) for v in p["toneladas"]],
-            # Uma casa a mais do que o dashboard e o boletim mostram: sem arredondar duas vezes.
-            "fob": [num(v, 2) for v in p["fob_brasil_usd_t"]],
-            "cif": [num(v, 2) for v in p["cif_brasil_usd_t"]],
-            "bm": [num(v, 2) for v in p["benchmark_usd_t"]],
-            "spread_usd_t": [num(v, 2) for v in p["spread_usd_t"]],
-            "spread_pct": [num(v, 3) for v in p["spread_pct"]],
-            "custo_posto_usd_t": [num(v, 2) for v in p["custo_posto_usd_t"]],
-            "cif_brl_t": [num(v, 2) for v in p["cif_brl_t"]],
+            # Seis casas: o dashboard e o boletim arredondam uma vez só, na exibição (com 2 casas,
+            # 220,4994 virava 220,50 no JSON e "US$ 221/t" na tela).
+            "fob": [num(v, 6) for v in p["fob_brasil_usd_t"]],
+            "cif": [num(v, 6) for v in p["cif_brasil_usd_t"]],
+            "bm": [num(v, 6) for v in p["benchmark_usd_t"]],
+            "spread_usd_t": [num(v, 6) for v in p["spread_usd_t"]],
+            "spread_pct": [num(v, 6) for v in p["spread_pct"]],
+            "custo_posto_usd_t": [num(v, 6) for v in p["custo_posto_usd_t"]],
+            "cif_brl_t": [num(v, 6) for v in p["cif_brl_t"]],
             "amostra_pequena": [bool(v) if pd.notna(v) else False for v in p["amostra_pequena"]],
         }
     ptax = df.drop_duplicates("periodo").set_index("periodo").reindex(periodos)["ptax_brl_usd"]
