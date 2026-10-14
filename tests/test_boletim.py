@@ -913,3 +913,116 @@ def test_arredondamento_meio_para_cima_igual_ao_dashboard():
     assert boletim.fmt_usd_t(402.5) == "US$ 403/t" and boletim._num(1234567.125, 2) == "1.234.567,13"
     assert boletim.posicao_benchmark(-0.96) == "abaixo do benchmark"  # sai "1,0%" no texto
     assert boletim.posicao_benchmark(0.94) == "em linha com o benchmark"
+
+
+# --- Verificação pós-push da fase 6 ----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "texto, trecho",
+    [
+        # causa atribuída ao câmbio, e a variação do CIF em reais posta como se fosse do dólar
+        ("O CIF do KCl em reais teve {var_cif_brl_kcl_sentido} de {var_cif_brl_kcl} sobre {mes_ano_anterior}, por conta do câmbio, com a PTAX a {ptax_mes}.", "causa"),
+        ("O CIF do KCl em reais teve {var_cif_brl_kcl_sentido} de {var_cif_brl_kcl} sobre {mes_ano_anterior}, devido ao câmbio, com a PTAX a {ptax_mes}.", "causa"),
+        ("Influenciado pelo dólar, a {ptax_mes}, o CIF do KCl em reais teve {var_cif_brl_kcl_sentido} de {var_cif_brl_kcl} sobre {mes_ano_anterior}.", "causa"),
+        ("Com o efeito do câmbio, de {ptax_mes}, o CIF da ureia em reais teve {var_cif_brl_ureia_sentido} de {var_cif_brl_ureia} sobre {mes_ano_anterior}.", "causa"),
+        ("O CIF do KCl em reais teve {var_cif_brl_kcl_sentido} de {var_cif_brl_kcl} sobre {mes_ano_anterior}, com o câmbio, de {ptax_mes}, como causa.", "causa"),
+        ("O KCl custou {cif_brl_kcl_mes} em {mes_referencia}. O dólar médio, a {ptax_mes}, teve {var_cif_brl_kcl_sentido} de {var_cif_brl_kcl} sobre {mes_ano_anterior}.", "ligado ao câmbio"),
+        # a variação da PTAX tem o câmbio como sujeito
+        ("O CIF do KCl, de {cif_brl_kcl_mes}, teve {var_ptax_ano_sentido} de {var_ptax_ano} sobre {mes_ano_anterior}.", "como o sujeito dela"),
+        ("O KCl custou {cif_brl_kcl_mes} em {mes_referencia}, {var_ptax_ano_sentido} de {var_ptax_ano} sobre {mes_ano_anterior}.", "como o sujeito dela"),
+        ("As importações tiveram {var_ptax_ano_sentido} de {var_ptax_ano} sobre {mes_ano_anterior}.", "como o sujeito dela"),
+        ("A moeda brasileira teve {var_ptax_ano_sentido} de {var_ptax_ano} sobre {mes_ano_anterior}, com a PTAX a {ptax_mes}.", "não fale do real"),
+        # benchmark ligado ao que o Brasil pagou, mesmo com o nome do benchmark na frase
+        ("O Brasil pagou {benchmark_kcl_mes} pelo KCl em {mes_referencia}, {spread_kcl_mes} {spread_kcl_mes_posicao}.", "ligado ao preço do Brasil"),
+        ("O KCl importado pelo Brasil custou {benchmark_kcl_mes} em {mes_referencia}, {spread_kcl_usd_mes} {spread_kcl_usd_mes_posicao}.", "ligado ao preço do Brasil"),
+        ("O Brasil pagou {benchmark_kcl_mes} pelo KCl, e o benchmark da ureia foi de {benchmark_ureia_mes}.", "ligado ao preço do Brasil"),
+        ("O Banco Mundial cotou o DAP a {benchmark_map_mes}, e o MAP importado custou {benchmark_map_mes}.", "ligado ao preço do Brasil"),
+        # spread do ano anterior sem o mês dele
+        ("Em {mes_referencia}, o MAP ficou {spread_map_ano_anterior} {spread_map_ano_anterior_posicao}.", "mesmo mês do ano anterior"),
+        ("O KCl importado ficou {spread_kcl_ano_anterior} {spread_kcl_ano_anterior_posicao}.", "mesmo mês do ano anterior"),
+        ("No porto, o KCl valia {troca_kcl_ano_anterior} em {mes_referencia}.", "mesmo mês do ano anterior"),
+        # spread junto do preço da outra base, em número ou por extenso
+        ("A ureia importada, de {cif_ureia_ultimo}, ficou {spread_ureia_mes} {spread_ureia_mes_posicao} em {mes_referencia}.", "preço FOB do Brasil"),
+        ("No porto, o MAP custou {cif_map_ultimo}, {spread_map_usd_mes} {spread_map_usd_mes_posicao}.", "preço FOB do Brasil"),
+        ("A ureia desembarcada no Brasil ficou {spread_ureia_mes} {spread_ureia_mes_posicao} em {mes_referencia}.", "preço FOB do Brasil"),
+        ("Com frete e seguro, a ureia ficou {spread_ureia_mes} {spread_ureia_mes_posicao}.", "preço FOB do Brasil"),
+        ("O CIF da ureia ficou {spread_ureia_mes} {spread_ureia_mes_posicao}, ou {cif_brl_ureia_mes}.", "preço FOB do Brasil"),
+        ("O CIF do MAP em reais foi de {cif_brl_map_mes}, e o CIF do MAP ficou {spread_map_mes} {spread_map_mes_posicao}.", "preço FOB do Brasil"),
+        ("No FOB, a ureia ficou {spread_ureia_mes} {spread_ureia_mes_posicao}, e o KCl, {spread_kcl_mes} {spread_kcl_mes_posicao}.", "preço CIF do Brasil"),
+        ("O KCl ficou {spread_kcl_mes} {spread_kcl_mes_posicao} no FOB, e a ureia, {spread_ureia_mes} {spread_ureia_mes_posicao}.", "preço CIF do Brasil"),
+        ("A ureia e o MAP, pelo CIF, ficaram {spread_ureia_mes} {spread_ureia_mes_posicao} e {spread_map_mes} {spread_map_mes_posicao}.", "preço FOB do Brasil"),
+        ("O KCl custou {cif_kcl_ultimo} por tonelada no porto em {mes_referencia}.", "já traz a unidade"),
+        # anáfora de grupo continua só para chave de grupo
+        ("Os potássicos somaram {t_k_mes} em {mes_referencia}, e o grupo teve {var_preco_cif_n_mes_sentido} de {var_preco_cif_n_mes} no preço sobre {mes_ano_anterior}.", "ligado a"),
+    ],
+)
+def test_pos_push_frases_ruins_reprovam(com_benchmark, texto, trecho):
+    _, f = com_benchmark
+    erros = valida(f, texto)
+    assert any(trecho in e for e in erros), erros
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "Para efeito de comparação, o KCl ficou {spread_kcl_mes} {spread_kcl_mes_posicao} no benchmark do Banco Mundial.",
+        "No benchmark do Banco Mundial, o KCl, na base {base_benchmark_kcl}, valeu {benchmark_kcl_mes} em {mes_referencia}.",
+        "O KCl importado pelo Brasil custou {cif_brasil_kcl_mes} em {mes_referencia}, {spread_kcl_mes} {spread_kcl_mes_posicao}, que foi de {benchmark_kcl_mes}.",
+        "Em {mes_ano_anterior}, o KCl importado ficou {spread_kcl_ano_anterior} {spread_kcl_ano_anterior_posicao}.",
+        "No porto, o KCl valia {troca_kcl_ultimo} em {mes_referencia}, e {troca_kcl_ano_anterior} em {mes_ano_anterior}.",
+        "No porto, o KCl valia {troca_kcl_ano_anterior} no mesmo mês de {ano_anterior}.",
+        "A PTAX média, de {ptax_mes}, teve {var_ptax_ano_sentido} de {var_ptax_ano} sobre {mes_ano_anterior}.",
+        "O dólar médio ficou em {ptax_mes} em {mes_referencia}, com {var_ptax_ano_sentido} de {var_ptax_ano} sobre {mes_ano_anterior}.",
+        "A PTAX média teve {var_ptax_ano_sentido} de {var_ptax_ano} sobre {mes_ano_anterior}, e o CIF do KCl em reais foi de {cif_brl_kcl_mes} em {mes_referencia}.",
+        "O dólar médio ficou em {ptax_mes}, com {var_ptax_ano_sentido} de {var_ptax_ano} sobre {mes_ano_anterior}, e o KCl custou {cif_brl_kcl_mes} em reais.",
+        "No porto, eram precisas {troca_kcl_ultimo} por tonelada de KCl em {mes_referencia}, {desvio_troca_kcl} {desvio_troca_kcl_posicao}.",
+        "No porto, o MAP exigia {sacas_map_ultimo} por tonelada em {mes_referencia}.",
+        "Frente ao benchmark do Banco Mundial, o preço FOB da ureia ficou {spread_ureia_mes} {spread_ureia_mes_posicao}, e o CIF do KCl, {spread_kcl_mes} {spread_kcl_mes_posicao}.",
+        "No benchmark do Banco Mundial, o KCl, comparado pelo CIF, ficou {spread_kcl_mes} {spread_kcl_mes_posicao}, e o MAP, pelo FOB, {spread_map_mes} {spread_map_mes_posicao}.",
+        "Os nitrogenados tiveram preço médio CIF de {preco_cif_n_mes} em {mes_referencia}, e a ureia ficou {spread_ureia_mes} {spread_ureia_mes_posicao}.",
+        "Na comparação com o benchmark do Banco Mundial, a ureia ficou {spread_ureia_mes} {spread_ureia_mes_posicao}, e o CIF em reais teve {var_cif_brl_ureia_sentido} de {var_cif_brl_ureia} sobre {mes_ano_anterior}.",
+        "No porto, o KCl custou {cif_kcl_ultimo} em {mes_referencia}, e o CIF do KCl importado, de {cif_brasil_kcl_mes}, ficou {spread_kcl_mes} {spread_kcl_mes_posicao}.",
+        "Os fosfatados somaram {t_p_mes} em {mes_referencia}, e o MAP, produto do grupo, ficou {spread_map_mes} {spread_map_mes_posicao}.",
+        "Os potássicos somaram {t_k_mes} em {mes_referencia}. No grupo, o KCl ficou {spread_kcl_mes} {spread_kcl_mes_posicao}.",
+        "Para o MAP, o Banco Mundial usa como referência o fosfato diamônico, cotado a {benchmark_map_mes} em {mes_referencia}.",
+    ],
+)
+def test_pos_push_frases_corretas_passam(com_benchmark, texto):
+    _, f = com_benchmark
+    assert valida(f, texto) == []
+
+
+def test_pos_push_cif_do_kcl_na_base_fob(com_benchmark):
+    destino, _ = com_benchmark
+    painel, troca = boletim.carregar(destino)
+    f = boletim.montar_fatos(painel, troca, "2019-06")  # KCl comparado pelo FOB até 2019-12
+    erros = valida(f, "O KCl importado, a {cif_kcl_ultimo} no porto, ficou {spread_kcl_mes} {spread_kcl_mes_posicao} em {mes_referencia}.")
+    assert any("preço CIF" in e for e in erros), erros
+    assert valida(f, "O preço FOB do KCl importado, de {fob_brasil_kcl_mes}, ficou {spread_kcl_mes} {spread_kcl_mes_posicao} em {mes_referencia}.") == []
+
+
+def test_troca_no_boletim_igual_ao_dashboard():
+    # um só arredondamento, sobre os mesmos números (o bloco troca do JSON leva 6 casas), em
+    # todos os meses dos dados
+    painel, troca = boletim.carregar(config.PROCESSED_DIR)
+    tr = painel["troca"]
+    for i, mes in enumerate(tr["periodos"]):
+        f = boletim.montar_fatos(painel, troca, mes)
+        for prod, d in tr["produtos"].items():
+            razao = d["razao"][i]
+            if razao is None:
+                continue
+            assert f[f"troca_{prod}_ultimo"]["valor"] == boletim.fmt_razao(razao), (mes, prod)
+            assert f[f"cif_{prod}_ultimo"]["valor"] == boletim.fmt_usd_t(d["cif"][i]), (mes, prod)
+            assert f[f"sacas_{prod}_ultimo"]["valor"] == f"{boletim._num(razao * 1000 / tr['kg_saca'], 1)} sacas de 60 kg", (mes, prod)
+        assert f["soja_fob_ultimo"]["valor"] == boletim.fmt_usd_t(tr["soja_fob"][i]), mes
+    ultimo = len(tr["periodos"]) - 1
+    for prod, d in tr["produtos"].items():  # a média é da série inteira, a mesma do último mês
+        if d["razao"][ultimo] is not None:
+            assert f[f"troca_{prod}_media"]["valor"] == boletim.fmt_razao(d["media"])
+
+
+def test_posicao_pela_media_historica_usa_o_valor_arredondado():
+    assert boletim.posicao(-0.96) == "abaixo da média histórica"  # sai "1,0%" no texto
+    assert boletim.posicao(0.94) == "em linha com a média histórica"

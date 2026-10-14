@@ -114,16 +114,16 @@ def bloco_dashboard(troca: pd.DataFrame, periodos: list[str], num) -> dict:
         produtos[chave] = {
             **info,
             "t": [num(v, 0) for v in p["toneladas_fert"]],
-            "cif": [num(v, 1) for v in p["preco_cif_fert_usd_t"]],
-            "razao": [num(v, 3) for v in p["t_soja_por_t"]],
-            "media": num(medias.get(chave), 3),
+            "cif": [num(v, 6) for v in p["preco_cif_fert_usd_t"]],
+            "razao": [num(v, 6) for v in p["t_soja_por_t"]],
+            "media": num(medias.get(chave), 6),
             "media_periodo": [validos.index[0], validos.index[-1]] if not validos.empty else None,
             "n_meses": int(validos.size),
         }
     return {
         "periodos": periodos,
         "soja_ncm": config.NCM_SOJA,
-        "soja_fob": [num(v, 1) for v in soja["preco_fob_soja_usd_t"]],
+        "soja_fob": [num(v, 6) for v in soja["preco_fob_soja_usd_t"]],
         "soja_t": [num(v, 0) for v in soja["toneladas_soja"]],
         "kg_saca": KG_SACA,
         "produtos": produtos,

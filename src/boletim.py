@@ -157,6 +157,7 @@ def sentido(variacao: float) -> str:
 
 
 def posicao(desvio_pct: float) -> str:
+    desvio_pct = float(_arredondar(desvio_pct, 1))
     if abs(desvio_pct) < 1:
         return "em linha com a média histórica"
     return "acima da média histórica" if desvio_pct > 0 else "abaixo da média histórica"
@@ -423,6 +424,21 @@ def _fatos_troca(f: Fatos, troca: list[dict], mes: str) -> None:
     def numero(texto: str) -> float | None:
         return float(texto) if texto not in ("", None) else None
 
+    def exatos(r: dict) -> dict:
+        """Preço, razão e sacas pelo valor ÷ toneladas, com as 6 casas do dashboard.json (o CSV traz 2 e 4)."""
+        cif = float(r["vl_cif_fert"]) / float(r["toneladas_fert"])
+        soja = float(r["vl_fob_soja"]) / float(r["toneladas_soja"])
+        razao = round(cif / soja, 6)
+        return {
+            **r,
+            "preco_cif_fert_usd_t": repr(round(cif, 6)),
+            "preco_fob_soja_usd_t": repr(round(soja, 6)),
+            "t_soja_por_t": repr(razao),
+            "sacas_soja_por_t": repr(razao * 1000 / 60),  # como o dashboard: da razão já arredondada
+        }
+
+    troca = [exatos(r) if r["t_soja_por_t"] not in ("", None) else r for r in troca]
+
     soja_registrada = False
     for prod, nome in PRODUTOS_TROCA.items():
         serie = [r for r in troca if r["produto"] == prod and numero(r["t_soja_por_t"]) is not None and r["periodo"] <= mes]
@@ -430,7 +446,7 @@ def _fatos_troca(f: Fatos, troca: list[dict], mes: str) -> None:
         if not serie or atual is None:
             continue
         razoes = [numero(r["t_soja_por_t"]) for r in serie]
-        media = sum(razoes) / len(razoes)
+        media = round(sum(razoes) / len(razoes), 6)  # como a média do dashboard.json
         valor = numero(atual["t_soja_por_t"])
         desvio = 100 * (valor / media - 1)
         f.add(f"troca_{prod}_ultimo", fmt_razao(valor), f"Toneladas de soja que pagam uma tonelada de {nome} em {mes_extenso(mes)}; {nota}")
@@ -1053,7 +1069,7 @@ RESSALVA_INTEIRA = re.compile(
     re.IGNORECASE,
 )
 CAUSA = re.compile(
-    r"\b(?:reflexo\w*|reflet\w*|devid[oa]s?\s+a|por\s+causa|em\s+raz[ãa]o|gra[çc]as\s+a|puxad\w*|impulsionad\w*|"
+    r"\b(?:reflexo\w*|reflet\w*|devid[oa]s?\s+(?:a|ao|à|aos|às)|por\s+causa|por\s+conta\s+d\w*|causa(?:s|d[oa]s?|ndo|r|ou|aram)?|efeitos?\s+d[oa]s?\b|influenci\w*|em\s+fun[çc][ãa]o|lev(?:ou|aram)\s+a|explic(?:a|am|ou|aram)|em\s+raz[ãa]o|gra[çc]as\s+a|puxad\w*|impulsionad\w*|"
     r"em\s+meio\s+a|diante\s+d\w*|motivad\w*|explicad\w*|tend[eê]nci\w*|tende\w*|pr[oó]ximos\s+meses|expectativ\w*|proje[çc]\w*|"
     r"perspectiv\w*|dev(?:e|em|er[áa]|er[ãa]o)\s+\w+(?:ar|er|ir)|ser[áa]|ser[ãa]o|haver[áa]|\w{2,}(?:ar|er|ir)á|\w{2,}(?:ar|er|ir)ão|"
     r"san[çc]\w*|guerra\w*|conflit\w*|estoques?|petr[óo]leo|g[áa]s\s+natural|plantio\w*|"
@@ -1243,11 +1259,12 @@ def _conferencias(campo: str, texto: str, fatos: Fatos) -> list[str]:
         # Grupo ou produto de cada número: a menção mais próxima precisa ser a dele.
         mencoes = [(inicio + m.start(), inicio + m.end(), "g:" + g) for g, rx in MENCOES_GRUPO.items() for m in rx.finditer(frase)]
         mencoes += [(inicio + m.start(), inicio + m.end(), "p:" + p) for p, rx in MENCOES_PRODUTO.items() for m in rx.finditer(frase)]
+        anaforas = []
         for m in ANAFORA_DE_GRUPO.finditer(frase):  # "o grupo", "nesse grupo": o último grupo citado
             anteriores = [x for x in mencoes_do_campo + mencoes if x[2].startswith("g:") and x[1] <= inicio + m.start()]
             if anteriores:
-                mencoes.append((inicio + m.start(), inicio + m.end(), max(anteriores, key=lambda x: x[1])[2]))
-        mencoes.sort()
+                anaforas.append((inicio + m.start(), inicio + m.end(), max(anteriores, key=lambda x: x[1])[2]))
+        mencoes = sorted(mencoes + anaforas)
         for s, e, k in marcas:
             if k.endswith(("_sentido", "_posicao")):
                 continue
@@ -1255,7 +1272,7 @@ def _conferencias(campo: str, texto: str, fatos: Fatos) -> list[str]:
             if (g is None and p is None) or (g is not None and not _numerico(k, fatos)):
                 continue
             alvo = "g:" + g if g else "p:" + p
-            prox = _mais_proxima(mencoes, s, e, limpo, fora_da_oracao=(g != "total"))
+            prox = _mais_proxima(mencoes if g else [x for x in mencoes if x not in anaforas], s, e, limpo, fora_da_oracao=(g != "total"))
             if prox is not None and k in PROXY_DO_MAP and prox[2] == "p:dap":
                 continue
             if prox is None:
@@ -1340,11 +1357,30 @@ def _conferencias(campo: str, texto: str, fatos: Fatos) -> list[str]:
 CITA_BENCHMARK = re.compile(r"\bbenchmark\w*|\bBanco\s+Mundial\b|\bPink\s+Sheet\b|\bspreads?\b|\brefer[êe]ncia\s+internacional\b", re.IGNORECASE)
 NOMEIA_BENCHMARK = re.compile(r"\bbenchmark\w*|\bBanco\s+Mundial\b|\bPink\s+Sheet\b|\brefer[êe]ncia\b", re.IGNORECASE)
 CITA_CAMBIO = re.compile(r"\bPTAX\b|\bBanco\s+Central\b|\bBCB\b|\bc[âa]mbio\w*|\bd[óo]lar\w*", re.IGNORECASE)
-REAL_MOEDA = re.compile(r"\breal\b|\breais\b", re.IGNORECASE)
+REAL_MOEDA = re.compile(r"\breal\b|(?<!\bem\s)\breais\b|\bmoeda\s+(?:brasileira|nacional|local)\b", re.IGNORECASE)
 CAMBIO_NA_TROCA = re.compile(r"\breais\b|\bPTAX\b|\bc[âa]mbio\w*|\bd[óo]lar\w*", re.IGNORECASE)
 # Valor que já traz a unidade (US$/t, R$/t, %, t) não leva outra depois.
-UNIDADE_REPETIDA = re.compile(r"^\s*(?:reais|d[óo]lar\w*|por\s+tonelada|toneladas?|por\s*cento|pontos?\s+percentua\w*)\b", re.IGNORECASE)
+UNIDADE_REPETIDA = re.compile(r"^\s*(?:reais|d[óo]lar\w*|toneladas?|por\s*cento|pontos?\s+percentua\w*)\b", re.IGNORECASE)
+POR_TONELADA = re.compile(r"^\s*por\s+tonelada\b", re.IGNORECASE)
 CHAVES_DO_CAMBIO = {"ptax_mes", "var_ptax_ano"}
+# Base do preço do Brasil escrita por extenso, ligada ao produto mais próximo.
+PALAVRA_BASE = {
+    "CIF": re.compile(r"\bCIF\b|\bdesembarcad\w*|\bcom\s+frete\s+e\s+seguro\b|\bposto\s+no\s+Brasil\b", re.IGNORECASE),
+    "FOB": re.compile(r"\bFOB\b"),
+}
+EM_REAIS = re.compile(r"^\s+(?:em|de)\s+reais\b", re.IGNORECASE)
+# O que o Brasil pagou: o benchmark não fica ligado a isso.
+PAGO_PELO_BRASIL = re.compile(
+    r"\bpag(?:ou|aram|a|am|ava|avam|o|os|a)\b|\bcust(?:ou|aram|a|am|ava|avam)\b|\bimportad\w*|\bBrasil\b|\bbrasileir\w*|\bcomprad\w*|\bdesembarcad\w*",
+    re.IGNORECASE,
+)
+# Sujeitos que não são o câmbio: a variação da PTAX não vai neles (nem a do CIF em reais no câmbio).
+SUJEITO_NAO_CAMBIO = re.compile(
+    r"\bCIF\b|\bFOB\b|\bpre[çc]o\w*|\bcust\w*|\bvalor\w*|\bimporta[çc]\w*|\bcompras\b|\bvolume\b|\btoneladas\b|\bfrete\b|"
+    r"\bsoja\b|\bmoeda\b|\breal\b|\breais\b|\bspread\w*|\bbenchmark\w*|\bur[eé]ia\b|\bKCl\b|\bMAP\b|\bDAP\b|\bTSP\b|\bcloreto\b|"
+    r"\bnitrogenad\w*|\bfosfatad\w*|\bpot[aá]ss\w*|\bcompost[oa]s?\b|\bNPK\b|\bfertilizantes\b",
+    re.IGNORECASE,
+)
 
 
 def _conferencias_benchmark(campo: str, texto: str, fatos: Fatos) -> list[str]:
@@ -1352,7 +1388,11 @@ def _conferencias_benchmark(campo: str, texto: str, fatos: Fatos) -> list[str]:
     erros = []
     for m in MARCADOR.finditer(texto):
         k = m.group(1)
-        if _numerico(k, fatos) and re.search(r"[^\d.,\s]", fatos[k]["valor"]) and UNIDADE_REPETIDA.match(_apagar_marcadores(texto[m.end() :])):
+        depois = _apagar_marcadores(texto[m.end() :])
+        valor = fatos[k]["valor"] if k in fatos else ""
+        if _numerico(k, fatos) and re.search(r"[^\d.,\s]", valor) and (
+            UNIDADE_REPETIDA.match(depois) or (POR_TONELADA.match(depois) and re.search(r"(?:/t|\bt)$", valor))
+        ):
             erros.append(f"{campo}: {{{k}}} já traz a unidade ({fatos[k]['valor']}); não repita a unidade depois dele")
     limpo = _apagar_marcadores(texto)
     inicio = 0
@@ -1360,20 +1400,72 @@ def _conferencias_benchmark(campo: str, texto: str, fatos: Fatos) -> list[str]:
         frase = unicodedata.normalize("NFKC", limpo[inicio:fim])
         chaves = [m.group(1) for m in MARCADOR.finditer(texto) if inicio <= m.start() < fim and m.group(1) in fatos]
         trecho = frase.strip()[:70]
-        inicio = fim
+        ini, inicio = inicio, fim
         da_pink = [k for k in chaves if k.startswith(CHAVES_PINK)]
+        marcas = [(m.start(), m.end(), m.group(1)) for m in MARCADOR.finditer(texto) if ini <= m.start() < fim and m.group(1) in fatos]
+        bruta = limpo[ini:fim]
+        produtos = [(ini + x.start(), ini + x.end(), "p:" + p) for p, rx in MENCOES_PRODUTO.items() for x in rx.finditer(bruta)]
+        produtos += [(ini + x.start(), ini + x.end(), "g:" + g) for g, rx in MENCOES_GRUPO.items() for x in rx.finditer(bruta)]
+
+        def oracao(pos):
+            a = max([ini] + [ini + c.end() for c in CORTE_ORACAO.finditer(bruta) if ini + c.end() <= pos])
+            b = min([fim] + [ini + c.start() for c in CORTE_ORACAO.finditer(bruta) if ini + c.start() >= pos])
+            return a, b
+
         for prod, lado in fatos.lado_brasil.items():
             if not any(k.startswith(f"spread_{prod}_") for k in chaves):
                 continue
             outro = "FOB" if lado == "CIF" else "CIF"
-            if f"{'fob' if outro == 'FOB' else 'cif'}_brasil_{prod}_mes" in chaves or (
-                re.search(rf"\b{outro}\b", frase) and not any(k.startswith("cif_brl_") for k in chaves)
-            ):
+            chaves_do_outro = {f"fob_brasil_{prod}_mes"} if outro == "FOB" else {f"cif_brasil_{prod}_mes", f"cif_{prod}_ultimo"}
+            errado = bool(chaves_do_outro & set(chaves))
+            for w in PALAVRA_BASE[outro].finditer(bruta):
+                ws, we = ini + w.start(), ini + w.end()
+                a, b = oracao(ws)
+                na_oracao = [k for s2, _, k in marcas if a <= s2 < b and _numerico(k, fatos)]
+                if outro == "CIF" and (EM_REAIS.match(limpo[we:]) or any(k.startswith(("cif_brl_", "var_cif_brl_")) for k in na_oracao)):
+                    continue  # "o CIF em reais"
+                if na_oracao and not any(k.startswith(f"spread_{prod}_") for k in na_oracao):
+                    continue  # a palavra vai com outro número
+                na_mesma = [x for x in produtos if a <= x[0] < b]  # o produto da própria oração, se houver
+                perto = min(na_mesma or produtos, key=lambda x: min(abs(x[0] - we), abs(ws - x[1])), default=None)
+                abertura = a == ini and not any(a <= x[0] < b for x in produtos)  # "No FOB, a ureia ..., e o KCl, ...": vale para todos
+                if perto is None or perto[2] == "p:" + prod or abertura or re.search(r"\bamb[oa]s\b|\btod[oa]s\b|\bcada\s+um", limpo[a:b], re.IGNORECASE):
+                    errado = True
+            if errado:
                 erros.append(f"{campo}: o spread de {prod} compara o preço {lado} do Brasil com o benchmark; não o ponha junto do preço {outro}: {trecho!r}")
         nomeia = NOMEIA_BENCHMARK.search(frase) or any(k.startswith("spread_") and k.endswith("_posicao") for k in chaves)  # "acima do benchmark"
         if any(k.startswith(("benchmark_", "base_benchmark_")) for k in chaves) and not nomeia:
             erros.append(f"{campo}: o benchmark é o preço de referência do Banco Mundial, não o que o Brasil pagou; diga 'benchmark' ou 'Banco Mundial' na frase: {trecho!r}")
-        if PROXY_DO_MAP & set(chaves) and not re.search(r"\bDAP\b", frase):
+        # Cada benchmark ligado ao nome dele, e não ao que o Brasil pagou.
+        fontes_bm = [(ini + x.start(), ini + x.end(), "bm") for x in NOMEIA_BENCHMARK.finditer(bruta)]
+        fontes_bm += [(s2, e2, "bm") for s2, e2, k in marcas if k.startswith("spread_") and k.endswith("_posicao")]
+        fontes_bm += [(ini + x.start(), ini + x.end(), "br") for x in PAGO_PELO_BRASIL.finditer(bruta)]
+        fontes_bm.sort()
+        for s2, e2, k in marcas:
+            if k.startswith(("benchmark_", "base_benchmark_")):
+                a, b = oracao(s2)
+                na_oracao = [x for x in fontes_bm if a <= x[0] and x[1] <= b]
+                prox = min(na_oracao, key=lambda x: min(abs(x[0] - e2), abs(s2 - x[1]))) if na_oracao else _mais_proxima(fontes_bm, s2, e2, limpo)
+                if prox is not None and prox[2] == "br":
+                    erros.append(f"{campo}: {{{k}}} é o benchmark do Banco Mundial, mas está ligado ao preço do Brasil em {trecho!r}; diga 'benchmark' ou 'Banco Mundial' junto dele")
+        # Variação da PTAX no câmbio, e a do CIF em reais fora dele.
+        sujeitos = [(ini + x.start(), ini + x.end(), "cambio") for x in CITA_CAMBIO.finditer(bruta)]
+        sujeitos += [(s2, e2, "cambio") for s2, e2, k in marcas if k == "ptax_mes"]
+        sujeitos += [(ini + x.start(), ini + x.end(), "outro") for x in SUJEITO_NAO_CAMBIO.finditer(bruta)]
+        sujeitos.sort()
+        for s2, e2, k in marcas:
+            if k == "var_ptax_ano" or (k.startswith("var_cif_brl_") and not k.endswith("_sentido")):
+                ref = min([s2] + [s3 for s3, _, k3 in marcas if k3 == k + "_sentido"])
+                candidatos = [x for x in sujeitos if x[1] <= ref or x[0] >= e2]
+                if k != "var_ptax_ano":  # aposto com a PTAX ("o CIF, com o dólar a {ptax_mes}, teve") não é o sujeito
+                    apostos = [oracao(s3) for s3, _, k3 in marcas if k3 == "ptax_mes" and not (oracao(s3)[0] <= ref < oracao(s3)[1])]
+                    candidatos = [x for x in candidatos if not any(a <= x[0] < b for a, b in apostos)]
+                prox = _mais_proxima(candidatos, ref, e2, limpo, fora_da_oracao=True)
+                if k == "var_ptax_ano" and (prox is None or prox[2] != "cambio"):
+                    erros.append(f"{campo}: {{var_ptax_ano}} é a variação da PTAX (do dólar em reais); escreva 'PTAX' ou 'dólar' como o sujeito dela: {trecho!r}")
+                elif k != "var_ptax_ano" and prox is not None and prox[2] == "cambio":
+                    erros.append(f"{campo}: {{{k}}} é a variação do CIF em reais, mas está ligado ao câmbio em {trecho!r}")
+        if PROXY_DO_MAP & set(chaves) and not re.search(r"\bDAP\b|\bdiam[ôo]nico\b", frase, re.IGNORECASE):
             erros.append(f"{campo}: o Banco Mundial não publica MAP; o benchmark do MAP é o do DAP, e a frase precisa dizer isso: {trecho!r}")
         if CITA_BENCHMARK.search(frase) and not da_pink:
             erros.append(f"{campo}: benchmark, Banco Mundial e spread só com as chaves deles na mesma frase: {trecho!r}")
@@ -1440,6 +1532,12 @@ def _periodo_da_frase(campo, frase, inicio, limpo, marcas, fatos, trecho) -> lis
             como_base = all(COMO_BASE.search(limpo[inicio:pos]) for pos in [a[0] for a in passados] + [p for p, _ in escritos])
             if not (compara and (como_base or tem_valor_anterior)):
                 erros.append(f"{campo}: {{{k}}} é do período atual (ou da série), mas a frase o põe no passado: {trecho!r}")
+        if c == "prev_mes":
+            todas = ancoras + [(p, p + len(t), "p_any") for p, t in escritos]
+            seguintes = [a for a in todas if a[0] >= e and not CORTE_ORACAO.search(limpo[e : a[0]])]
+            prox = min(seguintes, key=lambda a: a[0]) if seguintes else max([a for a in todas if a[1] <= s], key=lambda a: a[1], default=None)
+            if prox is None or not prox[2].startswith("p_") or prox[2] in ("p_ytd", "p_full"):
+                erros.append(f"{campo}: {{{k}}} é do mesmo mês do ano anterior; ponha {{mes_ano_anterior}} ao lado dele: {trecho!r}")
         if c == "prev_full" and MESMO_PERIODO.search(frase):
             erros.append(f"{campo}: {{{k}}} é do ano anterior inteiro, não do mesmo período: {trecho!r}")
         if tem_atual and tem_passado and tem_valor_anterior and c in ("mes", "ytd", "prev_mes", "prev_ytd", "prev_full"):
