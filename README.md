@@ -2,6 +2,10 @@
 
 [![CI](https://github.com/AliceCullen-html/radar-fertilizantes-br/actions/workflows/ci.yml/badge.svg)](https://github.com/AliceCullen-html/radar-fertilizantes-br/actions/workflows/ci.yml)
 
+**Dashboard: [alicecullen-html.github.io/radar-fertilizantes-br](https://alicecullen-html.github.io/radar-fertilizantes-br/)**
+
+[![Dashboard com os KPIs de setembro de 2026 e as toneladas importadas por mês, por grupo de fertilizante](dashboard/print.png)](https://alicecullen-html.github.io/radar-fertilizantes-br/)
+
 Radar das importações brasileiras de fertilizantes, feito apenas com dados públicos do
 [Comex Stat](https://comexstat.mdic.gov.br/), do Ministério do Desenvolvimento, Indústria,
 Comércio e Serviços (MDIC).
@@ -75,6 +79,30 @@ Resumo 2015-01 a 2026-09 (Fonte: Comex Stat/MDIC)
 | `--atualizar-ncm` | regenera `data/ncm_fertilizantes.csv` a partir da API |
 | `--pausa SEG` | pausa mínima entre chamadas à API (padrão: 10 s) |
 | `--ssl-inseguro` | último recurso para problemas de certificado; veja [SSL](#ssl) |
+
+## Dashboard (fase 3)
+
+O [dashboard](https://alicecullen-html.github.io/radar-fertilizantes-br/) é uma página estática (`dashboard/index.html`) que lê o
+`data/processed/dashboard.json`. Mostra:
+
+- KPIs do último mês e do acumulado do ano, comparados com o mesmo período do ano anterior;
+- toneladas mensais por grupo (N, P, K e NPK);
+- share por país de origem e ranking de portos (URF), com variação sobre o ano anterior;
+- preço implícito US$/t FOB x CIF e frete US$/t;
+- concentração de fornecedores (HHI) por ano.
+
+Os filtros de grupo e período valem para todos os gráficos e ficam na URL (por exemplo,
+`#grupo=K&de=2021-10&ate=2026-09`), então dá para compartilhar uma visão específica. A página
+funciona no celular, tem tema claro e escuro e uma tabela com os dados de cada gráfico.
+O Chart.js 4.5.1 vem do jsDelivr com versão fixa e verificação de integridade (SRI).
+
+Para ver localmente, rode `python -m http.server` na raiz do repositório e abra
+<http://localhost:8000/dashboard/>.
+
+O workflow [`pages.yml`](.github/workflows/pages.yml) publica o dashboard no GitHub Pages a
+cada push na `main` que altere `dashboard/` ou o `dashboard.json` (ou manualmente, em
+Actions → Pages → Run workflow). Ele não usa nenhum segredo; o único pré-requisito é, em
+**Settings → Pages**, escolher **Source: GitHub Actions**.
 
 ## Dados brutos
 
@@ -185,7 +213,7 @@ automaticamente.
 
 O [CI](.github/workflows/ci.yml) roda em todo push e pull request: os testes em Python
 3.10 e 3.13 e o gitleaks em todo o histórico do repositório. O workflow só tem permissão
-de leitura e não usa nenhum segredo.
+de leitura e não usa nenhum segredo. As actions estão em versões que rodam em Node 24.
 
 Segredos nunca entram no repositório. Qualquer chave futura, como a da fase 5, é lida
 apenas de variáveis de ambiente. Os nomes estão em [`.env.example`](.env.example).
@@ -195,7 +223,7 @@ apenas de variáveis de ambiente. Os nomes estão em [`.env.example`](.env.examp
 - [x] **Fase 1:** ingestão incremental via API do Comex Stat (`src/ingest.py`).
 - [x] **Fase 2:** `src/transform.py` com preço US$/t, shares com variação anual, HHI,
   sazonalidade e o `dashboard.json`.
-- [ ] **Fase 3:** dashboard estático no GitHub Pages, lendo `data/processed/dashboard.json`.
+- [x] **Fase 3:** [dashboard estático](https://alicecullen-html.github.io/radar-fertilizantes-br/) no GitHub Pages, lendo `data/processed/dashboard.json`.
 - [ ] **Fase 4:** GitHub Action mensal para atualizar os dados.
 - [ ] **Fase 5:** boletim mensal com IA (opcional; a chave vem só de variável de ambiente).
 
