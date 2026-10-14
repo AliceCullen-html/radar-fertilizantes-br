@@ -434,7 +434,9 @@ def test_nota_fixa_da_relacao_de_troca_no_boletim(tmp_path, ultimo_mes):
     assert boletim.main(["--mock", "--saida", str(tmp_path)]) == 0
     latest = json.loads((tmp_path / "latest.json").read_text(encoding="utf-8"))
     md = (tmp_path / f"{ultimo_mes}.md").read_text(encoding="utf-8")
-    assert latest["nota"] == boletim.NOTA_TROCA and boletim.NOTA_TROCA in md
+    # Com o bloco benchmark nos dados, o exemplo também cita o Banco Mundial e a PTAX e as
+    # notas deles vêm depois da nota da troca.
+    assert latest["nota"].startswith(boletim.NOTA_TROCA) and latest["nota"] in md
 
 
 def test_rejeita_paragrafo_so_com_marcador(fatos):
