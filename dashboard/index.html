@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Radar das importações de fertilizantes</title>
-<meta name="description" content="Importações brasileiras de fertilizantes (N, P, K e NPK) desde 2015: volumes, origens, portos, rotas e frete, preços, relação de troca com a soja e concentração de fornecedores. Fonte: Comex Stat/MDIC.">
+<meta name="description" content="Importações brasileiras de fertilizantes (N, P, K e NPK) desde 2015: volumes, origens, portos, rotas e frete, preços, comparação com o mercado internacional, relação de troca com a soja e concentração de fornecedores. Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX.">
 <meta name="color-scheme" content="light dark">
 <!-- Preenchido pelo workflow de deploy com a data do último commit que alterou os dados. -->
 <meta name="atualizado" content="">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Radar das importações de fertilizantes">
-<meta property="og:description" content="Volumes, rotas origem → porto, frete, preços, relação de troca com a soja e concentração das importações brasileiras de fertilizantes desde 2015. Fonte: Comex Stat/MDIC.">
+<meta property="og:description" content="Volumes, rotas origem → porto, frete, preços, Brasil x mercado internacional, relação de troca com a soja e concentração das importações brasileiras de fertilizantes desde 2015. Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX.">
 <meta property="og:url" content="https://alicecullen-html.github.io/radar-fertilizantes-br/">
 <meta property="og:image" content="https://alicecullen-html.github.io/radar-fertilizantes-br/preview.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -145,6 +145,8 @@ header.topo p { margin: 0; color: var(--texto-2); }
 .legenda .chave-area { width: 12px; height: 12px; border-radius: 3px; }
 .legenda .chave-linha { width: 14px; height: 2px; border-radius: 1px; }
 .legenda .chave-limiar { width: 14px; height: 0; border-top: 2px dashed var(--texto-3); }
+.legenda .chave-tracejada { width: 14px; height: 0; border-top: 2px dashed currentColor; }
+.legenda .chave-quebra { width: 0; height: 12px; border-left: 1px dashed var(--texto-2); }
 
 .grafico { position: relative; width: 100%; margin-top: 12px; }
 .grafico canvas { display: block; }
@@ -347,6 +349,26 @@ footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
       </div>
     </section>
 
+    <section class="cartao grade oculto" aria-labelledby="titulo-bm" id="secao-bm">
+      <div>
+        <h2 id="titulo-bm">Brasil x mercado internacional</h2>
+        <p class="nota" id="nota-bm"></p>
+        <p class="ressalva"><strong>Referência de outro lugar, não ágio.</strong> O benchmark do Banco Mundial (Pink Sheet) é o preço num porto de referência (Golfo dos EUA, Oriente Médio, Mar Negro, Vancouver) ou no destino (KCl desde 2020, TSP). A diferença para o preço do Brasil mistura origem, frete até o ponto de referência, prazo de contrato e defasagem entre o negócio e o desembarque.</p>
+        <div class="chips" id="chips-bm" role="group" aria-label="Produto" style="margin-top: 12px"></div>
+        <div class="kpi-linha" id="kpis-bm" style="margin-top: 12px"></div>
+        <h3 class="subtitulo">Preço do Brasil x benchmark (US$/t)</h3>
+        <ul class="legenda" id="legenda-bm"></ul>
+        <div class="grafico alto-300"><canvas id="grafico-bm" role="img"></canvas></div>
+        <h3 class="subtitulo">Spread na base comparável (%)</h3>
+        <p class="nota" id="nota-spread"></p>
+        <div class="grafico alto-260"><canvas id="grafico-spread" role="img"></canvas></div>
+        <h3 class="subtitulo">CIF em reais (R$/t, PTAX média do mês)</h3>
+        <p class="nota" id="nota-brl"></p>
+        <div class="grafico alto-260"><canvas id="grafico-brl" role="img"></canvas></div>
+        <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-bm"></div></details>
+      </div>
+    </section>
+
     <section class="cartao grade" aria-labelledby="titulo-hhi">
       <div>
         <h2 id="titulo-hhi">Concentração de fornecedores (HHI)</h2>
@@ -359,11 +381,12 @@ footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
   </main>
 
   <footer class="rodape">
-    <span class="fonte">Fonte: Comex Stat/MDIC</span>
+    <span class="fonte" id="fonte-rodape">Fonte: Comex Stat/MDIC</span>
     <span id="rodape-datas"></span>
     <span>Preço implícito = valor ÷ toneladas. HHI = soma dos quadrados dos shares por país de origem (0 a 10.000). Anos parciais são comparados com os mesmos meses do ano anterior.</span>
     <span>Rotas: país de origem → URF de desembaraço, por ano. Na tabela de frete entram as rotas com pelo menos 50 mil t no ano (proporcional aos meses num ano parcial); a lista completa está em data/processed/rotas_ano.csv.</span>
     <span>Relação de troca = preço CIF do fertilizante importado (KCl NCM 31042090, ureia 31021010, MAP 31054000) ÷ preço FOB da soja em grão exportada (NCM 12019000) no mesmo mês; média histórica = média simples dos meses da série.</span>
+    <span id="rodape-bm" class="oculto">Brasil x mercado internacional: preço implícito do Brasil (KCl NCM 31042090, ureia 31021010, MAP 31054000, DAP 310530, TSP 31031030 e 31031100) contra a Pink Sheet do Banco Mundial (CC BY 4.0); o MAP usa o DAP como referência. Spread comparável = FOB Brasil − benchmark quando o benchmark é FOB; CIF Brasil − benchmark quando ele é um preço no destino. CIF em reais pela PTAX venda média do mês (BCB, SGS 3698, ODbL).</span>
     <span>Código e dados: <a href="https://github.com/AliceCullen-html/radar-fertilizantes-br">github.com/AliceCullen-html/radar-fertilizantes-br</a></span>
   </footer>
 </div>
@@ -385,7 +408,7 @@ const PRESETS = [
 ];
 
 // anoRotas: ano escolhido no diagrama de rotas; null segue o ano do fim do período.
-const estado = { grupo: "TOTAL", de: null, ate: null, anoRotas: null };
+const estado = { grupo: "TOTAL", de: null, ate: null, anoRotas: null, bm: null };
 const graficos = {};
 let dados = null;
 
@@ -452,8 +475,10 @@ const texto = (id, valor) => { document.getElementById(id).textContent = valor; 
 function legenda(id, itens) {
   const ul = document.getElementById(id);
   ul.replaceChildren(...itens.map(({ rotulo, corItem, tipo }) => {
-    const chave = el("span", { classe: tipo === "limiar" ? "chave-limiar" : tipo === "linha" ? "chave-linha" : "chave-area" });
-    if (tipo !== "limiar") chave.style.background = corItem;
+    const classe = { limiar: "chave-limiar", linha: "chave-linha", tracejada: "chave-tracejada", quebra: "chave-quebra" }[tipo] ?? "chave-area";
+    const chave = el("span", { classe });
+    if (tipo === "tracejada") chave.style.color = corItem;
+    else if (tipo !== "limiar" && tipo !== "quebra") chave.style.background = corItem;
     return el("li", {}, chave, rotulo);
   }));
   ul.classList.toggle("oculto", itens.length === 0);
@@ -1188,6 +1213,213 @@ function desenharTroca(indices) {
     }));
 }
 
+// --- Brasil x mercado internacional (fase 6) ------------------------------------------------
+// Produtos por filtro de grupo; "Todos" e NPK mostram os cinco (NPK não tem benchmark).
+const PRODUTOS_BM = { K: ["kcl"], N: ["ureia"], P: ["map", "dap", "tsp"] };
+const ORDEM_BM = ["kcl", "ureia", "map", "dap", "tsp"];
+const produtosBm = () => (PRODUTOS_BM[estado.grupo] ?? ORDEM_BM).filter((k) => dados.benchmark?.produtos?.[k]);
+const reais = (v) => (nulo(v) ? "–" : `R$ ${fmt0.format(v)}/t`);
+const fmt4 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+
+// Linha vertical tracejada onde a base do benchmark muda, com o nome da nova base.
+const pluginQuebras = {
+  id: "quebras",
+  afterDatasetsDraw(chart, _args, opcoes) {
+    const marcas = opcoes?.marcas ?? [];
+    if (!marcas.length) return;
+    const { top, bottom, left, right } = chart.chartArea;
+    const escala = chart.scales.x;
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.font = `11px ${Chart.defaults.font.family}`;
+    ctx.textBaseline = "top";
+    for (const { indice, rotulo } of marcas) {
+      // entre o último mês da base antiga e o primeiro da nova
+      const x = Math.round(indice > 0 ? (escala.getPixelForValue(indice) + escala.getPixelForValue(indice - 1)) / 2 : escala.getPixelForValue(indice)) + 0.5;
+      if (x < left || x > right) continue;
+      ctx.strokeStyle = cor("--texto-2");
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x, bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const largura = ctx.measureText(rotulo).width;
+      const tx = x + 6 + largura > right ? x - 6 - largura : x + 6;
+      ctx.fillStyle = cor("--superficie");
+      ctx.fillRect(tx - 3, top + 1, largura + 6, 15);
+      ctx.fillStyle = cor("--texto-2");
+      ctx.fillText(rotulo, tx, top + 3);
+    }
+    ctx.restore();
+  },
+};
+
+function desenharBenchmark(indices) {
+  const secao = document.getElementById("secao-bm");
+  const bm = dados.benchmark;
+  const chaves = bm ? produtosBm() : [];
+  secao.classList.toggle("oculto", !bm || !chaves.length);
+  document.getElementById("rodape-bm").classList.toggle("oculto", !bm);
+  if (!bm || !chaves.length) return;
+  if (!chaves.includes(estado.bm)) estado.bm = chaves[0];
+  const prod = bm.produtos[estado.bm];
+  const corProd = corGrupo(prod.grupo);
+  const p = periodos();
+  const rotulos = indices.map((i) => rotuloMes(p[i]));
+  const j = (i) => bm.periodos.indexOf(p[i]);
+  const valor = (campo, i) => { const k = j(i); return k < 0 ? null : prod[campo][k]; };
+  const pequena = (i) => { const k = j(i); return k >= 0 && prod.amostra_pequena[k]; };
+  const ptax = (i) => { const k = j(i); return k < 0 ? null : bm.ptax[k]; };
+  // Base vigente no mês: a última que começou até ele.
+  const baseDe = (i) => [...prod.bases].reverse().find((b) => b.desde <= p[i]) ?? prod.bases[0];
+  // Meses de amostra pequena ficam fora das linhas e barras (estão na tabela, marcados).
+  const semPequena = (campo) => indices.map((i) => (pequena(i) ? null : valor(campo, i)));
+
+  document.getElementById("chips-bm").replaceChildren(...chaves.map((k) => {
+    const ponto = el("span", { classe: "ponto" });
+    ponto.style.background = corGrupo(bm.produtos[k].grupo);
+    const botao = el("button", { type: "button", classe: "chip", "aria-pressed": String(k === estado.bm) }, ponto, bm.produtos[k].nome);
+    botao.addEventListener("click", () => { estado.bm = k; gravarUrl(); esconderDica(); desenharBenchmark(indicesEntre(estado.de, estado.ate)); });
+    return botao;
+  }));
+
+  const nPequena = indices.filter(pequena).length;
+  const quebras = bm.quebras.filter((q) => q.produto === estado.bm);
+  const marcas = quebras.map((q) => ({ indice: indices.findIndex((i) => p[i] === q.periodo), rotulo: estreito() ? q.para.split(" (")[0] : `nova base: ${q.para}` })).filter((m) => m.indice > 0);
+  const bases = [...new Set(indices.map((i) => `${baseDe(i).base} (${baseDe(i).comparacao})`))];
+  texto("nota-bm", `${prod.nome} (${prod.descricao}, NCM ${prod.ncms.join(", ")}) · benchmark: ${prod.serie}, Banco Mundial${prod.proxy ? " · o MAP usa o DAP como referência (a Pink Sheet não tem MAP)" : ""} · ${rotulos[0]} a ${rotulos[rotulos.length - 1]}`);
+
+  // KPIs do último mês do intervalo
+  const ate = indices[indices.length - 1];
+  const t = valor("t", ate);
+  const base = baseDe(ate);
+  // Sem importação ou com amostra pequena no último mês: o valor fica "–" e o motivo vai embaixo.
+  const motivo = nulo(t) || t === 0 ? "sem importação no mês" : pequena(ate) ? `amostra pequena (${toneladas(t)}), fora da comparação` : "";
+  const kpi = (rotulo, valorKpi, delta) => el("div", { classe: "kpi" }, el("div", { classe: "rotulo" }, rotulo), el("div", { classe: "valor" }, valorKpi), el("div", { classe: "delta" }, delta));
+  const fobUlt = pequena(ate) ? null : valor("fob", ate);
+  const spreadUlt = pequena(ate) ? null : valor("spread_pct", ate);
+  const spreadUsd = pequena(ate) ? null : valor("spread_usd_t", ate);
+  const atualizado = /^\d{4}-\d{2}-\d{2}$/.test(bm.pink_atualizado_em ?? "") ? ` · Pink Sheet de ${bm.pink_atualizado_em.slice(8, 10)}/${bm.pink_atualizado_em.slice(5, 7)}/${bm.pink_atualizado_em.slice(0, 4)}` : "";
+  document.getElementById("kpis-bm").replaceChildren(
+    kpi(`FOB Brasil · ${rotuloMes(p[ate])}`, porTonelada(fobUlt), motivo || `CIF ${porTonelada(valor("cif", ate))} · ${toneladas(t)}`),
+    kpi(`Banco Mundial · ${base.base}`, porTonelada(valor("bm", ate)), `${prod.serie}${prod.proxy ? " (referência do MAP)" : ""}${atualizado}`),
+    kpi(`Spread comparável (${base.comparacao})`, nulo(spreadUlt) ? "–" : variacao(spreadUlt), motivo || (nulo(spreadUsd) ? "" : `${spreadUsd >= 0 ? "+" : MENOS}US$ ${fmt0.format(Math.abs(spreadUsd))}/t · custo posto ${porTonelada(valor("custo_posto_usd_t", ate))}`)),
+    kpi("CIF em reais", nulo(fobUlt) ? "–" : reais(valor("cif_brl_t", ate)), nulo(ptax(ate)) ? "sem PTAX do mês" : `PTAX média R$ ${fmt4.format(ptax(ate))}`),
+  );
+
+  // Gráfico 1: FOB Brasil, CIF Brasil e benchmark
+  const corCif = cor("--cif"), corBm = cor("--texto");
+  legenda("legenda-bm", [
+    { rotulo: "FOB Brasil (no embarque)", corItem: corProd, tipo: "linha" },
+    { rotulo: "CIF Brasil (com frete e seguro)", corItem: corCif, tipo: "linha" },
+    { rotulo: `Banco Mundial: ${bases.join(" → ")}`, corItem: corBm, tipo: "tracejada" },
+    ...(marcas.length ? [{ rotulo: "Mudança de base do benchmark", tipo: "quebra" }] : []),
+  ]);
+  const linha = (label, data, corLinha, rotuloFinal, tracejado = false) => ({
+    label, data, rotuloFinal, borderColor: corLinha, backgroundColor: corLinha, borderWidth: 2, borderDash: tracejado ? [6, 4] : [], pointRadius: 0,
+    pointHoverRadius: 4, pointHoverBorderWidth: 2, pointHoverBorderColor: cor("--superficie"), tension: 0, spanGaps: false,
+  });
+  const dicaPrecos = dicaExterna((pontos) => {
+    const i = indices[pontos[0].dataIndex];
+    const linhas = pontos.map((d) => ({ corSerie: d.dataset.borderColor, valor: porTonelada(d.raw), serie: d.dataset.label }));
+    const extras = [`Base: ${baseDe(i).base} (${baseDe(i).comparacao})`, `Importado: ${toneladas(valor("t", i))}`];
+    if (pequena(i)) extras.push(`Amostra pequena (menos de ${fmt0.format(bm.corte_amostra_t)} t): FOB ${porTonelada(valor("fob", i))}, CIF ${porTonelada(valor("cif", i))}, fora das linhas`);
+    return { titulo: pontos[0].label, linhas, extras };
+  });
+  document.getElementById("grafico-bm").setAttribute("aria-label", `${prod.nome}: preço FOB e CIF do Brasil e benchmark do Banco Mundial, em US$ por tonelada, de ${rotulos[0]} a ${rotulos[rotulos.length - 1]}. A tabela abaixo traz os valores.`);
+  novoGrafico("grafico-bm", {
+    type: "line",
+    data: {
+      labels: rotulos,
+      datasets: [
+        linha("Banco Mundial", indices.map((i) => valor("bm", i)), corBm, "Banco Mundial", true),
+        linha("CIF Brasil", semPequena("cif"), corCif, "CIF"),
+        linha("FOB Brasil", semPequena("fob"), corProd, "FOB"),
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: estreito() ? 8 : 112 } },
+      interaction: { mode: "index", intersect: false },
+      scales: eixos({ formatarY: (v) => fmt0.format(v), maxTicksX: estreito() ? 4 : 8 }),
+      // No celular a legenda acima identifica as linhas; o rótulo na ponta tomaria o gráfico.
+      plugins: { legend: { display: false }, rotulosFinais: { ativo: !estreito() }, quebras: { marcas }, tooltip: { enabled: false, external: dicaPrecos } },
+    },
+    plugins: [pluginCruz, pluginRotulosFinais, pluginQuebras],
+  });
+
+  // Gráfico 2: spread na base comparável, em barras (um eixo só, em %)
+  texto("nota-spread", `FOB Brasil − benchmark quando o benchmark é FOB; CIF Brasil − benchmark quando ele já é um preço no destino. Acima de zero, o Brasil pagou mais que a referência.${nPequena ? ` ${nPequena} ${nPequena === 1 ? "mês" : "meses"} com menos de ${fmt0.format(bm.corte_amostra_t)} t ficam fora dos gráficos (estão na tabela).` : ""}`);
+  const spreads = semPequena("spread_pct");
+  document.getElementById("grafico-spread").setAttribute("aria-label", `${prod.nome}: spread em relação ao benchmark do Banco Mundial, em porcentagem, de ${rotulos[0]} a ${rotulos[rotulos.length - 1]}. A tabela abaixo traz os valores.`);
+  const escalasSpread = eixos({ formatarY: (v) => `${fmt0.format(v)}%`, maxTicksX: estreito() ? 4 : 8 });
+  escalasSpread.y.grid = { ...escalasSpread.y.grid, color: (c) => (c.tick?.value === 0 ? cor("--eixo") : cor("--grade")) };
+  novoGrafico("grafico-spread", {
+    type: "bar",
+    data: { labels: rotulos, datasets: [{ label: "Spread", data: spreads, backgroundColor: corProd, borderRadius: 2, borderSkipped: "start", barPercentage: 0.9, categoryPercentage: 0.9 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      scales: escalasSpread,
+      plugins: {
+        legend: { display: false }, quebras: { marcas },
+        tooltip: {
+          enabled: false,
+          external: dicaExterna((pontos) => {
+            const i = indices[pontos[0].dataIndex];
+            const usd = valor("spread_usd_t", i);
+            return {
+              titulo: pontos[0].label,
+              linhas: [{ corSerie: corProd, valor: variacao(pontos[0].raw), serie: `${baseDe(i).comparacao} · ${nulo(usd) ? "–" : `${usd >= 0 ? "+" : MENOS}US$ ${fmt0.format(Math.abs(usd))}/t`}` }],
+              extras: [`Base: ${baseDe(i).base}`, `Custo posto (CIF − benchmark): ${porTonelada(valor("custo_posto_usd_t", i))}`],
+            };
+          }),
+        },
+      },
+    },
+    plugins: [pluginQuebras],
+  });
+
+  // Gráfico 3: CIF em reais
+  texto("nota-brl", `${prod.nome} · CIF Brasil × PTAX venda média do mês (BCB). A relação de troca com a soja é US$/US$ e não muda com o câmbio.`);
+  document.getElementById("grafico-brl").setAttribute("aria-label", `${prod.nome}: preço CIF do Brasil em reais por tonelada, de ${rotulos[0]} a ${rotulos[rotulos.length - 1]}. A tabela abaixo traz os valores.`);
+  novoGrafico("grafico-brl", {
+    type: "line",
+    data: { labels: rotulos, datasets: [linha("CIF em reais", semPequena("cif_brl_t"), corProd, null)] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      scales: eixos({ formatarY: (v) => fmtCompacto.format(v), maxTicksX: estreito() ? 4 : 8 }),
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          enabled: false,
+          external: dicaExterna((pontos) => {
+            const i = indices[pontos[0].dataIndex];
+            return {
+              titulo: pontos[0].label,
+              linhas: [{ corSerie: corProd, valor: reais(pontos[0].raw), serie: "CIF em reais" }],
+              extras: [`CIF ${porTonelada(valor("cif", i))} × PTAX ${nulo(ptax(i)) ? "–" : `R$ ${fmt4.format(ptax(i))}`}`],
+            };
+          }),
+        },
+      },
+    },
+    plugins: [pluginCruz],
+  });
+
+  const n = (v, f) => (nulo(v) ? "–" : f.format(v));
+  tabela("tabela-bm",
+    [{ titulo: "Mês" }, { titulo: "Toneladas", num: true }, { titulo: "FOB Brasil US$/t", num: true }, { titulo: "CIF Brasil US$/t", num: true },
+      { titulo: "Banco Mundial US$/t", num: true }, { titulo: "Base" }, { titulo: "Spread US$/t", num: true }, { titulo: "Spread %", num: true },
+      { titulo: "Custo posto US$/t", num: true }, { titulo: "PTAX R$/US$", num: true }, { titulo: "CIF R$/t", num: true }, { titulo: "Amostra" }],
+    indices.map((i) => [rotuloMes(p[i]), n(valor("t", i), fmt0), n(valor("fob", i), fmt0), n(valor("cif", i), fmt0), n(valor("bm", i), fmt1),
+      `${baseDe(i).base} (${baseDe(i).comparacao})`, n(valor("spread_usd_t", i), fmt0), n(valor("spread_pct", i), fmt1), n(valor("custo_posto_usd_t", i), fmt0),
+      n(ptax(i), fmt4), n(valor("cif_brl_t", i), fmt0), pequena(i) ? "pequena" : ""]));
+}
+
 function desenharHhi() {
   const anoDe = Number(estado.de.slice(0, 4)), anoAte = Number(estado.ate.slice(0, 4));
   const anos = dados.anual.anos.filter((a) => a >= anoDe && a <= anoAte);
@@ -1253,11 +1485,13 @@ function lerUrl() {
   if (["TOTAL", ...GRUPOS].includes(q.get("grupo"))) estado.grupo = q.get("grupo");
   if (p.includes(q.get("de"))) estado.de = q.get("de");
   if (p.includes(q.get("ate"))) estado.ate = q.get("ate");
+  if (ORDEM_BM.includes(q.get("bm"))) estado.bm = q.get("bm");
   if (!estado.ate) estado.ate = p[p.length - 1];
   if (!estado.de || estado.de > estado.ate) estado.de = p[0];
 }
 function gravarUrl() {
   const q = new URLSearchParams({ grupo: estado.grupo, de: estado.de, ate: estado.ate });
+  if (dados.benchmark && estado.bm) q.set("bm", estado.bm);
   history.replaceState(null, "", `#${q}`);
 }
 
@@ -1309,6 +1543,7 @@ function sincronizarFiltros() {
 }
 
 function rodape() {
+  if (dados.benchmark) texto("fonte-rodape", "Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX");
   const fim = dados.meta.periodo.fim;
   const atualizado = document.querySelector('meta[name="atualizado"]').content;
   const partes = [`Dados de ${rotuloMes(dados.meta.periodo.inicio)} a ${rotuloMes(fim)}`];
@@ -1328,6 +1563,7 @@ function atualizar() {
   desenharPrecos(indices);
   desenharFrete(indices);
   desenharTroca(indices);
+  desenharBenchmark(indices);
   desenharHhi();
 }
 
