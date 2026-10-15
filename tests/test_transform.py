@@ -274,6 +274,9 @@ def test_gerar_grava_as_tabelas_e_um_dashboard_json_valido(tmp_path, monkeypatch
     painel = json.loads((tmp_path / "dashboard.json").read_text(encoding="utf-8"))
     assert painel["meta"]["fonte"] == "Comex Stat/MDIC"
     assert painel["meta"]["periodo"] == {"inicio": "2024-01", "fim": "2025-12"}
+    # números do hero do dashboard: NCMs com importação nos dados e os monitorados na tabela
+    assert painel["meta"]["ncms"]["com_importacao"] == dois_anos()["co_ncm"].nunique()
+    assert painel["meta"]["ncms"]["monitorados"] == len(pd.read_csv(config.NCM_CSV, dtype=str))
     assert len(painel["mensal"]["periodos"]) == 24 and len(painel["mensal"]["K"]["preco_fob"]) == 24
     # valores somáveis por mês: o dashboard calcula US$/t de qualquer recorte a partir deles
     for grupo in [*transform.GRUPOS, transform.TOTAL]:

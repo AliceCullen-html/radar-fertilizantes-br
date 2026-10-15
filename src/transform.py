@@ -339,8 +339,12 @@ def _ranking(tabela: pd.DataFrame, codigo: str, nome: str, com_preco: bool) -> l
     return linhas
 
 
-def dashboard(tabelas: dict[str, pd.DataFrame], fonte_pink: dict | None = None) -> dict:
-    """Export compacto (séries mensais, resumo anual, rankings e sazonalidade) para a fase 3."""
+def dashboard(tabelas: dict[str, pd.DataFrame], fonte_pink: dict | None = None, ncms: dict | None = None) -> dict:
+    """Export compacto (séries mensais, resumo anual, rankings e sazonalidade) para a fase 3.
+
+    `ncms` ({"monitorados": n, "com_importacao": n}) vai para o meta: o hero do dashboard
+    mostra esses números, sempre vindos dos dados.
+    """
     precos_grupo = tabelas["precos_mes_grupo"]
     origens, urfs = tabelas["share_origem_ano"], tabelas["share_urf_ano"]
     conc, saz = tabelas["hhi_ano_grupo"], tabelas["sazonalidade_grupo"]
@@ -408,6 +412,7 @@ def dashboard(tabelas: dict[str, pd.DataFrame], fonte_pink: dict | None = None) 
             "fonte": "Comex Stat/MDIC",
             "periodo": {"inicio": periodos[0], "fim": periodos[-1]},
             "grupos": NOMES_GRUPOS,
+            **({"ncms": ncms} if ncms else {}),
             "unidades": {
                 "t": "toneladas",
                 "fob_musd": "US$ milhões FOB",
@@ -502,7 +507,10 @@ def gerar(
     saida.mkdir(parents=True, exist_ok=True)
     for nome, df in tabelas.items():
         _arredondar(df).to_csv(saida / f"{nome}.csv", index=False, encoding="utf-8", lineterminator="\n")
-    painel = json.dumps(dashboard(tabelas, fonte_pink), ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    ncms = {"com_importacao": int(base["co_ncm"].nunique())}
+    if config.NCM_CSV.exists():
+        ncms = {"monitorados": len(pd.read_csv(config.NCM_CSV, dtype=str)), **ncms}
+    painel = json.dumps(dashboard(tabelas, fonte_pink, ncms), ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     (saida / "dashboard.json").write_text(painel + "\n", encoding="utf-8")
     return tabelas
 
