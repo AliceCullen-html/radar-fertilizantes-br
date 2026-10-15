@@ -170,38 +170,61 @@
     <section class="bloco" id="fluxos" aria-labelledby="t-fluxos">
       <header class="bloco-cabecalho">
         <p class="kicker">04 · Mapa de fluxos</p>
-        <h2 class="titulo-bloco" id="t-fluxos" tabindex="-1">Do porto de origem ao porto de chegada</h2>
-        <p class="bloco-lead">Toneladas por país de origem e as rotas até cada porto brasileiro, ano a ano. Clique (ou use Tab e Enter) numa origem ou num porto; Esc volta à visão geral.</p>
+        <h2 class="titulo-bloco" id="t-fluxos" tabindex="-1">De onde vem e por onde entra</h2>
+        <p class="bloco-lead">Cada arco leva a carga de um país até o Brasil: quanto mais grosso, mais toneladas no ano. Clique num país (ou use Tab e Enter) para ver por quais portos ela entra; num porto, para ver de onde ela vem. Esc volta à visão geral.</p>
       </header>
-      <div class="fluxos" id="fluxos-app">
+      <div class="fluxos" id="fluxos-app" data-grupo="TOTAL">
         <div class="fluxos-controles">
           <div class="segmentado" id="fluxos-grupo" role="group" aria-label="Grupo de nutriente"></div>
-          <button class="botao-contorno fluxos-voltar" id="fluxos-voltar" type="button" hidden><span class="icone"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>Visão geral</button>
+          <button class="botao-contorno fluxos-pausa" id="fluxos-pausa" type="button" aria-pressed="false"><span class="icone"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3h2v10H5zM9 3h2v10H9z" fill="currentColor"/></svg></span><span>Pausar animação</span></button>
         </div>
         <div class="fluxos-quadro">
-          <div class="fluxos-palco" id="fluxos-palco">
-            <canvas id="fluxos-canvas" aria-hidden="true"></canvas>
-            <svg id="fluxos-svg" role="group" aria-label="Mapa de fluxos: países de origem e portos de chegada"></svg>
-            <p class="chip-mapa fluxos-chip" id="fluxos-chip-brasil" hidden></p>
-            <p class="fluxos-carregando" id="fluxos-carregando">Carregando o mapa…</p>
+          <div class="fluxos-resumo" id="fluxos-resumo">
+            <p class="kicker" id="fluxos-resumo-kicker"></p>
+            <p class="fluxos-total"><span id="fluxos-total">–</span> <span class="unidade" id="fluxos-unidade">milhões de t importadas</span></p>
+            <p class="fluxos-resumo-texto" id="fluxos-resumo-texto"></p>
+            <ul class="fluxos-legenda" aria-hidden="true">
+              <li id="fluxos-legenda-pais"><svg viewBox="0 0 22 14"><circle cx="5" cy="7" r="3"/><circle cx="15" cy="7" r="5.5"/></svg>área do círculo: toneladas do país</li>
+              <li id="fluxos-legenda-arco"><svg viewBox="0 0 22 14"><path d="M1 12 Q11 -2 21 6"/></svg><span>espessura: toneladas até o Brasil</span></li>
+              <li id="fluxos-legenda-porto"><svg viewBox="0 0 22 14"><path class="losango" d="M11 2 16 7 11 12 6 7z"/></svg><span>porto de chegada</span></li>
+            </ul>
           </div>
-          <aside class="fluxos-painel" id="fluxos-painel" aria-live="polite" aria-labelledby="fluxos-painel-titulo" hidden>
-            <p class="kicker" id="fluxos-painel-kicker"></p>
-            <h3 id="fluxos-painel-titulo"></h3>
-            <dl class="fluxos-numeros" id="fluxos-numeros"></dl>
-            <h4 id="fluxos-lista-titulo"></h4>
-            <ol class="fluxos-lista" id="fluxos-lista"></ol>
-            <p class="nota" id="fluxos-painel-nota"></p>
-          </aside>
+          <div class="fluxos-mapa">
+            <div class="fluxos-palco" id="fluxos-palco">
+              <canvas id="fluxos-canvas" aria-hidden="true"></canvas>
+              <svg id="fluxos-svg" role="group" aria-label="Mapa de fluxos: países de origem e portos de chegada. Use as setas para percorrer os países e portos e Enter para abrir."></svg>
+              <button class="botao-contorno fluxos-voltar" id="fluxos-voltar" type="button" hidden><span class="icone"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>Visão geral</button>
+              <p class="fluxos-carregando" id="fluxos-carregando">Carregando o mapa…</p>
+            </div>
+            <aside class="fluxos-painel" id="fluxos-painel" aria-labelledby="fluxos-painel-titulo">
+              <p class="kicker" id="fluxos-painel-kicker"></p>
+              <h3 id="fluxos-painel-titulo" tabindex="-1"></h3>
+              <p class="fluxos-dica" id="fluxos-dica"></p>
+              <div class="segmentado pequeno" id="fluxos-abas" role="group" aria-label="Ranking por">
+                <span class="indicador" aria-hidden="true"></span>
+                <button type="button" data-visao="origens" aria-pressed="true">Países</button>
+                <button type="button" data-visao="portos" aria-pressed="false">Portos</button>
+              </div>
+              <dl class="fluxos-numeros" id="fluxos-numeros" hidden></dl>
+              <h4 id="fluxos-lista-titulo"></h4>
+              <p class="fluxos-cabecalho-lista" id="fluxos-cabecalho-lista" aria-hidden="true"><span>toneladas</span><span>% do total · var. a/a</span></p>
+              <ol class="fluxos-lista" id="fluxos-lista"></ol>
+              <p class="nota" id="fluxos-painel-nota"></p>
+            </aside>
+          </div>
+          <div class="fluxos-tempo">
+            <button class="botao-contorno" id="fluxos-play" type="button"><span class="icone"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"/></svg></span><span>Reproduzir</span></button>
+            <div class="fluxos-linha-tempo">
+              <ol class="fluxos-marcas" id="fluxos-marcas" aria-hidden="true"></ol>
+              <label class="fluxos-ano"><span class="leitor">Ano</span>
+                <input type="range" id="fluxos-ano" min="0" max="0" step="1" value="0" aria-describedby="fluxos-ano-valor">
+              </label>
+            </div>
+            <output class="fluxos-ano-valor" id="fluxos-ano-valor"></output>
+          </div>
+          <p class="leitor" id="fluxos-anuncio" aria-live="polite"></p>
         </div>
-        <div class="fluxos-tempo">
-          <button class="botao-contorno" id="fluxos-play" type="button" aria-label="Reproduzir a linha do tempo"><span class="icone"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"/></svg></span><span>Play</span></button>
-          <label class="fluxos-ano"><span class="rotulo">Ano</span> <output id="fluxos-ano-valor"></output>
-            <input type="range" id="fluxos-ano" min="0" max="0" step="1" value="0" aria-describedby="fluxos-ano-valor">
-          </label>
-          <ol class="fluxos-marcas" id="fluxos-marcas" aria-hidden="true"></ol>
-        </div>
-        <p class="nota fluxos-fonte" id="fluxos-fonte">Fonte: Comex Stat/MDIC · Base cartográfica: Natural Earth. Arcos só para rotas com pelo menos 50 mil t no ano (proporcional num ano parcial); as menores ficam em "outras".</p>
+        <p class="nota fluxos-fonte" id="fluxos-fonte">Fonte: Comex Stat/MDIC · Base cartográfica: Natural Earth. Na visão geral, um arco por país de origem até o Brasil (as maiores origens do ano). Ao clicar num país ou porto, só as rotas com pelo menos 50 mil t no ano ganham arco (proporcional num ano parcial); as menores ficam em "outras".</p>
         <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-fluxos"></div></details>
       </div>
     </section>

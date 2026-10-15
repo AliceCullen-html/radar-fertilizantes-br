@@ -67,61 +67,112 @@ def _abrir(navegador, servidor, largura, tema, reduzido=False, hash_=""):
     return ctx, pg, erros
 
 
+def _mi(t):
+    return f"{t / 1e6:.1f}".replace(".", ",")
+
+
 @pytest.mark.parametrize("largura", [1440, 390])
 @pytest.mark.parametrize("tema", ["light", "dark"])
 def test_mapa_de_fluxos_sem_erros_e_sem_rolagem_lateral(navegador, servidor, largura, tema):
     ctx, pg, erros = _abrir(navegador, servidor, largura, tema)
     dados = pg.evaluate("radarDados.mapa")
-    ano = pg.evaluate("Number(document.getElementById('fluxos-ano-valor').textContent.slice(0, 4))")
-    total = dados["dados"][str(ano)]["TOTAL"]["t"]
-    assert pg.evaluate("document.getElementById('fluxos-chip-brasil').textContent").endswith(f"importadas em {ano}")
-    assert f"{total / 1e6:.1f}".replace(".", ",") in pg.evaluate("document.getElementById('fluxos-chip-brasil').textContent")
-    # clique na maior origem: painel com os números do dashboard.json
-    maior = dados["dados"][str(ano)]["TOTAL"]["origens"][0]
+    ano = pg.evaluate("Number(document.getElementById('fluxos-ano-valor').firstChild.textContent)")
+    r = dados["dados"][str(ano)]["TOTAL"]
+    # resumo: total do ano e grupo, e o ranking das origens no painel
+    assert pg.evaluate("document.getElementById('fluxos-total').textContent") == _mi(r["t"])
+    assert str(ano) in pg.evaluate("document.getElementById('fluxos-resumo-kicker').textContent")
+    assert pg.evaluate("document.getElementById('fluxos-painel-titulo').textContent") == "Principais origens"
+    maior = r["origens"][0]
     nome = dados["paises"][maior[0]][0]
+    assert pg.evaluate("document.querySelector('#fluxos-lista .linha .nome').textContent") == nome
+    # visão geral: um arco por origem até o Brasil, as mesmas do ranking
+    linhas = pg.evaluate("document.querySelectorAll('#fluxos-lista .linha[data-chave^=\"o:\"]').length")
+    assert 5 <= linhas <= 8
+    assert pg.evaluate("document.querySelectorAll('#fluxos-svg .fluxo').length") == linhas
+    # clique na maior origem: painel com os números do dashboard.json e um arco por rota acima do corte
     pg.evaluate(CLIQUE, f"#fluxos-svg .marcador.origem[aria-label^='{nome}:']")
     pg.wait_for_timeout(1800)
     assert pg.evaluate("document.getElementById('fluxos-painel-titulo').textContent") == nome
     assert pg.evaluate("location.hash").endswith(f"origem={maior[0]}")
-    rotas = [r for r in dados["dados"][str(ano)]["TOTAL"]["rotas"] if r[0] == maior[0]]
-    assert pg.evaluate("document.querySelectorAll('#fluxos-svg .arco').length") == len(rotas)
+    rotas = [x for x in r["rotas"] if x[0] == maior[0]]
+    assert pg.evaluate("document.querySelectorAll('#fluxos-svg .fluxo').length") == len(rotas)
+    assert nome in pg.evaluate("document.getElementById('fluxos-anuncio').textContent")
     pg.keyboard.press("Escape")
     pg.wait_for_timeout(1500)
-    assert pg.evaluate("document.getElementById('fluxos-painel').hidden")
+    assert pg.evaluate("document.getElementById('fluxos-painel-titulo').textContent") == "Principais origens"
+    assert "origem=" not in pg.evaluate("location.hash")
     assert pg.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth") == 0
     assert erros == []
     ctx.close()
 
 
-def test_linha_do_tempo_e_filtro_de_grupo_da_pagina(navegador, servidor):
+def test_linha_do_tempo_ranking_e_filtro_de_grupo_da_pagina(navegador, servidor):
     ctx, pg, erros = _abrir(navegador, servidor, 1440, "light")
     pg.evaluate(CLIQUE, "#fluxos-grupo button[data-grupo='K']")
     assert pg.evaluate("document.querySelector('#filtro-grupo .chip[aria-pressed=true]').dataset.grupo") == "K"
+    assert pg.evaluate("document.getElementById('fluxos-app').dataset.grupo") == "K"
     dados = pg.evaluate("radarDados.mapa")
     for ano in (2021, 2022, 2023):
         pg.evaluate(f"() => {{ const f = document.getElementById('fluxos-ano'); f.value = String(radarDados.mapa.anos.indexOf({ano})); f.dispatchEvent(new Event('input')); }}")
         pg.wait_for_timeout(900)
-        chip = pg.evaluate("document.getElementById('fluxos-chip-brasil').textContent")
-        assert f"{dados['dados'][str(ano)]['K']['t'] / 1e6:.1f}".replace(".", ",") in chip and str(ano) in chip
+        r = dados["dados"][str(ano)]["K"]
+        assert pg.evaluate("document.getElementById('fluxos-total').textContent") == _mi(r["t"])
+        nomes = pg.evaluate("[...document.querySelectorAll('#fluxos-lista .linha[data-chave] .nome')].map(e => e.textContent)")
+        assert nomes == [dados["paises"][o[0]][0] for o in r["origens"][: len(nomes)]]
         assert "grupo=K" in pg.evaluate("location.hash") and f"ano={ano}" in pg.evaluate("location.hash")
-    # porto: a visão se inverte para as origens que chegam nele
-    pg.evaluate(CLIQUE, "#fluxos-svg .marcador.porto")
+        assert pg.evaluate("document.querySelector('#fluxos-marcas li.atual').dataset.ano") == str(ano)
+    # aba de portos e clique num porto: a visão se inverte para as origens que chegam nele
+    pg.evaluate(CLIQUE, "#fluxos-abas button[data-visao='portos']")
+    pg.wait_for_timeout(600)
+    assert pg.evaluate("document.getElementById('fluxos-painel-titulo').textContent") == "Principais portos"
+    pg.evaluate(CLIQUE, "#fluxos-lista .linha")
     pg.wait_for_timeout(1800)
     assert pg.evaluate("document.getElementById('fluxos-painel-kicker').textContent").startswith("Porto")
+    assert "porto=" in pg.evaluate("location.hash")
+    assert erros == []
+    ctx.close()
+
+
+def test_destaque_ao_passar_o_mouse_no_ranking(navegador, servidor):
+    ctx, pg, erros = _abrir(navegador, servidor, 1440, "light")
+    pg.hover("#fluxos-lista li:nth-child(2) .linha")
+    pg.wait_for_timeout(300)
+    assert pg.evaluate("document.getElementById('fluxos-svg').classList.contains('com-destaque')")
+    assert pg.evaluate("document.querySelectorAll('#fluxos-svg .fluxo.destacado').length") == 1
+    pg.mouse.move(2, 2)
+    pg.wait_for_timeout(300)
+    assert not pg.evaluate("document.getElementById('fluxos-svg').classList.contains('com-destaque')")
     assert erros == []
     ctx.close()
 
 
 def test_teclado_e_movimento_reduzido(navegador, servidor):
     ctx, pg, erros = _abrir(navegador, servidor, 1440, "light", reduzido=True, hash_="#grupo=K&ano=2025")
-    assert pg.evaluate("document.querySelectorAll('#fluxos-svg .navio').length") == 0  # sem navios
+    assert pg.evaluate("document.querySelectorAll('#fluxos-svg .navio').length") == 0  # sem cometas
+    assert pg.evaluate("document.getElementById('fluxos-svg').getAnimations({subtree: true}).length") == 0  # nem anéis pulsando
+    # um só ponto de parada do Tab no mapa; as setas andam entre os marcadores
+    assert pg.evaluate("document.querySelectorAll('#fluxos-svg .marcador[tabindex=\"0\"]').length") == 1
+    pg.focus("#fluxos-svg .marcador[tabindex='0']")
+    primeiro = pg.evaluate("document.activeElement.getAttribute('aria-label')")
+    pg.keyboard.press("ArrowRight")
+    assert pg.evaluate("document.activeElement.getAttribute('aria-label')") != primeiro
     pg.focus("#fluxos-svg .marcador.origem")
     rotulo = pg.evaluate("document.activeElement.getAttribute('aria-label')")
     pg.keyboard.press("Enter")
     pg.wait_for_timeout(300)
     assert pg.evaluate("document.getElementById('fluxos-painel-titulo').textContent") == rotulo.split(":")[0]
-    assert pg.evaluate("document.activeElement.getAttribute('aria-label')") is not None  # o foco continua no marcador
-    assert pg.evaluate("document.getElementById('fluxos-painel').getAttribute('aria-live')") == "polite"
+    assert pg.evaluate("document.activeElement.getAttribute('aria-label')") == rotulo  # o foco continua no marcador
+    assert pg.evaluate("document.getElementById('fluxos-anuncio').getAttribute('aria-live')") == "polite"
+    assert rotulo.split(":")[0] in pg.evaluate("document.getElementById('fluxos-anuncio').textContent")
+    # as linhas do painel também são botões
+    pg.focus("#fluxos-lista .linha")
+    pg.keyboard.press("Enter")
+    pg.wait_for_timeout(300)
+    assert pg.evaluate("document.getElementById('fluxos-painel-kicker').textContent").startswith("Porto")
+    assert pg.evaluate("document.activeElement.id") == "fluxos-painel-titulo"  # o foco não cai no <body>
+    pg.keyboard.press("Escape")
+    pg.wait_for_timeout(300)
+    assert pg.evaluate("document.activeElement.tagName") != "BODY"
     assert erros == []
     ctx.close()
 
@@ -130,7 +181,27 @@ def test_tabela_alternativa_tem_as_origens_do_ano(navegador, servidor):
     ctx, pg, erros = _abrir(navegador, servidor, 1440, "light", reduzido=True)
     linhas = pg.evaluate("document.querySelectorAll('#tabela-fluxos table:first-of-type tbody tr').length")
     dados = pg.evaluate("radarDados.mapa")
-    ano = pg.evaluate("Number(document.getElementById('fluxos-ano-valor').textContent.slice(0, 4))")
+    ano = pg.evaluate("Number(document.getElementById('fluxos-ano-valor').firstChild.textContent)")
     assert linhas == len(dados["dados"][str(ano)]["TOTAL"]["origens"]) + 1  # + "Outros"
     assert json.dumps(erros) == "[]"
+    ctx.close()
+
+
+def test_play_percorre_a_serie_e_ano_parcial_mostra_o_corte_proporcional(navegador, servidor):
+    ctx, pg, erros = _abrir(navegador, servidor, 1440, "light", reduzido=True)
+    dados = pg.evaluate("radarDados.mapa")
+    anos, meses = dados["anos"], dados["n_meses"]
+    pg.evaluate(CLIQUE, "#fluxos-play")
+    pg.wait_for_timeout(200)
+    assert pg.evaluate("Number(document.getElementById('fluxos-ano-valor').firstChild.textContent)") == anos[0]
+    pg.evaluate(CLIQUE, "#fluxos-play")  # pausa
+    # ano parcial: o texto das rotas usa o corte proporcional do bloco, não 50 mil t
+    if meses[-1] < 12:
+        pg.evaluate(f"() => {{ const f = document.getElementById('fluxos-ano'); f.value = '{len(anos) - 1}'; f.dispatchEvent(new Event('input')); }}")
+        pg.evaluate(CLIQUE, "#fluxos-lista .linha")
+        pg.wait_for_timeout(300)
+        corte = dados["corte_rota_t"][-1] / 1000
+        titulo = pg.evaluate("document.getElementById('fluxos-lista-titulo').textContent")
+        assert f"{corte:g}".replace(".", ",") + " mil t em jan" in titulo
+    assert erros == []
     ctx.close()
