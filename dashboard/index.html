@@ -16,219 +16,55 @@
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='7' width='3' height='8' rx='1' fill='%232a78d6'/%3E%3Crect x='6' y='3' width='3' height='12' rx='1' fill='%23eb6834'/%3E%3Crect x='11' y='9' width='3' height='6' rx='1' fill='%231baf7a'/%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous" defer></script>
-<style>
-:root {
-  color-scheme: light;
-  --pagina: #f9f9f7;
-  --superficie: #fcfcfb;
-  --texto: #0b0b0b;
-  --texto-2: #52514e;
-  --texto-3: #898781;
-  --grade: #e1e0d9;
-  --eixo: #c3c2b7;
-  --borda: rgba(11, 11, 11, 0.10);
-  --lavagem: rgba(11, 11, 11, 0.05);
-  --g-n: #2a78d6;
-  --g-p: #eb6834;
-  --g-k: #1baf7a;
-  --g-npk: #eda100;
-  --g-total: #6250d6;
-  --cif: #898781;
-  --outros: #b4b2aa;
-  --foco: #2a78d6;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --pagina: #0d0d0d;
-    --superficie: #1a1a19;
-    --texto: #f0efec;
-    --texto-2: #c3c2b7;
-    --texto-3: #898781;
-    --grade: #2c2c2a;
-    --eixo: #383835;
-    --borda: rgba(255, 255, 255, 0.10);
-    --lavagem: rgba(255, 255, 255, 0.06);
-    --g-n: #3987e5;
-    --g-p: #d95926;
-    --g-k: #199e70;
-    --g-npk: #c98500;
-    --g-total: #9085e9;
-    --cif: #898781;
-    --outros: #5c5b56;
-    --foco: #3987e5;
-  }
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --pagina: #0d0d0d;
-  --superficie: #1a1a19;
-  --texto: #f0efec;
-  --texto-2: #c3c2b7;
-  --texto-3: #898781;
-  --grade: #2c2c2a;
-  --eixo: #383835;
-  --borda: rgba(255, 255, 255, 0.10);
-  --lavagem: rgba(255, 255, 255, 0.06);
-  --g-n: #3987e5;
-  --g-p: #d95926;
-  --g-k: #199e70;
-  --g-npk: #c98500;
-  --g-total: #9085e9;
-  --cif: #898781;
-  --outros: #5c5b56;
-  --foco: #3987e5;
-}
-
-* { box-sizing: border-box; }
-html { background: var(--pagina); }
-body {
-  margin: 0;
-  background: var(--pagina);
-  color: var(--texto);
-  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  -webkit-text-size-adjust: 100%;
-}
-a { color: inherit; text-underline-offset: 2px; }
-:focus-visible { outline: 2px solid var(--foco); outline-offset: 2px; }
-.pagina { max-width: 1200px; margin: 0 auto; padding: 16px; }
-
-header.topo { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; margin: 8px 0 16px; }
-header.topo h1 { font-size: 20px; line-height: 1.2; margin: 0 0 4px; font-weight: 650; letter-spacing: -0.01em; }
-header.topo p { margin: 0; color: var(--texto-2); }
-.botao-tema {
-  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px;
-  border: 1px solid var(--borda); border-radius: 999px; background: var(--superficie); color: var(--texto-2);
-  font: inherit; cursor: pointer;
-}
-.botao-tema:hover { background: var(--lavagem); }
-.botao-tema svg { width: 16px; height: 16px; }
-
-.filtros { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; margin-bottom: 16px; }
-.filtro { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.filtro > .rotulo { font-size: 12px; color: var(--texto-2); }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip {
-  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px;
-  border: 1px solid var(--borda); border-radius: 999px; background: var(--superficie); color: var(--texto);
-  font: inherit; cursor: pointer; white-space: nowrap;
-}
-.chip:hover { background: var(--lavagem); }
-.chip[aria-pressed="true"] { border-color: var(--texto); box-shadow: inset 0 0 0 1px var(--texto); font-weight: 600; }
-.chip .ponto { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-.intervalo { display: flex; gap: 8px; flex-wrap: wrap; }
-.intervalo label { display: inline-flex; align-items: center; gap: 6px; color: var(--texto-2); font-size: 13px; }
-.intervalo select, .seletor-ano select {
-  min-height: 36px; padding: 0 8px; border: 1px solid var(--borda); border-radius: 8px;
-  background: var(--superficie); color: var(--texto); font: inherit;
-}
-
-.cartao { background: var(--superficie); border: 1px solid var(--borda); border-radius: 12px; padding: 16px; min-width: 0; }
-.cartao h2 { font-size: 15px; font-weight: 650; margin: 0; }
-.cartao .nota { margin: 2px 0 0; color: var(--texto-2); font-size: 13px; }
-.grade { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px; }
-.grade > * { min-width: 0; }
-@media (min-width: 900px) { .grade.duas { grid-template-columns: 1fr 1fr; } }
-
-.kpis .cabecalho { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; align-items: baseline; }
-.kpi-bloco { margin-top: 14px; }
-.kpi-bloco > h3 { font-size: 12px; font-weight: 600; color: var(--texto-2); margin: 0 0 8px; text-transform: none; }
-.kpi-linha { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-@media (min-width: 720px) { .kpi-linha { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-.kpi { border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px; min-width: 0; }
-.kpi .rotulo { font-size: 12px; color: var(--texto-2); }
-.kpi .valor { font-size: 22px; font-weight: 650; line-height: 1.2; margin-top: 2px; letter-spacing: -0.01em; overflow-wrap: anywhere; }
-.kpi .delta { font-size: 12px; color: var(--texto-2); margin-top: 2px; }
-
-.legenda { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 12px; color: var(--texto-2); }
-.legenda li { display: inline-flex; align-items: center; gap: 6px; }
-.legenda .chave-area { width: 12px; height: 12px; border-radius: 3px; }
-.legenda .chave-linha { width: 14px; height: 2px; border-radius: 1px; }
-.legenda .chave-limiar { width: 14px; height: 0; border-top: 2px dashed var(--texto-3); }
-.legenda .chave-tracejada { width: 14px; height: 0; border-top: 2px dashed currentColor; }
-.legenda .chave-quebra { width: 0; height: 12px; border-left: 1px dashed var(--texto-2); }
-
-.grafico { position: relative; width: 100%; margin-top: 12px; }
-.grafico canvas { display: block; }
-.alto-300 { height: 300px; }
-.alto-260 { height: 260px; }
-@media (max-width: 600px) { .alto-300 { height: 260px; } .alto-260 { height: 230px; } }
-
-details.tabela { margin-top: 10px; }
-details.tabela summary { cursor: pointer; color: var(--texto-2); font-size: 13px; min-height: 32px; display: inline-flex; align-items: center; }
-.rolagem { overflow-x: auto; max-height: 360px; overflow-y: auto; margin-top: 6px; border: 1px solid var(--borda); border-radius: 8px; }
-table { border-collapse: collapse; width: 100%; font-size: 12px; }
-th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--grade); white-space: nowrap; }
-th { position: sticky; top: 0; background: var(--superficie); color: var(--texto-2); font-weight: 600; }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-
-.boletim .sobretitulo { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--texto-2); letter-spacing: 0.02em; }
-.boletim h2 { font-size: 18px; line-height: 1.3; }
-.boletim .lead { margin: 10px 0 0; font-size: 15px; line-height: 1.5; max-width: 78ch; }
-.boletim .texto p { margin: 10px 0 0; line-height: 1.55; max-width: 78ch; }
-.boletim details summary { cursor: pointer; color: var(--texto-2); font-size: 13px; min-height: 32px; display: inline-flex; align-items: center; margin-top: 6px; }
-.boletim .rodape-boletim { margin: 12px 0 0; color: var(--texto-2); font-size: 12px; max-width: 78ch; }
-.boletim .links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; font-size: 13px; }
-.boletim .selo { display: inline-block; margin-left: 6px; padding: 0 6px; border: 1px solid var(--borda); border-radius: 999px; font-weight: 600; }
-
-.ressalva {
-  margin: 10px 0 0; padding: 8px 12px; border-left: 3px solid var(--texto-3); border-radius: 0 8px 8px 0;
-  background: var(--lavagem); color: var(--texto-2); font-size: 13px;
-}
-.ressalva strong { color: var(--texto); font-weight: 600; }
-.kpi-linha.produtos { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 12px; }
-.kpi .titulo-produto { display: flex; align-items: center; gap: 6px; }
-.kpi .titulo-produto .ponto { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-
-.cabecalho-secao { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: flex-end; }
-.seletor-ano { display: inline-flex; align-items: center; gap: 6px; color: var(--texto-2); font-size: 13px; }
-.sankey { position: relative; width: 100%; margin-top: 12px; touch-action: pan-y; }
-.sankey svg { display: block; width: 100%; height: auto; overflow: visible; }
-.sankey .fita { fill-opacity: 0.32; transition: fill-opacity 120ms; }
-.sankey .fita.outros { fill-opacity: 0.4; }
-.sankey.focado .fita { fill-opacity: 0.08; }
-.sankey.focado .fita.ativa { fill-opacity: 0.72; }
-.sankey text { font-size: 12px; fill: var(--texto); }
-.sankey text .share { fill: var(--texto-3); }
-@media (prefers-reduced-motion: reduce) { .sankey .fita { transition: none; } }
-h3.subtitulo { font-size: 14px; font-weight: 650; margin: 20px 0 0; }
-.rolagem.alta { max-height: 640px; }
-td .barra { display: inline-block; height: 8px; border-radius: 2px; vertical-align: middle; }
-
-.aviso { padding: 16px; border: 1px solid var(--borda); border-radius: 12px; background: var(--superficie); }
-
-footer.rodape { color: var(--texto-2); font-size: 12px; padding: 8px 0 24px; display: grid; gap: 4px; }
-footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
-
-.dica {
-  position: fixed; z-index: 10; pointer-events: none; max-width: min(320px, calc(100vw - 16px));
-  background: var(--superficie); color: var(--texto); border: 1px solid var(--borda); border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); padding: 8px 10px; font-size: 12px;
-}
-.dica .titulo { color: var(--texto-2); margin-bottom: 4px; }
-.dica .linha { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-.dica .linha strong { font-weight: 650; }
-.dica .linha span.serie { color: var(--texto-2); }
-.dica .chave { width: 12px; height: 2px; border-radius: 1px; flex: none; }
-.dica .extra { color: var(--texto-2); margin-top: 2px; white-space: normal; }
-.oculto { display: none !important; }
-@media (min-width: 720px) { header.topo h1 { font-size: 24px; } }
-</style>
+<link rel="preload" href="assets/fontes/inter-tight-latin-300-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fontes/jetbrains-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/radar.css">
+<script src="assets/hero.js" defer></script>
 </head>
 <body>
-<div class="pagina">
-  <header class="topo">
-    <div>
-      <h1>Radar das importações de fertilizantes</h1>
-      <p>Brasil · adubos minerais e químicos (NCM 3102 a 3105) · Fonte: Comex Stat/MDIC</p>
-    </div>
-    <button class="botao-tema" id="botao-tema" type="button" aria-label="Alternar tema claro ou escuro">
-      <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1.5v11a5.5 5.5 0 0 1 0-11Z"/></svg>
-      <span id="rotulo-tema">Tema</span>
-    </button>
-  </header>
+<a class="pular" href="#conteudo">Pular para o conteúdo</a>
+<header class="barra-topo sobre-hero" id="barra-topo">
+  <a class="marca" href="#inicio" data-secao="inicio"><strong>Radar</strong><span>de fertilizantes</span></a>
+  <nav class="nav-pilula" id="nav-secoes" aria-label="Seções">
+    <span class="nav-indicador" aria-hidden="true"></span>
+      <a href="#boletim" data-secao="boletim">Boletim</a>
+      <a href="#volumes" data-secao="volumes">Volumes</a>
+      <a href="#origens" data-secao="origens">Origens</a>
+      <a href="#portos" data-secao="portos">Portos e rotas</a>
+      <a href="#precos" data-secao="precos">Preços</a>
+      <a href="#troca" data-secao="troca">Troca</a>
+      <a href="#metodo" data-secao="metodo">Método</a>
+  </nav>
+  <button class="botao-tema" id="botao-tema" type="button" aria-label="Alternar tema claro ou escuro">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1.5v11a5.5 5.5 0 0 1 0-11Z"/></svg>
+    <span id="rotulo-tema">Tema</span>
+  </button>
+</header>
 
-  <nav class="filtros" aria-label="Filtros">
+<section class="hero" id="inicio" aria-labelledby="titulo-hero">
+  <canvas class="mapa-pontos" id="mapa-hero" aria-hidden="true"></canvas>
+  <div class="hero-conteudo">
+    <p class="chip-legenda">Do país de origem ao porto de chegada.</p>
+    <div class="hero-texto">
+      <p class="kicker" id="kicker-hero" aria-live="polite">Importações brasileiras de fertilizantes</p>
+      <h1 id="titulo-hero">De onde vem o adubo do Brasil</h1>
+      <p class="lead">Importações de fertilizantes mês a mês: de que país vêm, por qual porto entram, quanto custam e quanto de soja paga cada tonelada no porto.</p>
+      <div class="botoes">
+        <a class="botao-contorno principal" href="#portos" data-secao="portos"><span class="icone"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="12" r="1.6" fill="currentColor"/><circle cx="13" cy="4" r="1.6" fill="currentColor"/><path d="M3 12C5 5 9 3 13 4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></span>Explorar as rotas</a>
+        <a class="botao-contorno" href="#volumes" data-secao="volumes"><span class="icone"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 14V9M6 14V5M10 14V7M14 14V2" stroke="currentColor" stroke-width="1.6" fill="none"/></svg></span>Ver a evolução</a>
+        <a class="botao-contorno" href="#troca" data-secao="troca"><span class="icone"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5h10M9 2l3 3-3 3M14 11H4M7 8l-3 3 3 3" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></span>Simular a troca</a>
+      </div>
+    </div>
+    <div class="hero-rodape">
+      <span id="fonte-hero">Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX · Base cartográfica: Natural Earth</span>
+      <span class="legenda-mapa" aria-hidden="true"><span><i class="ponto-outros"></i>Demais países</span><span><i class="ponto-brasil"></i>Brasil</span></span>
+    </div>
+  </div>
+  <p class="chip-mapa" id="chip-brasil" hidden></p>
+</section>
+
+<div class="pagina">
+  <div class="filtros" role="group" aria-label="Filtros">
     <div class="filtro">
       <span class="rotulo" id="rotulo-grupo">Grupo</span>
       <div class="chips" id="filtro-grupo" role="group" aria-labelledby="rotulo-grupo"></div>
@@ -244,15 +80,21 @@ footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
         <label>Até <select id="filtro-ate"></select></label>
       </div>
     </div>
-  </nav>
+  </div>
 
   <main id="conteudo">
     <noscript><p class="aviso">Este painel precisa de JavaScript para desenhar os gráficos.</p></noscript>
 
+    <section class="bloco" id="boletim" aria-labelledby="t-boletim">
+      <header class="bloco-cabecalho">
+        <p class="kicker">01 · Boletim</p>
+        <h2 class="titulo-bloco" id="t-boletim" tabindex="-1">O mês em resumo</h2>
+        <p class="bloco-lead">O boletim do mês, escrito por IA só com os números do pacote de fatos e validado antes de publicar, e os indicadores do último mês completo.</p>
+      </header>
     <section class="cartao grade boletim oculto" aria-labelledby="titulo-boletim" id="secao-boletim">
       <div>
         <p class="sobretitulo" id="sobretitulo-boletim">Boletim do mês</p>
-        <h2 id="titulo-boletim"></h2>
+        <h3 class="titulo-cartao" id="titulo-boletim"></h3>
         <p class="lead" id="lead-boletim"></p>
         <details>
           <summary>Ler o boletim completo</summary>
@@ -266,7 +108,7 @@ footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
     <section class="cartao kpis grade" aria-labelledby="titulo-kpis">
       <div>
         <div class="cabecalho">
-          <h2 id="titulo-kpis">Resumo</h2>
+          <h3 class="titulo-cartao" id="titulo-kpis">Resumo</h3>
           <p class="nota" id="nota-kpis"></p>
         </div>
         <div class="kpi-bloco">
@@ -279,37 +121,67 @@ footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
         </div>
       </div>
     </section>
+    </section>
 
+    <section class="bloco" id="volumes" aria-labelledby="t-volumes">
+      <header class="bloco-cabecalho">
+        <p class="kicker">02 · Volumes</p>
+        <h2 class="titulo-bloco" id="t-volumes" tabindex="-1">Quanto chega, mês a mês</h2>
+        <p class="bloco-lead">Toneladas importadas por grupo de nutriente.</p>
+      </header>
     <section class="cartao grade" aria-labelledby="titulo-toneladas">
       <div>
-        <h2 id="titulo-toneladas">Toneladas importadas por mês</h2>
+        <h3 class="titulo-cartao" id="titulo-toneladas">Toneladas importadas por mês</h3>
         <p class="nota" id="nota-toneladas"></p>
         <ul class="legenda" id="legenda-toneladas"></ul>
         <div class="grafico alto-300"><canvas id="grafico-toneladas" role="img"></canvas></div>
         <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-toneladas"></div></details>
       </div>
     </section>
+    </section>
 
-    <div class="grade duas">
-      <section class="cartao" aria-labelledby="titulo-origens">
-        <h2 id="titulo-origens">Share por país de origem</h2>
+    <section class="bloco" id="origens" aria-labelledby="t-origens">
+      <header class="bloco-cabecalho">
+        <p class="kicker">03 · Origens</p>
+        <h2 class="titulo-bloco" id="t-origens" tabindex="-1">De onde vem</h2>
+        <p class="bloco-lead">Participação de cada país nas toneladas do ano e a concentração dos fornecedores.</p>
+      </header>
+      <section class="cartao grade" aria-labelledby="titulo-origens">
+        <h3 class="titulo-cartao" id="titulo-origens">Share por país de origem</h3>
         <p class="nota" id="nota-origens"></p>
         <div class="grafico" id="caixa-origens"><canvas id="grafico-origens" role="img"></canvas></div>
         <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-origens"></div></details>
       </section>
-      <section class="cartao" aria-labelledby="titulo-portos">
-        <h2 id="titulo-portos">Ranking de portos (URF)</h2>
+
+    <section class="cartao grade" aria-labelledby="titulo-hhi">
+      <div>
+        <h3 class="titulo-cartao" id="titulo-hhi">Concentração de fornecedores (HHI)</h3>
+        <p class="nota" id="nota-hhi"></p>
+        <ul class="legenda" id="legenda-hhi"></ul>
+        <div class="grafico alto-260"><canvas id="grafico-hhi" role="img"></canvas></div>
+        <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-hhi"></div></details>
+      </div>
+    </section>
+    </section>
+
+    <section class="bloco" id="portos" aria-labelledby="t-portos">
+      <header class="bloco-cabecalho">
+        <p class="kicker">04 · Portos e rotas</p>
+        <h2 class="titulo-bloco" id="t-portos" tabindex="-1">Por onde entra</h2>
+        <p class="bloco-lead">Unidades da Receita (URF) onde a carga é desembaraçada e as rotas do país de origem ao porto, com o frete por rota.</p>
+      </header>
+      <section class="cartao grade" aria-labelledby="titulo-portos">
+        <h3 class="titulo-cartao" id="titulo-portos">Ranking de portos (URF)</h3>
         <p class="nota" id="nota-portos"></p>
         <div class="grafico" id="caixa-portos"><canvas id="grafico-portos" role="img"></canvas></div>
         <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-portos"></div></details>
       </section>
-    </div>
 
     <section class="cartao grade" aria-labelledby="titulo-rotas" id="secao-rotas">
       <div>
         <div class="cabecalho-secao">
           <div>
-            <h2 id="titulo-rotas">Rotas: país de origem → porto (URF)</h2>
+            <h3 class="titulo-cartao" id="titulo-rotas">Rotas: país de origem → porto (URF)</h3>
             <p class="nota" id="nota-rotas"></p>
           </div>
           <label class="seletor-ano">Ano <select id="filtro-ano-rotas"></select></label>
@@ -320,38 +192,33 @@ footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
         <div class="rolagem alta" id="tabela-rotas"></div>
       </div>
     </section>
+    </section>
 
+    <section class="bloco" id="precos" aria-labelledby="t-precos">
+      <header class="bloco-cabecalho">
+        <p class="kicker">05 · Preços</p>
+        <h2 class="titulo-bloco" id="t-precos" tabindex="-1">Quanto custa</h2>
+        <p class="bloco-lead">Preço implícito FOB e CIF, frete por tonelada e a comparação com a Pink Sheet do Banco Mundial.</p>
+      </header>
     <div class="grade duas">
       <section class="cartao" aria-labelledby="titulo-precos">
-        <h2 id="titulo-precos">Preço implícito: FOB x CIF</h2>
+        <h3 class="titulo-cartao" id="titulo-precos">Preço implícito: FOB x CIF</h3>
         <p class="nota" id="nota-precos"></p>
         <ul class="legenda" id="legenda-precos"></ul>
         <div class="grafico alto-260"><canvas id="grafico-precos" role="img"></canvas></div>
         <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-precos"></div></details>
       </section>
       <section class="cartao" aria-labelledby="titulo-frete">
-        <h2 id="titulo-frete">Frete por tonelada</h2>
+        <h3 class="titulo-cartao" id="titulo-frete">Frete por tonelada</h3>
         <p class="nota" id="nota-frete"></p>
         <div class="grafico alto-260"><canvas id="grafico-frete" role="img"></canvas></div>
         <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-frete"></div></details>
       </section>
     </div>
 
-    <section class="cartao grade" aria-labelledby="titulo-troca" id="secao-troca">
-      <div>
-        <h2 id="titulo-troca">Relação de troca no porto: soja x fertilizante</h2>
-        <p class="nota" id="nota-troca"></p>
-        <p class="ressalva"><strong>No porto, não na fazenda.</strong> Toneladas de soja exportada (preço FOB) que pagam 1 t de fertilizante importado (preço CIF) no mesmo mês. Não é o preço ao produtor: ficam de fora o frete interno, impostos, margens e prêmios.</p>
-        <div class="kpi-linha produtos" id="kpis-troca"></div>
-        <ul class="legenda" id="legenda-troca"></ul>
-        <div class="grafico alto-300"><canvas id="grafico-troca" role="img"></canvas></div>
-        <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-troca"></div></details>
-      </div>
-    </section>
-
     <section class="cartao grade oculto" aria-labelledby="titulo-bm" id="secao-bm">
       <div>
-        <h2 id="titulo-bm">Brasil x mercado internacional</h2>
+        <h3 class="titulo-cartao" id="titulo-bm">Brasil x mercado internacional</h3>
         <p class="nota" id="nota-bm"></p>
         <p class="ressalva"><strong>Referência de outro lugar, não ágio.</strong> O benchmark do Banco Mundial (Pink Sheet) é o preço num porto de referência (Golfo dos EUA, Oriente Médio, Mar Negro, Vancouver) ou no destino (KCl desde 2020, TSP). A diferença para o preço do Brasil mistura origem, frete até o ponto de referência, prazo de contrato e defasagem entre o negócio e o desembarque.</p>
         <div class="chips" id="chips-bm" role="group" aria-label="Produto" style="margin-top: 12px"></div>
@@ -371,25 +238,52 @@ footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
         <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-bm"></div></details>
       </div>
     </section>
+    </section>
 
-    <section class="cartao grade" aria-labelledby="titulo-hhi">
+    <section class="bloco" id="troca" aria-labelledby="t-troca">
+      <header class="bloco-cabecalho">
+        <p class="kicker">06 · Troca</p>
+        <h2 class="titulo-bloco" id="t-troca" tabindex="-1">Quanto de soja paga o adubo</h2>
+        <p class="bloco-lead">Relação de troca medida no porto: soja exportada contra fertilizante importado no mesmo mês. Não é o preço ao produtor.</p>
+      </header>
+    <section class="cartao grade" aria-labelledby="titulo-troca" id="secao-troca">
       <div>
-        <h2 id="titulo-hhi">Concentração de fornecedores (HHI)</h2>
-        <p class="nota" id="nota-hhi"></p>
-        <ul class="legenda" id="legenda-hhi"></ul>
-        <div class="grafico alto-260"><canvas id="grafico-hhi" role="img"></canvas></div>
-        <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-hhi"></div></details>
+        <h3 class="titulo-cartao" id="titulo-troca">Relação de troca no porto: soja x fertilizante</h3>
+        <p class="nota" id="nota-troca"></p>
+        <p class="ressalva"><strong>No porto, não na fazenda.</strong> Toneladas de soja exportada (preço FOB) que pagam 1 t de fertilizante importado (preço CIF) no mesmo mês. Não é o preço ao produtor: ficam de fora o frete interno, impostos, margens e prêmios.</p>
+        <div class="kpi-linha produtos" id="kpis-troca"></div>
+        <ul class="legenda" id="legenda-troca"></ul>
+        <div class="grafico alto-300"><canvas id="grafico-troca" role="img"></canvas></div>
+        <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-troca"></div></details>
       </div>
+    </section>
+    </section>
+
+    <section class="bloco" id="metodo" aria-labelledby="t-metodo">
+      <header class="bloco-cabecalho">
+        <p class="kicker">07 · Método</p>
+        <h2 class="titulo-bloco" id="t-metodo" tabindex="-1">Método e fontes</h2>
+        <p class="bloco-lead">Só dados abertos oficiais. Cada gráfico tem a tabela com os números.</p>
+      </header>
+    <section class="cartao grade metodo" aria-labelledby="titulo-metodo">
+      <div>
+        <h3 class="titulo-cartao" id="titulo-metodo">Como os números são calculados</h3>
+        <ul class="lista-metodo">
+          <li>Preço implícito = valor ÷ toneladas. HHI = soma dos quadrados dos shares por país de origem (0 a 10.000). Anos parciais são comparados com os mesmos meses do ano anterior.</li>
+          <li>Rotas: país de origem → URF de desembaraço, por ano. Na tabela de frete entram as rotas com pelo menos 50 mil t no ano (proporcional aos meses num ano parcial); a lista completa está em data/processed/rotas_ano.csv.</li>
+          <li>Relação de troca = preço CIF do fertilizante importado (KCl NCM 31042090, ureia 31021010, MAP 31054000) ÷ preço FOB da soja em grão exportada (NCM 12019000) no mesmo mês; média histórica = média simples dos meses da série. É medida no porto, não é o preço ao produtor.</li>
+          <li id="rodape-bm" class="oculto">Brasil x mercado internacional: preço implícito do Brasil (KCl NCM 31042090, ureia 31021010, MAP 31054000, DAP 310530, TSP 31031030 e 31031100) contra a Pink Sheet do Banco Mundial (CC BY 4.0); o MAP usa o DAP como referência. Spread comparável = FOB Brasil − benchmark quando o benchmark é FOB; CIF Brasil − benchmark quando ele é um preço no destino. CIF em reais pela PTAX venda média do mês (BCB, SGS 3698, ODbL).</li>
+          <li>Mapa: pontos gerados a partir do Natural Earth 1:110m (domínio público), em projeção equirretangular.</li>
+        </ul>
+      </div>
+    </section>
     </section>
   </main>
 
   <footer class="rodape">
     <span class="fonte" id="fonte-rodape">Fonte: Comex Stat/MDIC</span>
     <span id="rodape-datas"></span>
-    <span>Preço implícito = valor ÷ toneladas. HHI = soma dos quadrados dos shares por país de origem (0 a 10.000). Anos parciais são comparados com os mesmos meses do ano anterior.</span>
-    <span>Rotas: país de origem → URF de desembaraço, por ano. Na tabela de frete entram as rotas com pelo menos 50 mil t no ano (proporcional aos meses num ano parcial); a lista completa está em data/processed/rotas_ano.csv.</span>
-    <span>Relação de troca = preço CIF do fertilizante importado (KCl NCM 31042090, ureia 31021010, MAP 31054000) ÷ preço FOB da soja em grão exportada (NCM 12019000) no mesmo mês; média histórica = média simples dos meses da série.</span>
-    <span id="rodape-bm" class="oculto">Brasil x mercado internacional: preço implícito do Brasil (KCl NCM 31042090, ureia 31021010, MAP 31054000, DAP 310530, TSP 31031030 e 31031100) contra a Pink Sheet do Banco Mundial (CC BY 4.0); o MAP usa o DAP como referência. Spread comparável = FOB Brasil − benchmark quando o benchmark é FOB; CIF Brasil − benchmark quando ele é um preço no destino. CIF em reais pela PTAX venda média do mês (BCB, SGS 3698, ODbL).</span>
+    <span>Base cartográfica: Natural Earth (domínio público). Fontes tipográficas Inter Tight e JetBrains Mono (SIL OFL 1.1).</span>
     <span>Código e dados: <a href="https://github.com/AliceCullen-html/radar-fertilizantes-br">github.com/AliceCullen-html/radar-fertilizantes-br</a></span>
   </footer>
 </div>
@@ -1720,6 +1614,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
   rodape();
+  // O hero (assets/hero.js) usa os mesmos dados: números do kicker e do mapa sempre do JSON.
+  window.radarDados = dados;
+  document.dispatchEvent(new CustomEvent("radar:dados", { detail: dados }));
   carregarBoletim().then(desenharBoletim);
   montarFiltros();
   lerUrl();
