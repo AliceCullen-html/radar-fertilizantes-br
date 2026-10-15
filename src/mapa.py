@@ -424,7 +424,8 @@ def bloco_dashboard(tabelas: dict[str, pd.DataFrame], paises: pd.DataFrame, urfs
         "portos": [[portos[n]["nome"], portos[n]["uf"], portos[n]["lon"], portos[n]["lat"], portos[n]["urfs"]] for n in nomes_portos],
         "dados": dados,
         "notas": [
-            "Arcos só para rotas com pelo menos 50 mil t no ano (proporcional aos meses num ano parcial); o resto fica em 'outras'.",
+            "Visão geral: um arco por país de origem até o Brasil (as maiores origens do ano).",
+            "Ao abrir um país ou porto, arco só para rotas com pelo menos 50 mil t no ano (proporcional aos meses num ano parcial); o resto fica em 'outras'.",
             f"Origens com menos de {MINIMO_ORIGEM_T:,} t no ano e grupo entram em 'outros'.".replace(",", "."),
             "Coordenadas: Natural Earth (domínio público); URFs no mesmo lugar aparecem como um só porto.",
         ],
