@@ -235,8 +235,8 @@ def test_menu_rola_suave_ate_a_secao_e_revela_o_titulo(navegador, servidor):
     ctx.close()
 
 
-# corte à direita do clip-path inline ("inset(0%)" = inteiro; sem estilo = sem animação)
-CORTES = """() => [...document.querySelectorAll('.grafico, #fluxos-palco')].map((g) => {
+# corte à direita do clip-path inline do palco do mapa de fluxos ("inset(0%)" = inteiro; sem estilo = sem animação)
+CORTES = """() => [...document.querySelectorAll('#fluxos-palco')].map((g) => {
   const m = g.style.clipPath.match(/inset\\(([^)]*)\\)/);
   if (!m) return null;
   const partes = m[1].replace(/ round .*/, '').split(' ').map(parseFloat);
@@ -244,32 +244,42 @@ CORTES = """() => [...document.querySelectorAll('.grafico, #fluxos-palco')].map(
 })"""
 
 
-def test_rolagem_abre_os_graficos_e_nada_fica_cortado_no_fim_da_pagina(navegador, servidor):
+def test_graficos_se_desenham_ao_aparecer_e_nada_fica_por_desenhar_no_fim_da_pagina(navegador, servidor):
     ctx, pg, erros = _abrir(navegador, servidor, 1440, "light")
+    entrada = "document.getElementById('grafico-toneladas').dataset.entrada"
     topo = "document.getElementById('grafico-toneladas').parentElement.getBoundingClientRect().top + scrollY"
-    pg.evaluate(f"window.scrollTo(0, {topo} - innerHeight + 40)")
-    pg.wait_for_timeout(1500)
-    assert pg.evaluate(CORTES)[0] > 80, "o gráfico que mal entrou na tela ainda está quase todo fechado"
+    pg.evaluate(f"window.scrollTo(0, {topo} - innerHeight + 30)")
+    pg.wait_for_timeout(600)
+    assert pg.evaluate(entrada) == "pendente", "o gráfico que mal entrou na tela ainda não se desenhou"
+    assert pg.evaluate("window.radarDados && document.querySelectorAll('canvas[data-entrada]').length") >= 8
     pg.evaluate(f"window.scrollTo(0, {topo} - innerHeight * 0.3)")
-    pg.wait_for_function(f"({CORTES})()[0] < 0.5", timeout=15_000)
+    pg.wait_for_function(f"{entrada} === 'feita'", timeout=10_000)
+    # trocar o grupo atualiza o gráfico no lugar (o mesmo objeto do Chart.js), sem refazer a entrada
+    antes = pg.evaluate("Chart.getChart('grafico-toneladas').id")
+    pg.click("#filtro-grupo .chip[data-grupo=K]")
+    pg.wait_for_timeout(300)
+    assert pg.evaluate("Chart.getChart('grafico-toneladas').id") == antes
+    assert pg.evaluate("Chart.getChart('grafico-toneladas').data.datasets.map((d) => d.label)") == ["Potássicos"]
     # o hero sai de cena com a rolagem: o texto some e o mapa cresce
     pg.evaluate("window.scrollTo(0, document.querySelector('.hero').offsetHeight * 0.6)")
     pg.wait_for_function("getComputedStyle(document.querySelector('.hero-conteudo')).opacity < 0.7", timeout=15_000)
     assert "matrix" in pg.evaluate("getComputedStyle(document.getElementById('mapa-hero')).transform")
     assert erros == []
     ctx.close()
-    # numa tela alta, os últimos gráficos não chegam a 65% da altura: abrem inteiros na rolagem máxima
+    # numa tela alta, rolando até o fim, todos os gráficos se desenham
     ctx, pg, erros = _abrir(navegador, servidor, 1440, "light", altura=1600)
     pg.evaluate("""async () => { const fim = document.documentElement.scrollHeight;
       for (let y = 0; y <= fim; y += 200) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 30)); } scrollTo(0, fim); }""")
-    pg.wait_for_function(f"({CORTES})().every((c) => c !== null && c < 0.5)", timeout=20_000)
+    pg.wait_for_function("[...document.querySelectorAll('canvas[data-entrada]')].every((c) => c.dataset.entrada === 'feita' || c.closest('.oculto'))", timeout=20_000)
+    pg.wait_for_function(f"({CORTES})().every((c) => c !== null && c < 0.5)", timeout=20_000)  # o palco do mapa abriu inteiro
     assert erros == []
     ctx.close()
-    # com reduzir movimento, nenhum corte nem deslocamento ligado à rolagem
+    # com reduzir movimento, nada espera para aparecer nem se desloca com a rolagem
     ctx, pg, erros = _abrir(navegador, servidor, 1440, "light", reduzido=True)
     pg.evaluate("window.scrollTo(0, 1200)")
     pg.wait_for_timeout(400)
-    assert pg.evaluate(CORTES) == [None] * len(pg.evaluate(CORTES))
+    assert pg.evaluate("document.querySelectorAll('canvas[data-entrada]').length") == 0
+    assert pg.evaluate(CORTES) == [None]
     assert pg.evaluate("document.querySelector('.fundo-pontos').style.transform") == ""
     assert erros == []
     ctx.close()
@@ -608,9 +618,11 @@ def test_custo_por_nutriente_um_produto_por_nutriente_moeda_e_tracos(navegador, 
     pg.wait_for_function("document.querySelectorAll('#kpis-nutrientes .kpi').length === 3", timeout=10_000)
     kpis = "[...document.querySelectorAll('#kpis-nutrientes .kpi')].map((k) => [k.querySelector('.rotulo').textContent, k.querySelector('.valor').textContent])"
     esperado = pg.evaluate(f"({NUTRIENTES})(['ureia', 'map', 'kcl'])")
-    for (rotulo, valor), e, simbolo in zip(pg.evaluate(kpis), esperado, ("N", "P₂O₅", "K₂O")):
+    valores = [f"US$ {_milhar(e['custo'])}/t de {simbolo}" if e["t"] and not e["pequena"] else "–" for e, simbolo in zip(esperado, ("N", "P₂O₅", "K₂O"))]
+    # os números contam a partir de zero ao aparecer: espera o valor final
+    pg.wait_for_function(f"JSON.stringify([...document.querySelectorAll('#kpis-nutrientes .valor')].map((v) => v.textContent)) === {json.dumps(json.dumps(valores, ensure_ascii=False, separators=(",", ":")), ensure_ascii=False)}", timeout=5_000)
+    for (rotulo, _), e in zip(pg.evaluate(kpis), esperado):
         assert rotulo.startswith(e["nome"])
-        assert valor == (f"US$ {_milhar(e['custo'])}/t de {simbolo}" if e["t"] and not e["pequena"] else "–")
     pg.click("#unidade-nutrientes button:nth-child(2)")
     for (_, valor), e in zip(pg.evaluate(kpis), esperado):
         assert valor == "–" or valor.startswith(f"R$ {_milhar(e['brl'])}/t de ")
@@ -640,4 +652,90 @@ def test_legenda_de_fob_e_cif_e_glossario(navegador, servidor):
     assert pg.evaluate("document.getElementById('fonte-rodape').textContent") == "Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX"
     assert erros == []
     ctx.close()
+
+
+# --- Comparar portos (mapa de fluxos) e números que contam -------------------------------------
+PORTOS_ESPERADOS = """() => { const m = window.radarDados.mapa; let i = m.anos.length - 1;
+  while (m.n_meses[i] !== 12) i--;
+  const r = m.dados[String(m.anos[i])].TOTAL, portos = r.portos.filter((p) => p[1] > 0).slice(0, 8);
+  return { nomes: portos.map((p) => m.portos[p[0]][0]), fretes: portos.map((p) => p[3]) }; }"""
+COMPARACAO = """() => ({ titulo: document.getElementById('fluxos-painel-titulo').textContent, largura: document.getElementById('fluxos-painel').offsetWidth,
+  nomes: [...document.querySelectorAll('#fluxos-cmp-lista .cmp-linha .nome')].map((n) => n.firstChild.textContent),
+  fretes: [...document.querySelectorAll('#fluxos-cmp-lista .cmp-linha .frete')].map((f) => f.textContent),
+  mix: [...document.querySelectorAll('#fluxos-cmp-lista .cmp-linha')].map((b) => [...b.querySelectorAll('.preenchida i')].reduce((s, i) => s + Number(i.style.flexGrow || 0), 0)),
+  rotulos: [...document.querySelectorAll('#fluxos-cmp-lista .cmp-linha')].map((b) => b.getAttribute('aria-label')),
+  visivel: !document.getElementById('fluxos-comparar').hidden, lista: !document.getElementById('fluxos-lista').hidden })"""
+
+
+def test_comparar_portos_lado_a_lado_com_ordenacao_e_volta(navegador, servidor):
+    ctx, pg, erros = _abrir(navegador, servidor, 1440, "light")
+    estreito = pg.evaluate("document.getElementById('fluxos-painel').offsetWidth")
+    pg.click("#fluxos-abas button[data-visao=comparar]")
+    pg.wait_for_function("document.querySelectorAll('#fluxos-cmp-lista .cmp-linha').length >= 5", timeout=10_000)
+    pg.wait_for_timeout(900)  # o painel termina de se alargar
+    esperado, r = pg.evaluate(PORTOS_ESPERADOS), pg.evaluate(COMPARACAO)
+    assert r["titulo"] == "Comparar portos" and r["visivel"] and not r["lista"]
+    assert r["largura"] > estreito + 150, "o painel se alarga para a comparação"
+    assert r["nomes"] == esperado["nomes"], "os maiores portos, por toneladas"
+    assert all(abs(x - 1) < 0.02 for x in r["mix"]), "em Todos, a barra se divide entre os grupos"
+    assert all("frete" in x and "Enter mostra as origens" in x for x in r["rotulos"])
+    assert "visao=comparar" in pg.evaluate("location.hash")
+    # ordenar pelo frete: do menor para o maior; de novo: do maior para o menor
+    pg.click("#fluxos-cmp-cabecalho button[data-ordem=frete]")
+    fretes = [int(x.replace("US$ ", "")) for x in pg.evaluate(COMPARACAO)["fretes"] if x != "–"]
+    assert fretes == sorted(fretes)
+    assert pg.evaluate("document.querySelector('#fluxos-cmp-cabecalho [data-ordem=frete]').getAttribute('aria-pressed')") == "true"
+    pg.click("#fluxos-cmp-cabecalho button[data-ordem=frete]")
+    fretes = [int(x.replace("US$ ", "")) for x in pg.evaluate(COMPARACAO)["fretes"] if x != "–"]
+    assert fretes == sorted(fretes, reverse=True)
+    # um porto abre as origens dele (o painel volta ao tamanho normal); Esc volta à comparação
+    primeiro = pg.evaluate(COMPARACAO)["nomes"][0]
+    pg.click("#fluxos-cmp-lista .cmp-linha >> nth=0")
+    pg.wait_for_function(f"document.getElementById('fluxos-painel-titulo').textContent.startsWith({primeiro!r})", timeout=5_000)
+    pg.wait_for_timeout(900)
+    assert pg.evaluate("document.getElementById('fluxos-painel').offsetWidth") < estreito + 20
+    pg.keyboard.press("Escape")
+    pg.wait_for_function("document.getElementById('fluxos-painel-titulo').textContent === 'Comparar portos'", timeout=5_000)
+    assert pg.evaluate("document.activeElement.classList.contains('cmp-linha')"), "o foco volta para a linha do porto"
+    assert erros == []
+    ctx.close()
+    # a URL guarda a visão: ao abrir de novo, a comparação já aparece (e, no celular, cabe na tela)
+    ctx = navegador.new_context(viewport={"width": 390, "height": 844}, color_scheme="dark")
+    pg = ctx.new_page()
+    erros = []
+    pg.on("pageerror", lambda e: erros.append(str(e)))
+    pg.route("https://cdn.jsdelivr.net/**", _cdn)
+    pg.goto(servidor + "#visao=comparar")
+    pg.wait_for_function("window.anime && window.radarDados", timeout=20_000)
+    pg.evaluate("document.getElementById('fluxos').scrollIntoView({block: 'start'})")
+    pg.wait_for_function("document.querySelectorAll('#fluxos-cmp-lista .cmp-linha').length >= 5", timeout=15_000)
+    caixas = pg.evaluate("""() => ({ rolagem: document.documentElement.scrollWidth - innerWidth,
+      nome: document.querySelector('#fluxos-cmp-lista .cmp-linha .nome').getBoundingClientRect().width })""")
+    assert caixas["rolagem"] <= 0 and caixas["nome"] > 120, "no celular, o nome do porto tem uma linha só para ele"
+    assert erros == []
+    ctx.close()
+
+
+AMOSTRAS = """async (seletor) => { const vistos = []; const fim = performance.now() + 1300;
+  while (performance.now() < fim) { const t = document.querySelector(seletor).textContent; if (vistos[vistos.length - 1] !== t) vistos.push(t);
+    await new Promise((r) => requestAnimationFrame(r)); }
+  return vistos; }"""
+
+
+def test_numeros_do_resumo_contam_ao_trocar_o_grupo(navegador, servidor):
+    for reduzido in (False, True):
+        ctx, pg, erros = _pagina(navegador, servidor, reduzido=reduzido)
+        pg.evaluate("document.getElementById('kpis-mes').scrollIntoView({block: 'center'})")
+        pg.wait_for_timeout(1600)
+        esperado = pg.evaluate("""() => { const d = window.radarDados, i = d.mensal.periodos.length - 1;
+          return new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 }).format(d.mensal.K.t[i]) + ' t'; }""")
+        pg.evaluate("document.querySelector('#filtro-grupo .chip[data-grupo=K]').click()")
+        vistos = pg.evaluate(AMOSTRAS, "#kpis-mes .kpi .valor")
+        assert vistos[-1] == esperado
+        if reduzido:
+            assert len(vistos) == 1, "sem movimento, o número troca de uma vez"
+        else:
+            assert len(vistos) >= 3, "o número conta até o novo valor"
+        assert erros == []
+        ctx.close()
 

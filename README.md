@@ -133,11 +133,15 @@ A navegação é animada com o anime.js: os links do menu rolam até a seção c
 suaves (qualquer gesto interrompe), o indicador do menu acompanha a rolagem e desliza de um item
 para o outro, uma linha fina no pé da barra mostra quanto da página já foi lida e cada seção
 entra ao aparecer na tela (o rótulo se "decodifica", o título sobe palavra a palavra e os
-cartões deslizam). Outras animações acompanham a própria rolagem (o `onScroll` do anime.js, com
-suavização) e voltam quando se rola para cima: o mapa do topo cresce e esmaece ao sair de cena,
-um fundo de pontos se move devagar atrás das seções, os títulos têm um leve parallax, cada
-gráfico se abre da esquerda para a direita conforme sobe na tela e o palco do mapa de fluxos se
-expande de uma janela recortada até a largura toda. No topo, arcos vetoriais ligam as maiores
+cartões deslizam, com os números e as legendas chegando em cascata). Cada gráfico se desenha
+quando aparece na tela pela primeira vez: as linhas da esquerda para a direita, ponto a ponto, e
+as barras crescendo em sequência. Depois disso, trocar o grupo, o período ou o tema atualiza os
+gráficos no lugar: as linhas e as barras deslizam até os novos valores, e os números dos cartões
+contam do valor antigo até o novo (na primeira vez que o cartão aparece, a partir de zero).
+Outras animações acompanham a própria rolagem (o `onScroll` do anime.js, com suavização) e
+voltam quando se rola para cima: o mapa do topo cresce e esmaece ao sair de cena, um fundo de
+pontos se move devagar atrás das seções, os títulos têm um leve parallax e o palco do mapa de
+fluxos se expande de uma janela recortada até a largura toda. No topo, arcos vetoriais ligam as maiores
 origens do último ano completo ao Brasil: cada um se desenha da origem até aqui e, depois,
 cometas de luz correm por eles. Os pontos do mapa acendem sob o cursor e o continente apontado
 se destaca; um clique (ou o botão "Explorar por continente") abre os dados dele no lugar do
@@ -198,6 +202,12 @@ onde vem o adubo e em que porto ele chega, por grupo e por ano:
   país vendeu menos de 1.000 t naquele ano) ou, na aba Portos, dos portos, com o mapa aproximado
   na costa brasileira. Passar o mouse (ou o foco) numa linha ou num país destaca o arco dele e
   apaga os outros.
+- **Comparar portos.** O botão "Comparar portos" alarga o painel e põe os maiores portos lado a
+  lado: toneladas e participação, com a barra dividida entre N, P, K e NPK (em "Todos"), variação
+  sobre os mesmos meses do ano anterior, frete médio em US$/t (frete ÷ toneladas de todas as
+  rotas que chegam ao porto) e as três maiores origens. Os títulos das colunas ordenam a lista
+  (toneladas, variação ou frete); o clique num porto abre as origens dele. Com o Reproduzir, os
+  portos trocam de posição ano a ano.
 - **Origem.** O clique num país (ou Enter, no mapa ou no ranking) aproxima a câmera, acende o
   país numa onda a partir do centro e abre os arcos até cada porto de chegada, com a tonelagem
   da rota no rótulo de cada porto. O painel mostra toneladas, participação no grupo, frete e CIF
@@ -209,8 +219,9 @@ onde vem o adubo e em que porto ele chega, por grupo e por ano:
   ou afinam e o ranking se reordena com animação. Em K, dá para ver Belarus cair de 2,4 milhões
   de t em 2021 para 1,1 milhão em 2022 (−55%), enquanto o Canadá cresce e, a partir de 2023, a
   Rússia também.
-- **Filtro.** O grupo (N, P, K, NPK) é o mesmo filtro do resto da página. O ano e a seleção
-  também vão para a URL (por exemplo, `#grupo=K&de=2021-10&ate=2026-09&ano=2022&origem=676`). O
+- **Filtro.** O grupo (N, P, K, NPK) é o mesmo filtro do resto da página. O ano, a visão e a
+  seleção também vão para a URL (por exemplo, `#grupo=K&de=2021-10&ate=2026-09&ano=2022&origem=676`
+  ou `#ano=2025&visao=comparar`). O
   botão "Visão geral" (sobre o mapa) ou a tecla ESC voltam ao mapa inteiro.
 
 Os números vêm só das tabelas de `data/processed/` (share por origem, ranking de portos, rotas e

@@ -121,11 +121,34 @@ def test_bloco_do_mapa_bate_com_as_tabelas_processadas():
             # só rotas acima do corte ganham arco, e a soma por porto não passa do total do porto
             r = rotas[(rotas["ano"] == ano) & (rotas["grupo"] == grupo) & rotas["relevante"]]
             assert sum(x[2] for x in d["rotas"]) == pytest.approx(r[r["co_urf"].isin(urfs.index)]["toneladas"].sum(), abs=len(r) + 1)
-            total_porto = {p: t for p, t in d["portos"]}
+            total_porto = {p[0]: p[1] for p in d["portos"]}
             for i, t in total_porto.items():
                 assert sum(x[2] for x in d["rotas"] if x[1] == i) <= t + 1
     nomes = [p[0] for p in bloco["portos"]]
     assert len(nomes) == len(set(nomes)) and "Paranaguá" in nomes
+
+
+def test_portos_do_bloco_com_variacao_frete_e_cif_das_tabelas():
+    bloco = _bloco_versionado()
+    urf_ano = pd.read_csv(config.PROCESSED_DIR / "share_urf_ano.csv", dtype={"co_urf": str})
+    rotas = pd.read_csv(config.PROCESSED_DIR / "rotas_ano.csv", dtype={"co_pais": str, "co_urf": str})
+    assert bloco["colunas"]["portos"] == ["porto", "t", "var_t_pct", "frete_usd_t", "cif_usd_t"]
+    urfs_do_porto = {i: set(p[4]) for i, p in enumerate(bloco["portos"])}
+    for ano in bloco["anos"]:
+        for grupo, d in bloco["dados"][str(ano)].items():
+            for i, t, var, frete, cif in d["portos"]:
+                u = urf_ano[(urf_ano["ano"] == ano) & (urf_ano["grupo"] == grupo) & urf_ano["co_urf"].isin(urfs_do_porto[i])]
+                assert t == pytest.approx(u["toneladas"].sum(), abs=1)
+                anterior = u["toneladas_ano_anterior"].sum(min_count=1)
+                if var is None:
+                    assert pd.isna(anterior) or anterior == 0
+                else:  # sobre os mesmos meses do ano anterior, como o share_urf_ano
+                    assert var == pytest.approx(100 * (u["toneladas"].sum() / anterior - 1), abs=0.06)
+                r = rotas[(rotas["ano"] == ano) & (rotas["grupo"] == grupo) & rotas["co_urf"].isin(urfs_do_porto[i])]
+                if frete is not None:  # todas as rotas, inclusive as abaixo do corte
+                    assert frete == pytest.approx(r["vl_frete"].sum() / r["toneladas"].sum(), abs=0.51)
+                    assert cif == pytest.approx(r["vl_cif"].sum() / r["toneladas"].sum(), abs=0.51)
+    assert all(p[2] is None for p in bloco["dados"][str(bloco["anos"][0])]["TOTAL"]["portos"])
 
 
 def test_continentes_do_bloco_somam_as_origens_de_cada_continente():
@@ -173,4 +196,12 @@ def test_bloco_do_mapa_com_dados_sinteticos(tmp_path):
     assert [o[0] for o in k["origens"]] == sorted([o[0] for o in k["origens"]], key=lambda c: -dict((o[0], o[1]) for o in k["origens"])[c])
     assert bloco["portos"][0][:2] == ["Paranaguá", "PR"] and bloco["portos"][0][4] == ["0917800"]
     assert all(x[1] == 0 for x in k["rotas"])  # índice do único porto
+    # porto (só Paranaguá tem coordenada aqui): K 720 t em 2024 e 600 t em 2025; frete e CIF de
+    # todas as rotas que chegam lá
+    r = tabelas["rotas_ano"]
+    r = r[(r["ano"] == 2025) & (r["grupo"] == "K") & (r["co_urf"] == "0917800")]
+    assert k["portos"][0][:3] == [0, 600, -16.7]
+    assert k["portos"][0][3] == pytest.approx(r["vl_frete"].sum() / r["toneladas"].sum(), abs=0.51)
+    assert k["portos"][0][4] == pytest.approx(r["vl_cif"].sum() / r["toneladas"].sum(), abs=0.51)
+    assert all(p[2] is None for p in bloco["dados"]["2024"]["TOTAL"]["portos"]), "primeiro ano: sem variação"
     assert set(bloco["paises"]) <= {"149", "676", "160"}

@@ -381,6 +381,21 @@ def ler_urfs(caminho: Path | None = None) -> pd.DataFrame:
 MINIMO_ORIGEM_T = 1_000  # origem com menos que isso no ano e grupo entra em "outros"
 
 
+def _linha_porto(x, custo: pd.DataFrame, indice_porto: dict, num) -> list:
+    """[porto, t, variação % sobre os mesmos meses do ano anterior, frete US$/t, CIF US$/t].
+
+    Sem os mesmos meses no ano anterior (o primeiro ano) ou porto novo: variação vazia. Frete e
+    CIF são valor ÷ toneladas de todas as rotas que chegam ao porto, inclusive as abaixo do corte.
+    """
+    t, anterior = float(x["toneladas"]), x["anterior"]
+    var = 100 * (t / anterior - 1) if pd.notna(anterior) and anterior > 0 else None
+    frete = cif = None
+    if x["porto"] in custo.index and custo.loc[x["porto"], "toneladas"] > 0:
+        c = custo.loc[x["porto"]]
+        frete, cif = c["vl_frete"] / c["toneladas"], c["vl_cif"] / c["toneladas"]
+    return [indice_porto[x["porto"]], num(t, 0), num(var, 1), num(frete, 0), num(cif, 0)]
+
+
 def bloco_dashboard(tabelas: dict[str, pd.DataFrame], paises: pd.DataFrame, urfs: pd.DataFrame, num) -> dict:
     """Mapa de fluxos: por ano e grupo, as origens (toneladas, share, variação, frete e CIF
     US$/t), as rotas acima do corte (agregadas por porto) e o total de cada porto.
@@ -441,8 +456,13 @@ def bloco_dashboard(tabelas: dict[str, pd.DataFrame], paises: pd.DataFrame, urfs
         r = r.groupby(["co_pais", "porto"], as_index=False)[["toneladas", "vl_frete"]].sum().sort_values("toneladas", ascending=False)
         lista_rotas = [[x["co_pais"], indice_porto[x["porto"]], num(x["toneladas"], 0), num(x["vl_frete"] / x["toneladas"], 0)] for _, x in r.iterrows()]
         usados.update(r["co_pais"])
+        # portos: toneladas e variação sobre os mesmos meses do ano anterior (share_urf_ano, com as
+        # URFs do mesmo lugar somadas), e frete e CIF US$/t de TODAS as rotas que chegam lá
         u = urf_ano[(urf_ano["ano"] == ano) & (urf_ano["grupo"] == grupo) & urf_ano["co_urf"].isin(porto_da_urf)]
-        u = u.assign(porto=u["co_urf"].map(porto_da_urf)).groupby("porto", as_index=False)["toneladas"].sum()
+        u = u.assign(porto=u["co_urf"].map(porto_da_urf)).groupby("porto", as_index=False).agg(
+            toneladas=("toneladas", "sum"), anterior=("toneladas_ano_anterior", lambda x: x.sum(min_count=1)))
+        todas = rotas[(rotas["ano"] == ano) & (rotas["grupo"] == grupo) & rotas["co_urf"].isin(porto_da_urf)]
+        custo = todas.assign(porto=todas["co_urf"].map(porto_da_urf)).groupby("porto")[["toneladas", "vl_frete", "vl_cif"]].sum()
         total_t = float(g["toneladas"].sum())
         continentes = []
         for cont, c in g.assign(cont=g["co_pais"].map(cont_pais)).dropna(subset=["cont"]).groupby("cont"):
@@ -458,7 +478,7 @@ def bloco_dashboard(tabelas: dict[str, pd.DataFrame], paises: pd.DataFrame, urfs
             "origens": origens,
             "outros_t": num(outros, 0),
             "rotas": lista_rotas,
-            "portos": [[indice_porto[x["porto"]], num(x["toneladas"], 0)] for _, x in u.sort_values("toneladas", ascending=False).iterrows()],
+            "portos": [_linha_porto(x, custo, indice_porto, num) for _, x in u.sort_values(["toneladas", "porto"], ascending=[False, True]).iterrows()],
             "continentes": continentes,
         }
     nomes = share.drop_duplicates("co_pais", keep="last").set_index("co_pais")["no_pais"]
@@ -473,7 +493,7 @@ def bloco_dashboard(tabelas: dict[str, pd.DataFrame], paises: pd.DataFrame, urfs
         "colunas": {
             "origens": ["co_pais", "t", "share_pct", "var_t_pct", "frete_usd_t", "cif_usd_t"],
             "rotas": ["co_pais", "porto", "t", "frete_usd_t"],
-            "portos": ["porto", "t"],
+            "portos": ["porto", "t", "var_t_pct", "frete_usd_t", "cif_usd_t"],
             "lista_portos": ["nome", "uf", "lon", "lat", "urfs"],
             "paises": ["nome", "iso3", "lon", "lat", "continente"],
             "continentes": ["continente", "t", "share_pct", "var_t_pct"],

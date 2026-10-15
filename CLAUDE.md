@@ -170,6 +170,12 @@ BCB. **O repositório é PÚBLICO.**
   grupo soma TODAS as origens do continente, com share e variação sobre os mesmos meses do ano
   anterior, a mesma base do share_origem_ano). Na visão geral, um arco por país de origem até o Brasil (os
   mesmos do ranking: o que cabe no painel, de 5 a 8; 6 no celular); ao abrir um país ou porto, arco só para rota acima do `CORTE_ROTA_T`.
+  Visão "Comparar portos" (terceira aba do painel, `visao=comparar` na URL): o painel se alarga
+  (`data-comparando`) e lista os maiores portos com toneladas e participação, barra dividida entre
+  N/P/K/NPK, variação sobre os mesmos meses do ano anterior, frete US$/t de todas as rotas até o
+  porto e as 3 maiores origens; colunas ordenáveis; linhas com FLIP. As linhas de `portos` do
+  bloco "mapa" são [porto, t, var_t_pct, frete_usd_t, cif_usd_t] (variação do share_urf_ano
+  somado por porto; frete e CIF do rotas_ano inteiro, não só das rotas acima do corte).
   `dashboard/assets/fluxos.js` usa o anime.js 4.5.0 (UMD do jsDelivr, com SRI; só a API v4:
   `animate`, `createTimeline`, `stagger`, `svg.createDrawable`, `svg.createMotionPath`, `cubicBezier`): pontos em
   canvas; arcos, cometas, marcadores e rótulos em SVG. O palco do mapa é noturno nos dois temas e
@@ -190,10 +196,18 @@ BCB. **O repositório é PÚBLICO.**
   `<html>` (script inline no `<head>`) só existe sem "reduzir movimento"; o CSS tem um fallback
   que mostra tudo em 2,5 s se o JS não rodar. Nunca esconder conteúdo sem esse fallback.
   Animações ligadas à rolagem (`ligarRolagem`, `onScroll` com `sync`): saída do hero, fundo de
-  pontos (`.fundo-pontos`, fixo atrás da `.pagina`, que tem `z-index: 1`), parallax dos títulos,
-  `clip-path` abrindo os gráficos e o palco do mapa. O fim de cada abertura usa `leave: "min+=…"`,
-  para terminar na rolagem máxima mesmo em tela alta (nada fica cortado no fim da página); a
-  impressão (`@media print`) anula os estilos inline; "reduzir movimento" no meio desfaz tudo.
+  pontos (`.fundo-pontos`, fixo atrás da `.pagina`, que tem `z-index: 1`), parallax dos títulos e
+  `clip-path` abrindo o palco do mapa. O fim da abertura usa `leave: "min+=…"`, para terminar na
+  rolagem máxima mesmo em tela alta (nada fica cortado no fim da página); a impressão
+  (`@media print`) anula os estilos inline; "reduzir movimento" no meio desfaz tudo. Os cartões
+  entram com os `.kpi`, termos, legendas e chips em cascata.
+- Gráficos (Chart.js, `novoGrafico` no script principal): cada um se desenha ao aparecer na tela
+  pela primeira vez (`IntersectionObserver`; `data-entrada` = "pendente" → "feita"): linhas ponto
+  a ponto, da esquerda para a direita, e barras em sequência. Fora da tela, o gráfico é montado
+  sem animação. Depois de visto, filtro, período e tema atualizam o MESMO gráfico no lugar
+  (`chart.update()`, valores deslizando), sem destruir e recriar. Números dos cartões
+  (`valorAnimado`, chave estável por cartão) contam do valor antigo até o novo e, na primeira
+  aparição (`contarAoAparecer`), a partir de zero. Sem movimento, nada disso anima.
   Ícones dos botões do hero se redesenham no hover/foco (`createDrawable` criado já desenhado:
   `createDrawable(el, 0, 1)`, porque o padrão `0 0` some com o traço) e o ícone do tema gira com
   `createSpring`.

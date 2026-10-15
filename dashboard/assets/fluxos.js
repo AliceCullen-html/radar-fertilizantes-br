@@ -7,6 +7,9 @@
  *   largura proporcional às toneladas, e o ranking no painel. Ao clicar num país, os arcos se
  *   abrem até cada porto de chegada; num porto, vêm de cada origem até ele. Rota abaixo do
  *   corte do ano não ganha arco: fica em "outras".
+ * - "Comparar portos": o painel se alarga e põe os maiores portos lado a lado (toneladas e
+ *   mistura de grupos, variação sobre os mesmos meses do ano anterior, frete US$/t e maiores
+ *   origens), com ordenação pelas colunas; o mapa mostra a costa com os portos.
  * - Dados só do bloco "mapa" do dashboard.json (gerado pelo transform a partir de
  *   share_origem_ano, share_urf_ano, rotas_ano e precos_mes_grupo_origem).
  * - Animações com anime.js v4 (animate, createTimeline, stagger, svg.createDrawable,
@@ -38,6 +41,8 @@
   const NOME_LONGO = { TOTAL: "Todos os fertilizantes", N: "Nitrogenados (N)", P: "Fosfatados (P)", K: "Potássicos (K)", NPK: "Compostos (NPK)" };
   const DESCRICAO_GRUPO = { TOTAL: "todos os grupos", N: "nitrogenados", P: "fosfatados", K: "potássicos", NPK: "compostos (NPK)" };
   const ORDEM_GRUPOS = ["TOTAL", "N", "P", "K", "NPK"];
+  const GRUPOS = ["N", "P", "K", "NPK"];
+  const VISOES = ["origens", "portos", "comparar"];
   const variavel = (nome) => getComputedStyle(app).getPropertyValue(nome).trim();
   // toneladas: "3,0 mi t", "845 mil t", "980 t" (a mesma precisão em todo o mapa)
   const MILHAO = 999_500;
@@ -126,6 +131,8 @@
   const abas = $("fluxos-abas");
   const numeros = $("fluxos-numeros");
   const lista = $("fluxos-lista");
+  const comparar = $("fluxos-comparar");
+  const listaComparar = $("fluxos-cmp-lista");
   const anuncio = $("fluxos-anuncio");
   const botaoVoltar = $("fluxos-voltar");
   const botaoPlay = $("fluxos-play");
@@ -158,9 +165,11 @@
   let grade = null; // assets/mapa-pontos.json
   let pontos = null; // arrays por ponto
   let anoPadrao = null; // último ano completo: onde a página abre e onde o play para
-  // sel: {tipo: "origem", co} | {tipo: "porto", i}; visao: ranking de países ou de portos;
+  // sel: {tipo: "origem", co} | {tipo: "porto", i}; visao: ranking de países ("origens"), de
+  // portos ("portos") ou a comparação dos portos ("comparar"); ordemPortos: coluna da comparação;
   // destaque: chave do item sob o mouse ou o foco ("o:co" ou "p:i")
-  const estado = { ano: null, grupo: "TOTAL", sel: null, visao: "origens", destaque: null };
+  const estado = { ano: null, grupo: "TOTAL", sel: null, visao: "origens", destaque: null, ordemPortos: { chave: "t", desc: true } };
+  const visaoPortos = () => estado.visao !== "origens"; // "portos" e "comparar" mostram a costa
   const cam = { x: 0, y: 0, z: 1 }; // centro (em células da grade) e pixels por célula
   let geral = { x: 0, y: 0, z: 1 };
   let W = 0, H = 0, dpr = 1;
@@ -419,14 +428,14 @@
     if (sel?.tipo === "origem") r.rotas.filter((x) => x[0] === sel.co).forEach((x) => envolvidos.set(`p:${x[1]}`, x[2]));
     if (sel?.tipo === "porto") r.rotas.filter((x) => x[1] === sel.i).forEach((x) => envolvidos.set(`o:${x[0]}`, x[2]));
     const estreito = W < 600;
-    const nOrigens = estado.visao === "portos" && !sel ? 0 : estreito ? 8 : 16;
+    const nOrigens = visaoPortos() && !sel ? 0 : estreito ? 8 : 16;
     r.origens.forEach((o, i) => {
       const chave = `o:${o[0]}`;
       if (i < nOrigens || envolvidos.has(chave) || sel?.co === o[0]) {
         itens.push({ chave, tipo: "origem", co: o[0], t: o[1], share: o[2], vari: o[3], ordem: i, rota: envolvidos.get(chave) });
       }
     });
-    const nPortos = estado.visao === "portos" || sel ? 16 : estreito ? 0 : 10;
+    const nPortos = visaoPortos() || sel ? 16 : estreito ? 0 : 10;
     r.portos.forEach((p, i) => {
       const chave = `p:${p[0]}`;
       if (i < nPortos || envolvidos.has(chave) || sel?.i === p[0]) {
@@ -579,7 +588,7 @@
     const v = new Set();
     const estreito = W < 600;
     if (!sel && estado.visao === "origens") r.origens.slice(0, estreito ? 3 : 7).forEach((o) => v.add(`o:${o[0]}`));
-    if (!sel && estado.visao === "portos") r.portos.slice(0, estreito ? 5 : 10).forEach((p) => v.add(`p:${p[0]}`));
+    if (!sel && visaoPortos()) r.portos.slice(0, estreito ? 5 : 10).forEach((p) => v.add(`p:${p[0]}`));
     if (sel?.tipo === "origem") {
       v.add(`o:${sel.co}`);
       r.rotas.filter((x) => x[0] === sel.co).slice(0, estreito ? 5 : 9).forEach((x) => v.add(`p:${x[1]}`));
@@ -619,7 +628,7 @@
       if (prioridade(m) === 4) o = 1;
       else if (sel) o = m.g.classList.contains("ativo") || m.g.classList.contains("envolvido") ? 1 : 0.28;
       else if (estado.visao === "origens" && d.tipo === "porto") o = 0.5;
-      else if (estado.visao === "portos" && d.tipo === "origem") o = 0;
+      else if (visaoPortos() && d.tipo === "origem") o = 0;
       o *= fatorEntrada;
       m.g.style.opacity = String(o);
       m.etiqueta.style.opacity = String(o);
@@ -688,6 +697,7 @@
     for (const a of arcos.values()) a.g.classList.toggle("destacado", doArco(a.dados));
     for (const c of cometas.values()) c.g.classList.toggle("destacado", doArco(c.dados));
     for (const li of lista.querySelectorAll(".linha[data-chave]")) li.classList.toggle("destacado", li.dataset.chave === chave);
+    for (const b of listaComparar.querySelectorAll(".cmp-linha")) b.classList.toggle("destacado", b.dataset.chave === chave);
     posicionarMarcadores();
     pedirQuadro();
   }
@@ -698,7 +708,7 @@
     const sel = estado.sel;
     if (sel?.tipo === "origem") return r.rotas.filter((x) => x[0] === sel.co).map(rotaParaArco);
     if (sel?.tipo === "porto") return r.rotas.filter((x) => x[1] === sel.i).map(rotaParaArco);
-    if (estado.visao === "portos") return [];
+    if (visaoPortos()) return [];
     return r.origens.slice(0, quantasOrigens()).map((o) => ({ chave: `b:${o[0]}`, tipo: "brasil", co: o[0], i: null, t: o[1] }));
   }
   const rotaParaArco = (x) => ({ chave: `r:${x[0]}|${x[1]}`, tipo: "rota", co: x[0], i: x[1], t: x[2], frete: x[3] });
@@ -864,7 +874,7 @@
   }
   function cameraDoEstado() {
     if (estado.sel) return enquadrar(caixaDe(alvosDaSelecao()), { minimo: geral.z, maximo: geral.z * 7 });
-    if (estado.visao === "portos") {
+    if (visaoPortos()) {
       const portos = recorte().portos.slice(0, 10).map((p) => posPorto(p[0]));
       if (portos.length) return enquadrar(caixaDe(portos), { folga: 0.35, minimo: geral.z, maximo: geral.z * 5 });
     }
@@ -889,6 +899,7 @@
     atualizarIntensidades();
     atualizarLegenda();
     mostrarHub(false);
+    ajustarPainel();
     const alvo = cameraDoEstado();
     if (instantaneo) { animCamera?.pause(); cameraAnimando = false; Object.assign(cam, alvo); reposicionarArcos(); posicionarMarcadores(); soltarNavios(); pedirQuadro(); }
     else moverCamera(alvo);
@@ -935,19 +946,22 @@
     atualizarIntensidades();
     atualizarLegenda();
     mostrarHub(estado.visao === "origens");
+    ajustarPainel();
     moverCamera(cameraDoEstado());
     // devolve o foco à linha do item que estava aberto (ou ao título), antes de esconder o botão
-    if (focoFora) (lista.querySelector(`.linha[data-chave="${anterior}"]`) ?? titulo).focus({ preventScroll: true });
+    if (focoFora) (painel.querySelector(`[data-chave="${anterior}"]:is(.linha, .cmp-linha)`) ?? titulo).focus({ preventScroll: true });
     botaoVoltar.hidden = true;
     anunciar(`Visão geral: ${falado(recorte().t)} de ${DESCRICAO_GRUPO[estado.grupo]} em ${rotuloAno(estado.ano)}.`);
     pedirQuadro();
   }
 
   function definirVisao(v) {
-    if (v === estado.visao) return;
+    if (v === estado.visao || !VISOES.includes(v)) return;
     estado.visao = v;
+    gravarUrl();
     marcarSegmentado(abas, "visao", v, false);
     if (estado.sel) return;
+    ajustarPainel();
     preencherPainel();
     sincronizarMarcadores();
     sincronizarArcos();
@@ -962,13 +976,13 @@
     const sel = estado.sel;
     const pais = $("fluxos-legenda-pais"), arco = $("fluxos-legenda-arco"), prt = $("fluxos-legenda-porto");
     const texto = (li, t) => { li.lastChild.textContent = t; };
-    pais.hidden = !sel && estado.visao === "portos";
-    arco.hidden = !sel && estado.visao === "portos";
+    pais.hidden = !sel && visaoPortos();
+    arco.hidden = !sel && visaoPortos();
     prt.hidden = !sel && estado.visao === "origens" && W < 600; // no celular, a visão geral não desenha portos
     if (sel?.tipo === "porto") texto(pais, "área do círculo: toneladas na rota");
     else texto(pais, "área do círculo: toneladas do país");
     texto(arco, sel ? "espessura: toneladas na rota" : "espessura: toneladas até o Brasil");
-    texto(prt, sel?.tipo === "origem" ? "porto de chegada (tamanho: toneladas na rota)" : !sel && estado.visao === "portos" ? "porto (tamanho: toneladas recebidas)" : "porto de chegada");
+    texto(prt, sel?.tipo === "origem" ? "porto de chegada (tamanho: toneladas na rota)" : !sel && visaoPortos() ? "porto (tamanho: toneladas recebidas)" : "porto de chegada");
   }
 
   // --- Painel ---------------------------------------------------------------------------------
@@ -983,12 +997,13 @@
     A.animate(obj, { v: valor, duration: 900, ease: "outExpo", onUpdate: () => { dd.textContent = formato(obj.v); } });
   }
 
-  let modoPainel = null; // "geral" | "origem" | "porto"
+  let modoPainel = null; // "geral" | "comparar" | "origem" | "porto"
   function preencherPainel() {
     const sel = estado.sel;
-    const modo = sel ? sel.tipo : "geral";
+    const modo = sel ? sel.tipo : estado.visao === "comparar" ? "comparar" : "geral";
     if (modo !== modoPainel) {
       lista.replaceChildren();
+      listaComparar.replaceChildren();
       numeros.replaceChildren();
       delete numeros.dataset.tipo;
       contadores.clear();
@@ -996,8 +1011,13 @@
     }
     abas.hidden = !!sel;
     numeros.hidden = !sel;
+    const comparando = modo === "comparar";
+    comparar.hidden = !comparando;
+    lista.hidden = comparando;
+    $("fluxos-cabecalho-lista").hidden = comparando;
     const ano = rotuloAno(estado.ano);
-    if (!sel) preencherRanking(ano);
+    if (comparando) preencherComparacao(ano);
+    else if (!sel) preencherRanking(ano);
     else if (sel.tipo === "origem") preencherOrigem(ano);
     else preencherPorto(ano);
   }
@@ -1015,7 +1035,7 @@
     titulo.textContent = porPais ? "Principais origens" : "Principais portos";
     $("fluxos-dica").textContent = porPais ? "Clique num país, no mapa ou na lista, para ver por quais portos ele entra." : "Clique num porto para ver de onde vem a carga.";
     $("fluxos-lista-titulo").textContent = "";
-    cabecalhoLista("toneladas", porPais ? "% do total · var. a/a" : "% do total");
+    cabecalhoLista("toneladas", "% do total · var. a/a");
     const n = quantasOrigens();
     const itens = porPais
       ? r.origens.slice(0, n).map((o, k) => {
@@ -1023,8 +1043,11 @@
         return { chave: `o:${o[0]}`, pos: k + 1, nome: nomePais(o[0]), t: o[1], share: o[2], vari: v,
           rotulo: `${nomePais(o[0])}: ${falado(o[1])}, ${pct(o[2])} do total${v.falado ? `, ${v.falado}` : ""}. Enter mostra os portos de chegada.`, acao: () => selecionarOrigem(o[0]) };
       })
-      : r.portos.slice(0, n).map((p, k) => ({ chave: `p:${p[0]}`, pos: k + 1, nome: `${porto(p[0]).nome} (${porto(p[0]).uf})`, t: p[1], share: r.t ? (100 * p[1]) / r.t : null,
-        rotulo: `Porto ${porto(p[0]).nome}: ${falado(p[1])} recebidas, ${pct(r.t ? (100 * p[1]) / r.t : null)} do total. Enter mostra as origens.`, acao: () => selecionarPorto(p[0]) }));
+      : r.portos.slice(0, n).map((p, k) => {
+        const v = variacao(p[2], p[1]);
+        return { chave: `p:${p[0]}`, pos: k + 1, nome: `${porto(p[0]).nome} (${porto(p[0]).uf})`, t: p[1], share: r.t ? (100 * p[1]) / r.t : null, vari: v,
+          rotulo: `Porto ${porto(p[0]).nome}: ${falado(p[1])} recebidas, ${pct(r.t ? (100 * p[1]) / r.t : null)} do total${v.falado ? `, ${v.falado}` : ""}. Enter mostra as origens.`, acao: () => selecionarPorto(p[0]) };
+      });
     const soma = itens.reduce((s, x) => s + x.t, 0);
     const resto = Math.max(0, r.t - soma);
     if (resto > 0.5) {
@@ -1036,7 +1059,7 @@
     atualizarLista(itens, Math.max(1, ...itens.map((x) => x.t)));
     $("fluxos-painel-nota").textContent = porPais
       ? "Variação sobre os mesmos meses do ano anterior; \"novo\" quando o país vendeu menos de 1.000 t naquele ano."
-      : "URFs no mesmo lugar aparecem como um só porto.";
+      : "Variação sobre os mesmos meses do ano anterior. URFs no mesmo lugar aparecem como um só porto.";
   }
 
   function preencherOrigem(ano) {
@@ -1101,6 +1124,155 @@
     if (tp - somaRotas > 0.5) itens.push({ chave: "resto", pos: "", nome: "Outras origens", t: tp - somaRotas, fixa: true, rotulo: `Outras origens: ${falado(tp - somaRotas)}.` });
     atualizarLista(itens, Math.max(1, ...itens.map((x) => x.t)));
     $("fluxos-painel-nota").textContent = `URF ${p.urfs.join(", ")}. URFs no mesmo lugar aparecem como um só porto.`;
+  }
+
+  // --- Comparar portos ------------------------------------------------------------------------
+  // O painel se alarga (no desktop, sobre o mapa) e o mapa enquadra a costa à esquerda dele.
+  function ajustarPainel() {
+    const comparando = estado.visao === "comparar" && !estado.sel;
+    if (app.hasAttribute("data-comparando") === comparando) return;
+    const antes = painel.offsetWidth;
+    app.toggleAttribute("data-comparando", comparando);
+    layout.larguraPainel = layout.sobreposto ? painel.offsetWidth : 0;
+    if (!layout.sobreposto || semMovimento() || !antes) return;
+    const depois = layout.larguraPainel;
+    painel.style.width = `${antes}px`;
+    A.animate(painel, { width: [antes, depois], duration: 700, ease: "outExpo", onComplete: () => painel.style.removeProperty("width") });
+  }
+
+  // colunas que ordenam a comparação (a variação e o frete vazios vão para o fim)
+  const ORDENS = {
+    t: { rotulo: "Toneladas", falado: "toneladas", valor: (x) => x.t, desc: true },
+    var: { rotulo: "Var. a/a", falado: "variação sobre o ano anterior", valor: (x) => (x.vari.texto === "novo" ? null : x.var), desc: true },
+    frete: { rotulo: "Frete/t", falado: "frete por tonelada", valor: (x) => x.frete, desc: false },
+  };
+
+  function dadosComparacao() {
+    const r = recorte();
+    const ano = String(estado.ano);
+    const porGrupo = Object.fromEntries(GRUPOS.map((g) => [g, new Map((bloco.dados[ano]?.[g]?.portos ?? []).map((p) => [p[0], p[1]]))]));
+    const n = W < 600 ? 6 : 8;
+    const linhas = r.portos.filter((p) => p[1] > 0).slice(0, n).map(([i, t, v, frete, cif], k) => ({
+      chave: `p:${i}`, i, t, var: v, vari: variacao(v, t), frete, cif, ordemT: k, share: r.t ? (100 * t) / r.t : null,
+      mix: estado.grupo === "TOTAL" ? GRUPOS.map((g) => ({ g, t: porGrupo[g].get(i) ?? 0 })) : null,
+      origens: r.rotas.filter((x) => x[1] === i).slice(0, 3).map((x) => ({ nome: nomePais(x[0]), share: t ? (100 * x[2]) / t : 0 })),
+    }));
+    const { chave, desc } = estado.ordemPortos;
+    const valor = ORDENS[chave].valor;
+    linhas.sort((a, b) => {
+      const va = valor(a), vb = valor(b);
+      if (va == null || vb == null) return (va == null) - (vb == null) || a.ordemT - b.ordemT;
+      return (desc ? vb - va : va - vb) || a.ordemT - b.ordemT;
+    });
+    const resto = Math.max(0, r.t - linhas.reduce((s, x) => s + x.t, 0));
+    return { linhas, resto, r };
+  }
+
+  function montarCabecalhoComparacao() {
+    const cab = $("fluxos-cmp-cabecalho");
+    if (!cab.childElementCount) {
+      cab.append(el("span", { classe: "pos" }), el("span", { classe: "nome" }, "Porto"));
+      for (const [k, o] of Object.entries(ORDENS)) {
+        const b = el("button", { type: "button", classe: `ordem ${k}`, "data-ordem": k },
+          el("span", {}, o.rotulo), el("span", { classe: "seta", "aria-hidden": "true" }));
+        b.addEventListener("click", () => {
+          pararPlay();
+          const atual = estado.ordemPortos;
+          estado.ordemPortos = atual.chave === k ? { chave: k, desc: !atual.desc } : { chave: k, desc: o.desc };
+          preencherPainel();
+          anunciar(`Portos ordenados por ${o.falado}, ${estado.ordemPortos.desc ? "do maior para o menor" : "do menor para o maior"}.`);
+        });
+        cab.append(b);
+      }
+    }
+    for (const b of cab.querySelectorAll("button")) {
+      const ativo = b.dataset.ordem === estado.ordemPortos.chave;
+      const desc = ativo ? estado.ordemPortos.desc : ORDENS[b.dataset.ordem].desc;
+      b.setAttribute("aria-pressed", String(ativo));
+      b.querySelector(".seta").textContent = ativo ? (desc ? "▼" : "▲") : "";
+      b.setAttribute("aria-label", `Ordenar por ${ORDENS[b.dataset.ordem].falado}${ativo ? `, agora ${desc ? "do maior para o menor" : "do menor para o maior"}` : ""}`);
+    }
+  }
+
+  function preencherComparacao(ano) {
+    const { linhas, resto, r } = dadosComparacao();
+    $("fluxos-painel-kicker").textContent = `${NOME_LONGO[estado.grupo]} · ${ano}`;
+    titulo.textContent = "Comparar portos";
+    $("fluxos-dica").textContent = "Ordene pelos títulos das colunas. Clique num porto para ver de onde vem a carga.";
+    $("fluxos-lista-titulo").textContent = "";
+    montarCabecalhoComparacao();
+    const legenda = $("fluxos-cmp-legenda");
+    legenda.hidden = estado.grupo !== "TOTAL";
+    if (!legenda.childElementCount) legenda.append(...GRUPOS.map((g) => el("li", { "data-g": g }, el("i"), g)), el("li", { classe: "texto" }, "barra: toneladas, por grupo"));
+    const maior = Math.max(1, ...linhas.map((x) => x.t));
+    atualizarComparacao(linhas, maior, ano);
+    const m = meses(estado.ano);
+    $("fluxos-painel-nota").textContent = `${resto > 0.5 ? `Outros portos: ${toneladas(resto)} (${pct(r.t ? (100 * resto) / r.t : null)}). ` : ""}`
+      + `Variação sobre ${m && m < 12 ? `jan–${MESES[m - 1]} do ano anterior` : "o ano anterior"}. Frete: frete ÷ toneladas de todas as rotas até o porto. Origens: as rotas com ${textoCorte()}.`;
+  }
+
+  // Linhas com chave, como a lista do ranking: trocam de lugar com animação (FLIP) ao ordenar
+  // ou mudar de ano; as barras crescem ou encolhem.
+  function atualizarComparacao(linhas, maior, ano) {
+    const antes = new Map([...listaComparar.children].map((li) => [li.dataset.chave, li.getBoundingClientRect().top]));
+    const existentes = new Map([...listaComparar.children].map((li) => [li.dataset.chave, li]));
+    const novos = [];
+    linhas.forEach((x, k) => {
+      let li = existentes.get(x.chave);
+      if (!li) {
+        const barra = el("span", { classe: "barra" }, el("span", { classe: "preenchida" }, ...GRUPOS.map((g) => el("i", { "data-g": g }))));
+        const botao = el("button", { type: "button", classe: "cmp-linha" },
+          el("span", { classe: "pos" }), el("span", { classe: "nome" }), el("span", { classe: "t" }), el("span", { classe: "var" }), el("span", { classe: "frete" }),
+          barra, el("span", { classe: "origens" }));
+        botao.dataset.chave = x.chave;
+        botao.addEventListener("click", () => { pararPlay(); selecionarPorto(botao.__i); });
+        botao.addEventListener("pointerenter", () => destacar(botao.dataset.chave));
+        botao.addEventListener("pointerleave", () => destacar(null));
+        botao.addEventListener("focus", () => destacar(botao.dataset.chave));
+        botao.addEventListener("blur", () => destacar(null));
+        li = el("li", {}, botao);
+        li.dataset.chave = x.chave;
+        li.querySelector(".preenchida").style.transform = "scaleX(0)";
+        novos.push(li);
+      }
+      const b = li.firstChild;
+      b.__i = x.i;
+      const p = porto(x.i);
+      b.classList.toggle("destacado", estado.destaque === x.chave);
+      b.querySelector(".pos").textContent = String(k + 1);
+      b.querySelector(".nome").replaceChildren(p.nome, " ", el("small", {}, p.uf));
+      b.querySelector(".t").replaceChildren(toneladas(x.t), el("small", {}, pct(x.share)));
+      const v = b.querySelector(".var");
+      v.textContent = x.vari.texto;
+      v.className = `var ${x.vari.classe}`;
+      b.querySelector(".frete").textContent = x.frete == null ? "–" : `US$ ${fmt0.format(x.frete)}`;
+      b.querySelector(".origens").textContent = x.origens.length ? x.origens.map((o) => `${o.nome} ${fmt0.format(o.share)}%`).join(" · ") : "sem rota acima do corte";
+      // barra: comprimento = toneladas (relativo ao maior porto); em "Todos", divida por grupo
+      const preenchida = b.querySelector(".preenchida");
+      const fracao = clamp(x.t / maior, 0.02, 1);
+      for (const seg of preenchida.children) {
+        const parte = x.mix ? (x.mix.find((m) => m.g === seg.dataset.g)?.t ?? 0) / Math.max(1, x.t) : seg.dataset.g === GRUPOS[0] ? 1 : 0;
+        seg.style.flexGrow = String(Math.max(0, parte));
+      }
+      preenchida.classList.toggle("uma-cor", !x.mix);
+      if (semMovimento()) preenchida.style.transform = `scaleX(${fracao})`;
+      else A.animate(preenchida, { scaleX: fracao, duration: 750, ease: "outExpo" });
+      const mix = x.mix ? `; ${x.mix.filter((m) => m.t > 0).map((m) => `${m.g} ${fmt0.format((100 * m.t) / Math.max(1, x.t))}%`).join(", ")}` : "";
+      b.setAttribute("aria-label", `${k + 1}º, porto ${p.nome} (${p.uf}): ${falado(x.t)} em ${ano}, ${pct(x.share)} do total${x.vari.falado ? `, ${x.vari.falado}` : ""}`
+        + `; frete ${x.frete == null ? "sem dado" : `de ${fmt0.format(x.frete)} dólares por tonelada`}${mix}`
+        + `${x.origens.length ? `; maiores origens: ${x.origens.map((o) => `${o.nome}, ${fmt0.format(o.share)}%`).join("; ")}` : ""}. Enter mostra as origens.`);
+      listaComparar.append(li);
+      existentes.delete(x.chave);
+    });
+    for (const li of existentes.values()) li.remove();
+    if (semMovimento()) return;
+    for (const li of listaComparar.children) {
+      const topo = antes.get(li.dataset.chave);
+      if (topo == null) continue;
+      const dy = topo - li.getBoundingClientRect().top;
+      if (Math.abs(dy) > 1) A.animate(li, { translateY: [dy, 0], duration: 700, ease: "outExpo" });
+    }
+    if (novos.length) A.animate(novos, { opacity: [0, 1], translateY: [8, 0], duration: 520, delay: A.stagger(45), ease: "outQuad" });
   }
 
   // Lista com chave: as linhas que já existem trocam de lugar com animação (FLIP), as barras
@@ -1284,7 +1456,7 @@
     atualizarLegenda();
     // com uma seleção aberta, a câmera só se move se algum ponto novo cair fora do quadro
     if (estado.sel && !cameraAnimando && algumForaDaTela(alvosDaSelecao())) moverCamera(cameraDoEstado());
-    else if (!estado.sel && estado.visao === "portos" && !cameraAnimando) moverCamera(cameraDoEstado());
+    else if (!estado.sel && visaoPortos() && !cameraAnimando) moverCamera(cameraDoEstado());
     else if (!cameraAnimando) soltarNavios();
     tabela();
     if (!estado.sel) anunciar(`${NOME_LONGO[estado.grupo]}, ${rotuloAno(estado.ano)}: ${falado(recorte().t)} importadas.`);
@@ -1336,6 +1508,8 @@
     q.delete("porto");
     if (estado.sel?.tipo === "origem") q.set("origem", estado.sel.co);
     if (estado.sel?.tipo === "porto") q.set("porto", slug(porto(estado.sel.i).nome));
+    if (estado.visao !== "origens") q.set("visao", estado.visao);
+    else q.delete("visao");
     history.replaceState(null, "", `#${q}`);
   }
 
@@ -1345,6 +1519,7 @@
     const origem = q.get("origem");
     const p = q.get("porto");
     return {
+      visao: VISOES.includes(q.get("visao")) ? q.get("visao") : null,
       ano: bloco.anos.includes(ano) ? ano : null,
       origem: origem && bloco.paises[origem] ? origem : null,
       porto: p ? bloco.portos.findIndex((x) => slug(x[0]) === p) : -1,
@@ -1366,7 +1541,13 @@
     const rotas = el("table", {}, el("caption", { classe: "leitor" }, `Rotas com ${textoCorte()}`),
       el("thead", {}, el("tr", {}, ...["Origem", "Porto", "Toneladas", "Frete US$/t"].map((c, i) => el("th", { classe: i > 1 ? "num" : null, scope: "col" }, c)))),
       el("tbody", {}, ...r.rotas.map((x) => el("tr", {}, el("td", {}, nomePais(x[0])), el("td", {}, porto(x[1]).nome), el("td", { classe: "num" }, fmtN(x[2], fmtInt)), el("td", { classe: "num" }, fmtN(x[3], fmt0))))));
-    $("tabela-fluxos").replaceChildren(t, el("h4", { classe: "subtitulo" }, `Rotas com ${textoCorte()}`), rotas);
+    const fmtVarPorto = (p) => (p[2] == null ? "–" : variacao(p[2], p[1]).texto === "novo" ? "novo" : fmtN(p[2], fmt1));
+    const portos = el("table", {}, el("caption", { classe: "leitor" }, `Portos em ${rotuloAno(estado.ano)}, ${DESCRICAO_GRUPO[estado.grupo]}`),
+      el("thead", {}, el("tr", {}, ...["Porto", "UF", "Toneladas", "Share %", "Var. % a/a", "Frete US$/t", "CIF US$/t"].map((c, i) => el("th", { classe: i > 1 ? "num" : null, scope: "col" }, c)))),
+      el("tbody", {}, ...r.portos.map((p) => el("tr", {}, el("td", {}, porto(p[0]).nome), el("td", {}, porto(p[0]).uf), el("td", { classe: "num" }, fmtN(p[1], fmtInt)),
+        el("td", { classe: "num" }, fmtN(r.t ? (100 * p[1]) / r.t : null, fmt1)), el("td", { classe: "num" }, fmtVarPorto(p)), el("td", { classe: "num" }, fmtN(p[3], fmt0)),
+        el("td", { classe: "num" }, fmtN(p[4], fmt0))))));
+    $("tabela-fluxos").replaceChildren(t, el("h4", { classe: "subtitulo" }, "Portos de chegada"), portos, el("h4", { classe: "subtitulo" }, `Rotas com ${textoCorte()}`), rotas);
   }
 
   // --- Cores e tamanho ----------------------------------------------------------------------------
@@ -1404,6 +1585,7 @@
   function entrar() {
     iniciado = true;
     carregando.remove();
+    ajustarPainel();
     atualizarIntensidades(true);
     preencherPainel();
     tabela();
@@ -1416,12 +1598,13 @@
       iniciarPulso();
       if (url.origem) selecionarOrigem(url.origem);
       else if (url.porto >= 0) selecionarPorto(url.porto);
+      else if (visaoPortos()) moverCamera(cameraDoEstado()); // visão vinda da URL: a costa
       else soltarNavios();
     };
     if (semMovimento()) {
       anim.entrada = 1;
       anim.brasil = 1;
-      anim.hub = 1;
+      anim.hub = visaoPortos() ? 0 : 1;
       atualizarResumo({ contar: false });
       sincronizarMarcadores();
       sincronizarArcos({ desenharNovos: false });
@@ -1434,7 +1617,7 @@
     // crescem no lugar
     linhaEntrada = A.createTimeline({ defaults: { ease: "linear" } });
     linhaEntrada.add(anim, { entrada: [0, 1], duration: 2200, onUpdate: () => { posicionarMarcadores(); pedirQuadro(); } }, 0)
-      .add(anim, { brasil: [0, 1], hub: [0, 1], duration: 600, ease: "outQuad", onUpdate: () => { posicionarHub(); pedirQuadro(); } }, 1700)
+      .add(anim, { brasil: [0, 1], hub: [0, visaoPortos() ? 0 : 1], duration: 600, ease: "outQuad", onUpdate: () => { posicionarHub(); pedirQuadro(); } }, 1700)
       .call(() => { atualizarResumo(); sincronizarMarcadores({ entrada: true }); sincronizarArcos({ atraso: 0 }); }, 1900)
       .call(depois, 3200);
   }
@@ -1457,6 +1640,7 @@
     for (let i = bloco.anos.length - 1; i >= 0; i--) if (bloco.n_meses[i] === 12) { anoPadrao = bloco.anos[i]; break; }
     montarGrupos();
     montarAnos();
+    if (url.visao) estado.visao = url.visao;
     definirAno(url.ano ?? anoPadrao);
     marcarSegmentado(caixaGrupo, "grupo", estado.grupo, true);
     atualizarResumo({ comTotal: false }); // o resumo já aparece; o total conta na entrada

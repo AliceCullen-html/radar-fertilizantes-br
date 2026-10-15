@@ -673,6 +673,59 @@
 .fluxos-lista .trilho span { display: block; height: 100%; border-radius: 3px; background: var(--g-cor); transform-origin: left center; }
 .fluxos-lista .fixa .trilho span { background: var(--neutro); }
 .fluxos-lista .extra { grid-column: 3; font: 400 10.5px var(--mono); color: var(--texto-2); text-align: right; white-space: nowrap; }
+/* Comparar portos (fluxos.js): o painel se alarga sobre o mapa; um porto por linha */
+.fluxos[data-comparando] { --painel-largura: min(600px, 54%); }
+.fluxos-comparar { margin-top: 12px; }
+.cmp-legenda { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 8px; padding: 0; list-style: none; font: 400 10.5px/1.3 var(--mono); color: var(--texto-2); }
+.cmp-legenda li { display: inline-flex; align-items: center; gap: 5px; }
+.cmp-legenda i { width: 9px; height: 9px; border-radius: 2px; }
+.cmp-legenda .texto { margin-left: auto; color: var(--texto-3); }
+.cmp-legenda [data-g="N"] i, .cmp-lista [data-g="N"] { background: var(--g-n); }
+.cmp-legenda [data-g="P"] i, .cmp-lista [data-g="P"] { background: var(--g-p); }
+.cmp-legenda [data-g="K"] i, .cmp-lista [data-g="K"] { background: var(--g-k); }
+.cmp-legenda [data-g="NPK"] i, .cmp-lista [data-g="NPK"] { background: var(--g-npk); }
+.cmp-cabecalho, .cmp-linha { display: grid; grid-template-columns: 16px minmax(0, 1fr) 88px 74px 70px; column-gap: 8px; align-items: baseline; }
+.cmp-cabecalho { padding: 0 8px 6px; border-bottom: 1px solid var(--borda); font: 400 10.5px/1.2 var(--mono); color: var(--texto-3); }
+.cmp-cabecalho button {
+  justify-self: end; display: inline-flex; gap: 3px; align-items: baseline; padding: 2px 0; border: 0; border-bottom: 1px dashed transparent;
+  background: none; color: var(--texto-2); font: inherit; cursor: pointer; white-space: nowrap;
+}
+.cmp-cabecalho button:hover { color: var(--texto); border-bottom-color: var(--texto-3); }
+.cmp-cabecalho button[aria-pressed="true"] { color: var(--titulo); font-weight: 600; }
+.cmp-cabecalho button:focus-visible, .cmp-linha:focus-visible { outline: 2px solid var(--foco); outline-offset: 2px; }
+.cmp-cabecalho .seta { font-size: 0.8em; }
+.cmp-lista { list-style: none; margin: 0; padding: 0; }
+.cmp-linha {
+  width: 100%; row-gap: 4px; padding: 8px; border: 0; border-bottom: 1px solid var(--borda); background: none; color: var(--texto);
+  text-align: left; cursor: pointer; transition: background-color 0.2s;
+}
+.cmp-linha:hover, .cmp-linha.destacado { background: var(--lavagem); }
+.cmp-linha .pos { font: 400 11px var(--mono); color: var(--texto-3); text-align: right; }
+.cmp-linha .nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 13px/1.25 var(--fonte); }
+.cmp-linha .nome small { font: 400 10.5px var(--mono); color: var(--texto-3); }
+.cmp-linha .t, .cmp-linha .var, .cmp-linha .frete { font: 400 12px var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.cmp-linha .t small { display: block; font-size: 10px; color: var(--texto-3); }
+.cmp-linha .var.ganho { color: var(--ganho-texto); }
+.cmp-linha .var.perda { color: var(--perda-texto); }
+.cmp-linha .barra { grid-column: 2 / -1; height: 7px; border-radius: 3px; background: var(--grade); overflow: hidden; }
+.cmp-linha .preenchida { display: flex; gap: 1px; height: 100%; transform-origin: left center; }
+.cmp-linha .preenchida i { flex: 0 0 0; min-width: 0; height: 100%; }
+.cmp-linha .preenchida i:first-child { border-radius: 3px 0 0 3px; }
+.cmp-linha .preenchida.uma-cor i { background: var(--g-cor); }
+.cmp-linha .origens { grid-column: 2 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 10.5px/1.3 var(--mono); color: var(--texto-2); }
+/* no celular, o nome do porto ganha uma linha só para ele; os números vêm embaixo */
+@media (max-width: 560px) {
+  .cmp-cabecalho, .cmp-linha { grid-template-columns: 14px minmax(0, 1fr) 72px 62px; column-gap: 6px; }
+  .cmp-cabecalho .nome { display: none; }
+  .cmp-cabecalho .ordem.t { grid-column: 2; }
+  .cmp-linha .nome { grid-column: 2 / -1; grid-row: 1; }
+  .cmp-linha .t { grid-column: 2; grid-row: 2; }
+  .cmp-linha .t small { display: inline; margin-left: 6px; }
+  .cmp-linha .var { grid-column: 3; grid-row: 2; }
+  .cmp-linha .frete { grid-column: 4; grid-row: 2; }
+  .cmp-linha .barra { grid-row: 3; }
+  .cmp-linha .origens { grid-row: 4; }
+}
 
 /* linha do tempo: uma coluna por ano com as toneladas do grupo */
 .fluxos-tempo { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: 6px 16px; margin-top: 14px; }

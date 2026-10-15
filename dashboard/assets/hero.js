@@ -213,7 +213,14 @@
   function revelar(el, atraso) {
     const limpar = () => { el.style.removeProperty("opacity"); el.style.removeProperty("transform"); };
     if (!el.classList.contains("bloco-cabecalho")) {
-      A.animate(el, { opacity: [0, 1], translateY: [26, 0], duration: 900, delay: atraso, ease: "outExpo", onComplete: limpar });
+      A.animate(el, { opacity: [0, 1], translateY: [34, 0], scale: [0.985, 1], duration: 950, delay: atraso, ease: "outExpo", onComplete: limpar });
+      // por dentro do cartão, os números e as legendas chegam em cascata
+      const filhos = [...el.querySelectorAll(".kpi, .termos > div, .legenda li, .chips .chip")].slice(0, 24);
+      if (filhos.length) {
+        A.utils.set(filhos, { opacity: 0, translateY: 12 });
+        A.animate(filhos, { opacity: 1, translateY: 0, duration: 700, delay: A.stagger(45, { start: atraso + 180 }), ease: "outExpo",
+          onComplete: () => filhos.forEach((f) => { f.style.removeProperty("opacity"); f.style.removeProperty("transform"); }) });
+      }
       return;
     }
     el.style.opacity = "1";
@@ -235,8 +242,8 @@
   // --- Animações ligadas à rolagem -------------------------------------------------------------
   // Diferente das entradas (que tocam uma vez), estas acompanham a rolagem nos dois sentidos, com
   // o onScroll do anime.js sincronizado (e uma suavização leve): o hero "mergulha" ao sair, o fundo
-  // de pontos anda devagar, os títulos flutuam, os gráficos se desenham da esquerda para a direita
-  // enquanto sobem na tela e o mapa de fluxos se abre como uma janela.
+  // de pontos anda devagar, os títulos flutuam e o mapa de fluxos se abre como uma janela. Os
+  // gráficos têm a própria entrada (no script principal): desenham-se ao aparecer na tela.
   // O anime.js recalcula as posições sozinho quando a página muda de altura.
   const ligadas = []; // [animação, observador]
   function ligarRolagem() {
@@ -254,11 +261,7 @@
     for (const t of document.querySelectorAll(".titulo-bloco")) {
       aRolagem(t, { translateY: [26, -26] }, { target: t, enter: "end start", leave: "start end", sync: 0.25 });
     }
-    // "min+=": no fim da página, o gráfico que não chega a 65% da tela termina de abrir na rolagem máxima
-    // (o diagrama de rotas tem a sua própria entrada: as fitas escorrem, no script principal)
-    for (const g of document.querySelectorAll(".grafico")) {
-      aRolagem(g, { clipPath: ["inset(0% 100% 0% 0%)", "inset(0% 0% 0% 0%)"] }, { target: g, enter: "end start", leave: "min+=65% start", sync: 0.2 });
-    }
+    // "min+=": no fim da página, o palco que não chega a 60% da tela termina de abrir na rolagem máxima
     const palcoFluxos = document.getElementById("fluxos-palco");
     aRolagem(palcoFluxos, { clipPath: ["inset(16% 24% 16% 24% round 28px)", "inset(0% 0% 0% 0% round 8px)"] },
       { target: palcoFluxos, enter: "end start", leave: "min+=60% start", sync: 0.2 });

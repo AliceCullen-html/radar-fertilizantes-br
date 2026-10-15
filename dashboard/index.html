@@ -276,11 +276,18 @@
                 <span class="indicador" aria-hidden="true"></span>
                 <button type="button" data-visao="origens" aria-pressed="true">Países</button>
                 <button type="button" data-visao="portos" aria-pressed="false">Portos</button>
+                <button type="button" data-visao="comparar" aria-pressed="false">Comparar portos</button>
               </div>
               <dl class="fluxos-numeros" id="fluxos-numeros" hidden></dl>
               <h4 id="fluxos-lista-titulo"></h4>
               <p class="fluxos-cabecalho-lista" id="fluxos-cabecalho-lista" aria-hidden="true"><span>toneladas</span><span>% do total · var. a/a</span></p>
               <ol class="fluxos-lista" id="fluxos-lista"></ol>
+              <!-- Comparar portos (assets/fluxos.js): um porto por linha, com ordenação pelas colunas -->
+              <div class="fluxos-comparar" id="fluxos-comparar" hidden>
+                <ul class="cmp-legenda" id="fluxos-cmp-legenda" aria-hidden="true"></ul>
+                <div class="cmp-cabecalho" id="fluxos-cmp-cabecalho" role="group" aria-label="Ordenar os portos"></div>
+                <ol class="cmp-lista" id="fluxos-cmp-lista"></ol>
+              </div>
               <p class="nota" id="fluxos-painel-nota"></p>
             </aside>
           </div>
@@ -813,11 +820,113 @@ function eixos({ formatarY, empilhado = false, maxTicksX = 8, yMin, yMaxSugerido
   };
 }
 
+// --- Animação dos gráficos ------------------------------------------------------------------
+// Cada gráfico se desenha quando aparece na tela pela primeira vez: as linhas da esquerda para a
+// direita, ponto a ponto, e as barras crescendo em sequência. Depois disso, trocar o filtro, o
+// período ou o tema atualiza o gráfico no lugar: os valores deslizam até os novos, sem recriar.
+// Fora da tela, o gráfico é montado sem animação e espera a vez. Sem movimento, nada anima.
+const semMovimentoPagina = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const ANIMACAO_ATUALIZACAO = { duration: 750, easing: "easeOutQuart" };
+const configs = {}; // id -> última configuração (a entrada recria o gráfico com ela)
+const vistos = new Set(); // ids dos gráficos que já apareceram na tela
+const observadorGraficos = "IntersectionObserver" in window ? new IntersectionObserver((entradas) => {
+  for (const e of entradas) {
+    if (!e.isIntersecting) continue;
+    observadorGraficos.unobserve(e.target);
+    tocarEntrada(e.target.id);
+  }
+}, { threshold: 0.3 }) : null;
+
+function animacaoDeEntrada(config) {
+  const n = Math.max(1, config.data.labels?.length ?? 1);
+  if (config.type === "line") {
+    // linha que se desenha: cada ponto nasce depois do anterior, a partir da altura dele
+    const passo = Math.min(1500, 450 + n * 8) / n;
+    const yAnterior = (c) => {
+      const meta = c.chart.getDatasetMeta(c.datasetIndex);
+      return c.index === 0 ? c.chart.scales.y.bottom : meta.data[c.index - 1]?.getProps(["y"], true).y;
+    };
+    const atraso = (marca) => (c) => {
+      if (c.type !== "data" || c[marca]) return 0;
+      c[marca] = true;
+      return c.index * passo;
+    };
+    return {
+      x: { type: "number", easing: "linear", duration: passo, from: NaN, delay: atraso("xNasceu") },
+      y: { type: "number", easing: "linear", duration: passo, from: yAnterior, delay: atraso("yNasceu") },
+    };
+  }
+  // barras: crescem a partir da base, uma depois da outra
+  const passo = Math.min(45, 900 / n);
+  return { duration: 850, easing: "easeOutQuart", delay: (c) => (c.type === "data" && c.mode === "default" ? c.dataIndex * passo + c.datasetIndex * 90 : 0) };
+}
+
+function tocarEntrada(id) {
+  vistos.add(id);
+  const config = configs[id];
+  if (!config || !graficos[id] || semMovimentoPagina()) return;
+  graficos[id].destroy();
+  config.options.animation = { ...animacaoDeEntrada(config), onComplete: ({ chart }) => { chart.options.animation = ANIMACAO_ATUALIZACAO; } };
+  graficos[id] = new Chart(document.getElementById(id), config);
+  document.getElementById(id).dataset.entrada = "feita";
+}
+
 function novoGrafico(id, config) {
-  graficos[id]?.destroy();
   const canvas = document.getElementById(id);
+  const visto = vistos.has(id);
+  config.options = { ...config.options, animation: visto && !semMovimentoPagina() ? ANIMACAO_ATUALIZACAO : false };
+  configs[id] = config;
+  const atual = graficos[id];
+  // mesmo tipo: atualiza no lugar (com a animação de atualização, se o gráfico já foi visto)
+  if (atual && atual.config.type === config.type) {
+    atual.data.labels = config.data.labels;
+    atual.data.datasets = config.data.datasets;
+    atual.options = config.options;
+    atual.update();
+    return atual;
+  }
+  atual?.destroy();
   graficos[id] = new Chart(canvas, config);
+  if (!visto) {
+    if (observadorGraficos && !semMovimentoPagina()) {
+      canvas.dataset.entrada = "pendente";
+      observadorGraficos.observe(canvas);
+    } else vistos.add(id);
+  }
   return graficos[id];
+}
+
+// Números dos cartões: contam do valor que estava na tela até o novo (ao trocar filtro ou
+// período) e, na primeira vez que o cartão aparece, a partir de zero.
+const valoresMostrados = new Map(); // chave -> último valor mostrado
+function valorAnimado(chave, valor, formatar) {
+  const no = el("span", { classe: "numero" }, formatar(valor));
+  no.__valor = valor;
+  no.__formatar = formatar;
+  const anterior = valoresMostrados.get(chave);
+  valoresMostrados.set(chave, valor);
+  if (semMovimentoPagina() || !window.anime?.animate || nulo(valor) || nulo(anterior) || anterior === valor) return no;
+  const estadoNumero = { v: anterior };
+  no.textContent = formatar(anterior);
+  window.anime.animate(estadoNumero, { v: valor, duration: 900, ease: "outExpo", onUpdate: () => { no.textContent = formatar(estadoNumero.v); } });
+  return no;
+}
+// Ao aparecer pela primeira vez, os números do cartão contam a partir de zero (só o texto: o
+// gráfico ao lado tem a própria entrada).
+function contarAoAparecer(idCaixa) {
+  const caixa = document.getElementById(idCaixa);
+  if (!caixa || semMovimentoPagina() || !window.anime?.animate || !("IntersectionObserver" in window)) return;
+  const observador = new IntersectionObserver(([e]) => {
+    if (!e.isIntersecting) return;
+    observador.disconnect();
+    for (const no of caixa.querySelectorAll(".numero")) {
+      if (nulo(no.__valor) || !no.__formatar) continue;
+      const estadoNumero = { v: 0 };
+      no.textContent = no.__formatar(0);
+      window.anime.animate(estadoNumero, { v: no.__valor, duration: 1200, ease: "outExpo", onUpdate: () => { if (no.isConnected) no.textContent = no.__formatar(estadoNumero.v); } });
+    }
+  }, { threshold: 0.4 });
+  observador.observe(caixa);
 }
 
 const estreito = () => window.matchMedia("(max-width: 600px)").matches;
@@ -844,14 +953,14 @@ function desenharKpis() {
 
   const tile = (rotulo, valor, delta) => el("div", { classe: "kpi" },
     el("div", { classe: "rotulo" }, rotulo), el("div", { classe: "valor" }, valor), el("div", { classe: "delta" }, delta));
-  const linha = (m, ant) => [
-    tile("Toneladas", toneladas(m.t), variacao(variacaoPct(m.t, ant?.t))),
-    tile("Valor FOB", dolares(m.fob), variacao(variacaoPct(m.fob, ant?.fob))),
-    tile("Preço FOB", porTonelada(m.precoFob), variacao(variacaoPct(m.precoFob, ant?.precoFob))),
-    tile("Frete no CIF", pct(m.freteCif), variacao(ant && !nulo(m.freteCif) && !nulo(ant.freteCif) ? m.freteCif - ant.freteCif : null, " p.p.")),
+  const linha = (m, ant, bloco) => [
+    tile("Toneladas", valorAnimado(`resumo:${bloco}:t`, m.t, toneladas), variacao(variacaoPct(m.t, ant?.t))),
+    tile("Valor FOB", valorAnimado(`resumo:${bloco}:fob`, m.fob, dolares), variacao(variacaoPct(m.fob, ant?.fob))),
+    tile("Preço FOB", valorAnimado(`resumo:${bloco}:preco`, m.precoFob, porTonelada), variacao(variacaoPct(m.precoFob, ant?.precoFob))),
+    tile("Frete no CIF", valorAnimado(`resumo:${bloco}:frete`, m.freteCif, pct), variacao(ant && !nulo(m.freteCif) && !nulo(ant.freteCif) ? m.freteCif - ant.freteCif : null, " p.p.")),
   ];
-  document.getElementById("kpis-mes").replaceChildren(...linha(mAtual, mAnterior));
-  document.getElementById("kpis-acumulado").replaceChildren(...linha(aAtual, aAnterior));
+  document.getElementById("kpis-mes").replaceChildren(...linha(mAtual, mAnterior, "mes"));
+  document.getElementById("kpis-acumulado").replaceChildren(...linha(aAtual, aAnterior, "acumulado"));
 }
 
 function desenharToneladas(indices) {
@@ -1338,7 +1447,7 @@ function desenharTroca(indices) {
     ponto.style.background = prod.corSerie;
     return el("div", { classe: "kpi" },
       el("div", { classe: "rotulo titulo-produto" }, ponto, `${prod.nome} · ${rotuloMes(p[ate])}`),
-      el("div", { classe: "valor" }, nulo(v) ? semValor : `${fmt2.format(v)} t de soja`),
+      el("div", { classe: "valor" }, nulo(v) ? semValor : valorAnimado(`troca:${prod.chave}`, v, (x) => `${fmt2.format(x)} t de soja`)),
       el("div", { classe: "delta" }, nulo(v) ? `Média ${rotuloMedia(prod)}: ${tSoja(prod.media)}` : `${variacao(desvio)} vs média ${rotuloMedia(prod)} (${tSoja(prod.media)}) · ${fmt1.format(sacas(v))} sacas`));
   }));
   legenda("legenda-troca", [
@@ -1463,7 +1572,7 @@ function desenharNutrientes(indices) {
     const motivo = nulo(t) || t === 0 ? "sem importação no mês" : `amostra pequena (${toneladas(t)}), fora do gráfico`;
     return el("div", { classe: "kpi" },
       el("div", { classe: "rotulo titulo-produto" }, ponto, `${prod.nome} · ${rotuloMes(p[ate])}`),
-      el("div", { classe: "valor" }, ok ? porNutriente(v, prod) : "–"),
+      el("div", { classe: "valor" }, ok ? valorAnimado(`nutr:${estado.nutrMoeda}:${prod.chave}`, v, (x) => porNutriente(x, prod)) : "–"),
       el("div", { classe: "delta" }, ok ? `${conta}${nulo(antes) ? "" : ` · ${variacao(variacaoPct(v, antes))} vs ${rotuloMes(p[anoAntes])}`}` : motivo));
   }));
 
@@ -2032,6 +2141,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   montarFiltros();
   lerUrl();
   atualizar();
+  for (const id of ["kpis-mes", "kpis-acumulado", "kpis-nutrientes", "kpis-troca"]) contarAoAparecer(id);
   let largura = window.innerWidth;
   window.addEventListener("resize", () => {
     if ((window.innerWidth <= 600) !== (largura <= 600)) atualizar();
