@@ -1,7 +1,7 @@
 /* Hero e navegação do radar de fertilizantes.
  *
  * - Mapa-múndi em pontos num canvas, a partir de assets/mapa-pontos.json (gerado do Natural
- *   Earth 1:110m por scripts/gerar_mapa_pontos.py). Nenhum cálculo de geografia aqui: só desenho.
+ *   Earth 1:110m por `python -m src.mapa pontos`). Nenhum cálculo de geografia aqui: só desenho.
  * - Kicker e chip do Brasil com números do dashboard.json (evento "radar:dados" do script
  *   principal), nunca fixos no código.
  * - Nav em pílula com indicador deslizante e scroll-spy. Os links rolam até a seção sem mexer
@@ -110,7 +110,7 @@
   const canvas = document.getElementById("mapa-hero");
   const ctx = canvas.getContext("2d");
   const RECORTE = { oeste: -95, leste: 150 }; // longitudes mostradas: das Américas ao Japão
-  const BRASIL = "BR";
+  const BRASIL = "BRA";
   const CICLO_ONDA = 7000; // ms entre o começo de uma onda e o da seguinte
   const DURACAO_ONDA = 3600;
   let mapa = null;

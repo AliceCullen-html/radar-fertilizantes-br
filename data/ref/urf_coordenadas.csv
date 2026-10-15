@@ -1,0 +1,37 @@
+co_urf,no_urf,porto,uf,local_ne,lon,lat,fonte,observacao
+0130151,CACERES,Cáceres,MT,Cáceres,-57.51,-16.05,"Natural Earth 1:10m, Populated Places",fronteira com a Bolívia
+0147600,ALF - CORUMBÁ,Corumbá,MS,Corumbá,-57.65,-19.016,"Natural Earth 1:10m, Populated Places",fronteira com a Bolívia (rodovia e ferrovia)
+0210200,SANTAREM,Santarém,PA,Santarém,-54.7,-2.4333,"Natural Earth 1:10m, Populated Places",
+0217602,BARCARENA,Barcarena (Vila do Conde),PA,Abaetetuba,-48.8849,-1.7245,"Natural Earth 1:10m, Populated Places","Porto de Vila do Conde, em Barcarena, a cerca de 25 km"
+0217800,ALF - BELÉM,Belém,PA,Belem,-48.4847,-1.4517,"Natural Earth 1:10m, Ports",
+0217802,IRF - BARCARENA,Barcarena (Vila do Conde),PA,Abaetetuba,-48.8849,-1.7245,"Natural Earth 1:10m, Populated Places","Porto de Vila do Conde, em Barcarena, a cerca de 25 km"
+0227600,PORTO DE MANAUS,Manaus,AM,Manaus,-60.002,-3.0981,"Natural Earth 1:10m, Populated Places",
+0240152,SANTANA,Santana,AP,Macapá,-51.05,0.033,"Natural Earth 1:10m, Populated Places","Porto de Santana, a cerca de 20 km de Macapá"
+0317600,PORTO DE FORTALEZA,Fortaleza e Pecém,CE,Fortaleza,-38.5214,-3.7175,"Natural Earth 1:10m, Ports",
+0317800,PORTO DE PECEM,Fortaleza e Pecém,CE,Fortaleza,-38.5214,-3.7175,"Natural Earth 1:10m, Ports","Porto do Pecém, a cerca de 50 km a oeste"
+0317900,ALF - FORTALEZA,Fortaleza e Pecém,CE,Fortaleza,-38.5214,-3.7175,"Natural Earth 1:10m, Ports",
+0317903,IRF SAO LUIS,São Luís (Itaqui),MA,São Luís,-44.2679,-2.514,"Natural Earth 1:10m, Populated Places",
+0320151,IRF - PORTO DE SÃO LUÍS,São Luís (Itaqui),MA,São Luís,-44.2679,-2.514,"Natural Earth 1:10m, Populated Places",
+0327600,PORTO DE SAO LUIS,São Luís (Itaqui),MA,São Luís,-44.2679,-2.514,"Natural Earth 1:10m, Populated Places",
+0415100,IRF/RECIFE,Recife,PE,Recife,-34.869,-8.0536,"Natural Earth 1:10m, Ports",
+0417800,PORTO DE SUAPE,Suape,PE,Cabo de Santo Agostinho,-35.03,-8.29,"Natural Earth 1:10m, Populated Places","Porto de Suape, a cerca de 10 km"
+0417900,ALF - RECIFE,Recife,PE,Recife,-34.869,-8.0536,"Natural Earth 1:10m, Ports",
+0417902,IRF - PORTO DE SUAPE,Suape,PE,Cabo de Santo Agostinho,-35.03,-8.29,"Natural Earth 1:10m, Populated Places","Porto de Suape, a cerca de 10 km"
+0440151,MACEIO,Maceió,AL,Maceio,-35.7223,-9.6789,"Natural Earth 1:10m, Ports",
+0517600,PORTO DE SALVADOR,Salvador e Aratu,BA,Salvador,-38.5048,-12.9586,"Natural Earth 1:10m, Ports",
+0517602,PORTO DE ARATU,Salvador e Aratu,BA,Salvador,-38.5048,-12.9586,"Natural Earth 1:10m, Ports","Porto de Aratu, na Baía de Todos os Santos, a cerca de 20 km"
+0517800,ALF - SALVADOR,Salvador e Aratu,BA,Salvador,-38.5048,-12.9586,"Natural Earth 1:10m, Ports",
+0520100,ARACAJU,Aracaju,SE,Aracaju,-37.0395,-10.9253,"Natural Earth 1:10m, Ports",
+0710251,IRF CAMPOS DOS GOYTACAZES,Campos (Açu),RJ,Campos,-41.32,-21.75,"Natural Earth 1:10m, Populated Places","Porto do Açu, em São João da Barra, a cerca de 35 km"
+0717600,PORTO DO RIO DE JANEIRO,Rio de Janeiro e Itaguaí,RJ,Rio de Janeiro,-43.1918,-22.8831,"Natural Earth 1:10m, Ports",
+0717800,PORTO DE ITAGUAI,Rio de Janeiro e Itaguaí,RJ,Rio de Janeiro,-43.1918,-22.8831,"Natural Earth 1:10m, Ports","Porto de Itaguaí, a cerca de 60 km a oeste"
+0727600,PORTO DE VITORIA,Vitória,ES,Vitoria,-40.3351,-20.3233,"Natural Earth 1:10m, Ports",
+0817800,PORTO DE SANTOS,Santos,SP,Santos,-46.3005,-23.9689,"Natural Earth 1:10m, Ports",
+0917800,PORTO DE PARANAGUA,Paranaguá,PR,Paranagua,-48.5191,-25.5008,"Natural Earth 1:10m, Ports",
+0925251,IMBITUBA,Imbituba,SC,Imbituba,-48.66,-28.2296,"Natural Earth 1:10m, Populated Places",
+0927502,IRF - IMBITUBA,Imbituba,SC,Imbituba,-48.66,-28.2296,"Natural Earth 1:10m, Populated Places",
+0927700,PORTO DE SAO FRANCISCO DO SUL,São Francisco do Sul,SC,Sao Francisco do Sul,-48.6355,-26.2381,"Natural Earth 1:10m, Ports",
+0927800,ITAJAI,Itajaí,SC,Itajaí,-48.68,-26.8996,"Natural Earth 1:10m, Populated Places",
+1015400,PORTO ALEGRE,Porto Alegre,RS,Porto Alegre,-51.2241,-30.0175,"Natural Earth 1:10m, Ports",
+1017700,PORTO DE RIO GRANDE,Rio Grande,RS,Rio Grande,-52.0762,-32.0561,"Natural Earth 1:10m, Ports",
+1017800,ALF - PORTO ALEGRE,Porto Alegre,RS,Porto Alegre,-51.2241,-30.0175,"Natural Earth 1:10m, Ports",
