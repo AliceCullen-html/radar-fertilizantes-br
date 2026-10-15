@@ -148,12 +148,17 @@ BCB. **O repositório é PÚBLICO.**
   ISO3; a mesma da hero, não criar outra) e as tabelas de `data/ref/`: `paises_iso.csv` (código
   do Comex Stat → ISO3 pelo `/tables/countries/{id}` + ponto de rótulo do NE 1:50m) e
   `urf_coordenadas.csv` (URF → porto pela tabela `URF_LOCAL`, NE 1:10m). O transform monta o
-  bloco "mapa" do dashboard.json só com `data/processed` e `data/ref` (arco só para rota acima
-  do `CORTE_ROTA_T`; origem com menos de 1.000 t vai para "outros"). `dashboard/assets/fluxos.js`
-  usa o anime.js 4.5.0 (UMD do jsDelivr, com SRI; só a API v4: `animate`, `createTimeline`,
-  `stagger`, `svg.createMotionPath`, `utils`): pontos em canvas, arcos, navios, rótulos e foco em
-  SVG. Manter: "reduzir movimento" sem câmera, entrada nem navios; origens e portos focáveis com
-  Enter; painel `aria-live`; tabela alternativa; animação parada fora da tela. País ou URF com
+  bloco "mapa" do dashboard.json só com `data/processed` e `data/ref` (origem com menos de
+  1.000 t vai para "outros"). Na visão geral, um arco por país de origem até o Brasil (os
+  mesmos do ranking: o que cabe no painel, de 5 a 8; 6 no celular); ao abrir um país ou porto, arco só para rota acima do `CORTE_ROTA_T`.
+  `dashboard/assets/fluxos.js` usa o anime.js 4.5.0 (UMD do jsDelivr, com SRI; só a API v4:
+  `animate`, `createTimeline`, `stagger`, `svg.createDrawable`, `svg.createMotionPath`, `cubicBezier`): pontos em
+  canvas; arcos, cometas, marcadores e rótulos em SVG. O palco do mapa é noturno nos dois temas e
+  os arcos usam versões claras das cores fixas dos grupos. Manter: resumo acima do mapa e ranking
+  no painel; "reduzir movimento" sem câmera, entrada, cometas nem pulsos, e o botão "Pausar
+  animação"; mapa com uma parada de Tab (setas entre os marcadores) e linhas do ranking como
+  botões; foco nunca no <body> depois de selecionar; corte de rota do ano vindo de `corte_rota_t`; anúncios em `#fluxos-anuncio` (`aria-live`, nada durante o play);
+  tabela alternativa; animação parada fora da tela. País ou URF com
   volume relevante (≥ 10 mil t num ano e grupo, ou rota acima do corte) sem coordenada reprova
   o teste: acrescentar em `URF_LOCAL` e rodar `python -m src.mapa urfs` (ou `paises --manter`).
   O teste de navegador (`tests/e2e/`) é pulado sem Playwright e sem `RADAR_E2E_LIBS`.

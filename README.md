@@ -113,8 +113,8 @@ O [dashboard](https://alicecullen-html.github.io/radar-fertilizantes-br/) é uma
 - KPIs do último mês e do acumulado do ano, comparados com o mesmo período do ano anterior;
 - toneladas mensais por grupo (N, P, K e NPK);
 - share por país de origem e ranking de portos (URF), com variação sobre o ano anterior;
-- [mapa de fluxos](#mapa-de-fluxos) animado: de cada país de origem até o porto de chegada,
-  com linha do tempo de 2015 a 2026;
+- [mapa de fluxos](#mapa-de-fluxos) animado: de cada país de origem até o Brasil e até o porto de
+  chegada, com ranking e linha do tempo de 2015 a 2026;
 - [rotas país de origem → porto](#rotas-e-frete-por-rota): diagrama de fluxo (Sankey) por
   grupo e ano e tabela de frete US$/t das rotas com volume relevante;
 - preço implícito US$/t FOB x CIF e frete US$/t;
@@ -159,36 +159,53 @@ O nome do Worker precisa ser o mesmo do campo `name` do `wrangler.jsonc`.
 
 ### Mapa de fluxos
 
-![Mapa de fluxos: a entrada animada, o clique na Rússia e a linha do tempo do potássio de 2021 a 2023](dashboard/mapa-fluxos.gif)
+![Mapa de fluxos: a entrada animada, o destaque de uma origem no ranking, o clique na Rússia e a linha do tempo do potássio de 2021 a 2023](dashboard/mapa-fluxos.gif)
 
-A seção "Mapa de fluxos" é um mapa-múndi de pontos (o mesmo da abertura da página) que mostra
-de onde vem o adubo e em que porto ele chega, por grupo e por ano:
+A seção "Mapa de fluxos" é um mapa-múndi de pontos (o mesmo da abertura da página) que mostra de
+onde vem o adubo e em que porto ele chega, por grupo e por ano:
 
-- **Entrada.** Quando a seção aparece na tela, os pontos saem de um ruído e se assentam numa
-  onda que parte do Brasil, que acende por último com o total importado no ano.
-- **Origens.** Cada país de origem pulsa em proporção às toneladas. O clique (ou Tab e Enter)
-  aproxima a câmera, acende o país numa onda a partir do centro, desenha um arco até cada porto
-  de chegada, com largura proporcional às toneladas e navios percorrendo o caminho, e abre um
-  painel com toneladas, participação no grupo, frete e CIF em US$/t e variação sobre o ano
-  anterior.
-- **Portos.** O clique num porto inverte a visão: os arcos vêm de cada origem até ele.
-- **Linha do tempo.** De 2015 a 2026, com play. Em K, dá para ver Belarus cair de 2,4 milhões de t
-  em 2021 para 1,1 milhão em 2022, enquanto o Canadá cresce e, a partir de 2023, a Rússia também.
+- **Resumo.** Acima do mapa, o total importado no ano e no grupo e quanto as três maiores
+  origens somam, com a legenda do mapa (área do círculo e espessura do arco em toneladas).
+- **Visão geral.** Um arco por país de origem até o Brasil (as maiores origens do ano, as mesmas
+  do ranking ao lado: de 5 a 8 no desktop, 6 no celular), na cor do grupo e com largura
+  proporcional às toneladas. Os pontos do país ganham a mesma cor, com brilho pela tonelagem, e
+  um cometa percorre cada arco no sentido da carga. O painel traz o ranking dos países
+  (toneladas, participação e variação sobre os mesmos meses do ano anterior; "novo" quando o
+  país vendeu menos de 1.000 t naquele ano) ou, na aba Portos, dos portos, com o mapa aproximado
+  na costa brasileira. Passar o mouse (ou o foco) numa linha ou num país destaca o arco dele e
+  apaga os outros.
+- **Origem.** O clique num país (ou Enter, no mapa ou no ranking) aproxima a câmera, acende o
+  país numa onda a partir do centro e abre os arcos até cada porto de chegada, com a tonelagem
+  da rota no rótulo de cada porto. O painel mostra toneladas, participação no grupo, frete e CIF
+  em US$/t, variação e a lista de portos.
+- **Porto.** O clique num porto (no mapa, na aba Portos ou na lista de uma origem) inverte a
+  visão: os arcos vêm de cada origem até ele.
+- **Linha do tempo.** Uma coluna por ano com o total do grupo (o ano parcial fica hachurado) e o
+  botão Reproduzir, que vai de 2015 ao último ano completo. Ao trocar de ano, os arcos engrossam
+  ou afinam e o ranking se reordena com animação. Em K, dá para ver Belarus cair de 2,4 milhões
+  de t em 2021 para 1,1 milhão em 2022 (−55%), enquanto o Canadá cresce e, a partir de 2023, a
+  Rússia também.
 - **Filtro.** O grupo (N, P, K, NPK) é o mesmo filtro do resto da página. O ano e a seleção
-  também vão para a URL (por exemplo, `#grupo=K&de=2021-10&ate=2026-09&ano=2022&origem=676`).
-  O botão "Visão geral" ou a tecla ESC voltam ao mapa inteiro.
+  também vão para a URL (por exemplo, `#grupo=K&de=2021-10&ate=2026-09&ano=2022&origem=676`). O
+  botão "Visão geral" (sobre o mapa) ou a tecla ESC voltam ao mapa inteiro.
 
-Os números vêm só das tabelas de `data/processed/` (share por origem, ranking de portos, rotas
-e preço por origem), reunidos pelo transform no bloco `mapa` do `dashboard.json`. Só as rotas
-com pelo menos 50 mil t no ano ganham arco, o mesmo corte da [tabela de rotas](#rotas-e-frete-por-rota)
-(proporcional em ano parcial); as menores ficam como "outras". Origens com menos de 1.000 t no
-ano e grupo entram em "Outros". A tabela abaixo do mapa traz os mesmos números.
+Os números vêm só das tabelas de `data/processed/` (share por origem, ranking de portos, rotas e
+preço por origem), reunidos pelo transform no bloco `mapa` do `dashboard.json`. Na visão geral,
+cada arco soma tudo o que o país vendeu ao Brasil no ano. Ao abrir um país ou porto, só as rotas
+com pelo menos 50 mil t no ano ganham arco, o mesmo corte da [tabela de
+rotas](#rotas-e-frete-por-rota) (proporcional em ano parcial; o painel mostra o corte usado no
+ano); as menores ficam como "outras". Origens com menos de 1.000 t no ano e grupo entram em
+"Outros". A tabela abaixo do mapa traz os mesmos números.
 
-Com "reduzir movimento" ligado no sistema, não há câmera, entrada animada nem navios, só
-transições curtas de opacidade. As origens e os portos recebem foco pelo teclado, o painel é
-lido por leitores de tela (`aria-live`) e a animação para quando a seção sai da tela. No celular,
-o número de navios é menor. A animação usa o [anime.js](https://animejs.com/) 4.5.0 (licença
-MIT), do jsDelivr, com versão fixa e SRI, e o canvas e o SVG são desenhados pela própria página.
+O mapa fica sobre um fundo noturno nos dois temas, para que as cores dos grupos (versões claras
+de N azul, P laranja, K água, NPK amarelo e Todos violeta, com contraste de 7:1 ou mais)
+apareçam nos arcos. Com "reduzir movimento" ligado no sistema, não há câmera, entrada animada,
+cometas nem pulsos, só transições curtas de opacidade; o botão "Pausar animação" para cometas e
+pulsos a qualquer momento. O mapa é uma parada só do Tab (as setas andam entre países e portos),
+as linhas do ranking são botões, as mudanças são anunciadas para leitores de tela (`aria-live`,
+sem repetir a cada ano durante o play) e a animação para quando a seção sai da tela. A animação
+usa o [anime.js](https://animejs.com/) 4.5.0 (licença MIT), do jsDelivr, com versão fixa e SRI,
+e o canvas e o SVG são desenhados pela própria página.
 
 #### Base do mapa e tabelas de referência
 
