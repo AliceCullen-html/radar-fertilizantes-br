@@ -125,6 +125,13 @@ O [dashboard](https://alicecullen-html.github.io/radar-fertilizantes-br/) é uma
   KCl, ureia, MAP, DAP e TSP;
 - concentração de fornecedores (HHI) por ano.
 
+A navegação é animada com o anime.js: os links do menu rolam até a seção com início e fim
+suaves (qualquer gesto interrompe), o indicador do menu acompanha a rolagem e desliza de um item
+para o outro, uma linha fina no pé da barra mostra quanto da página já foi lida e cada seção
+entra ao aparecer na tela (o rótulo se "decodifica", o título sobe palavra a palavra e os
+cartões deslizam). Com "reduzir movimento" ligado no sistema, nada disso acontece e nada fica
+escondido.
+
 Os filtros de grupo e período valem para todos os gráficos e ficam na URL (por exemplo,
 `#grupo=K&de=2021-10&ate=2026-09`), então dá para compartilhar uma visão específica. A página
 funciona no celular, tem tema claro e escuro e uma tabela com os dados de cada gráfico.

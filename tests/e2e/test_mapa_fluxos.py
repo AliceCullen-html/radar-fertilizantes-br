@@ -205,3 +205,29 @@ def test_play_percorre_a_serie_e_ano_parcial_mostra_o_corte_proporcional(navegad
         assert f"{corte:g}".replace(".", ",") + " mil t em jan" in titulo
     assert erros == []
     ctx.close()
+
+
+def test_menu_rola_suave_ate_a_secao_e_revela_o_titulo(navegador, servidor):
+    ctx, pg, erros = _abrir(navegador, servidor, 1440, "light")
+    pg.evaluate("window.scrollTo(0, 0)")
+    pg.wait_for_timeout(300)
+    ys = pg.evaluate("""() => new Promise(r => { const ys = []; const t0 = performance.now();
+      document.querySelector('#nav-secoes a[data-secao=precos]').click();
+      const tic = () => { ys.push(scrollY); if (performance.now() - t0 < 1800) requestAnimationFrame(tic); else r(ys); }; tic(); })""")
+    assert all(b >= a for a, b in zip(ys, ys[1:])), "a rolagem anda sempre para baixo, sem trancos para trás"
+    assert len(set(ys)) > 10, "a rolagem é animada, não um salto"
+    topo = pg.evaluate("document.getElementById('precos').getBoundingClientRect().top")
+    assert 40 <= topo <= 90  # parou no começo da seção, abaixo da barra
+    pg.wait_for_timeout(1200)
+    assert pg.evaluate("document.querySelector('#nav-secoes a[aria-current]').dataset.secao") == "precos"
+    assert pg.evaluate("document.querySelector('#precos .kicker').textContent").endswith("Preços")
+    assert pg.evaluate("document.activeElement.id") == "t-precos"
+    assert float(pg.evaluate("document.querySelector('.barra-progresso').style.transform").strip("scaleX()")) > 0.3
+    assert erros == []
+    ctx.close()
+    # com reduzir movimento, nada fica escondido à espera da entrada
+    ctx, pg, erros = _abrir(navegador, servidor, 1440, "light", reduzido=True)
+    assert not pg.evaluate("document.documentElement.classList.contains('movimento')")
+    assert pg.evaluate("document.querySelectorAll('.preparado').length") == 0
+    assert erros == []
+    ctx.close()

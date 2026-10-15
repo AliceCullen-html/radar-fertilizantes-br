@@ -4,9 +4,11 @@
  *   Earth 1:110m por `python -m src.mapa pontos`). Nenhum cálculo de geografia aqui: só desenho.
  * - Kicker e chip do Brasil com números do dashboard.json (evento "radar:dados" do script
  *   principal), nunca fixos no código.
- * - Nav em pílula com indicador deslizante e scroll-spy. Os links rolam até a seção sem mexer
- *   no hash da URL, que guarda os filtros (#grupo=...&de=...).
- * Com prefers-reduced-motion: sem onda de brilho, sem rolagem suave e sem transições.
+ * - Nav em pílula com indicador "líquido" que segue a rolagem, barra de progresso e rolagem
+ *   animada pelo anime.js até a seção. Os links não mexem no hash da URL, que guarda os filtros
+ *   (#grupo=...&de=...).
+ * - Entrada das seções ao aparecer na tela (kicker decodificado, título por palavras, cartões).
+ * Com prefers-reduced-motion: sem onda de brilho, sem rolagem animada, sem entradas.
  */
 "use strict";
 (() => {
@@ -16,31 +18,65 @@
   const variavel = (nome) => getComputedStyle(document.documentElement).getPropertyValue(nome).trim();
 
   // --- Navegação ---------------------------------------------------------------------
+  const A = window.anime ?? null;
+  const semMovimento = () => reduzido.matches || !A;
+  const limitar = (v, a, b) => Math.min(b, Math.max(a, v));
+  const misturar = (a, b, t) => a + (b - a) * t;
+  const suavizar = (t) => t * t * (3 - 2 * t);
   const barra = document.getElementById("barra-topo");
   const nav = document.getElementById("nav-secoes");
   const indicador = nav.querySelector(".nav-indicador");
+  const progresso = barra.querySelector(".barra-progresso");
   const links = [...nav.querySelectorAll("a[data-secao]")];
   const hero = document.getElementById("inicio");
-  let ativa;
+  let ativa = null;
 
-  function moverIndicador(link, instantaneo) {
-    if (!link) {
-      indicador.style.opacity = "0";
-      return;
-    }
-    if (instantaneo) indicador.style.transition = "none";
-    indicador.style.width = `${link.offsetWidth}px`;
-    indicador.style.transform = `translateX(${link.offsetLeft - 4}px)`;
-    indicador.style.opacity = "1";
-    if (instantaneo) {
-      void indicador.offsetWidth; // aplica a posição sem animar e devolve a transição
-      indicador.style.transition = "";
-    }
+  // Posição de cada item na pílula (refeita no resize e quando as fontes carregam).
+  let geoLinks = [];
+  function medirLinks() {
+    geoLinks = links.map((a) => ({ l: a.offsetLeft - 4, r: a.offsetLeft - 4 + a.offsetWidth }));
   }
 
-  function ativar(id, instantaneo = false) {
+  // Indicador "líquido": segue a rolagem. Perto do fim de cada seção, a borda da frente avança
+  // para o próximo item antes da de trás (estica e encolhe). O que aparece persegue o alvo com
+  // uma mola leve, para a roda do mouse (que rola em degraus) não dar trancos.
+  const mostrado = { l: 0, r: 0, o: 0 };
+  const alvo = { l: 0, r: 0, o: 0 };
+  let laco = 0, anterior = 0;
+  function aplicarIndicador() {
+    indicador.style.transform = `translateX(${mostrado.l.toFixed(2)}px)`;
+    indicador.style.width = `${Math.max(0, mostrado.r - mostrado.l).toFixed(2)}px`;
+    indicador.style.opacity = mostrado.o.toFixed(3);
+  }
+  function seguirIndicador(agora) {
+    const dt = Math.min(64, agora - (anterior || agora - 16.7));
+    anterior = agora;
+    const k = 1 - Math.pow(0.78, dt / 16.7);
+    let resto = 0;
+    for (const c of ["l", "r", "o"]) {
+      mostrado[c] += (alvo[c] - mostrado[c]) * k;
+      resto = Math.max(resto, Math.abs(alvo[c] - mostrado[c]) * (c === "o" ? 100 : 1));
+    }
+    if (resto < 0.2) Object.assign(mostrado, alvo);
+    aplicarIndicador();
+    laco = resto < 0.2 ? 0 : requestAnimationFrame(seguirIndicador);
+    if (!laco) anterior = 0;
+  }
+  function moverIndicador(instantaneo) {
+    // aparecendo do nada, o indicador nasce no lugar (não desliza desde a esquerda)
+    if (mostrado.o < 0.05) { mostrado.l = alvo.l; mostrado.r = alvo.r; }
+    if (instantaneo || semMovimento()) {
+      cancelAnimationFrame(laco);
+      laco = 0;
+      Object.assign(mostrado, alvo);
+      aplicarIndicador();
+      return;
+    }
+    if (!laco) laco = requestAnimationFrame(seguirIndicador);
+  }
+
+  function ativar(id) {
     if (id === ativa) return;
-    const primeira = ativa === undefined || ativa === null;
     ativa = id;
     let atual = null;
     for (const a of links) {
@@ -49,11 +85,10 @@
         atual = a;
       } else a.removeAttribute("aria-current");
     }
-    moverIndicador(atual, instantaneo || primeira);
     if (atual && nav.scrollWidth > nav.clientWidth) {
       // no celular a pílula rola de lado: o item ativo fica à vista
-      const alvo = atual.offsetLeft - (nav.clientWidth - atual.offsetWidth) / 2;
-      nav.scrollTo({ left: alvo, behavior: reduzido.matches ? "auto" : "smooth" });
+      const x = atual.offsetLeft - (nav.clientWidth - atual.offsetWidth) / 2;
+      nav.scrollTo({ left: x, behavior: semMovimento() ? "auto" : "smooth" });
     }
   }
 
@@ -63,21 +98,39 @@
   }
   nav.addEventListener("scroll", bordasDaNav, { passive: true });
 
-  function espiar() {
+  function espiar(instantaneo = false) {
     const fimDoHero = hero.getBoundingClientRect().bottom;
     barra.classList.toggle("sobre-hero", fimDoHero > 56);
-    if (fimDoHero > window.innerHeight * 0.4) {
+    const doc = document.documentElement;
+    const maximo = doc.scrollHeight - window.innerHeight;
+    progresso.style.transform = `scaleX(${maximo > 0 ? limitar(window.scrollY / maximo, 0, 1).toFixed(4) : 0})`;
+    // seções visíveis, na ordem da nav, e o topo de cada uma em relação à linha de leitura
+    const linha = window.innerHeight * 0.35;
+    const itens = links.map((a, i) => ({ a, i, s: document.getElementById(a.dataset.secao) }))
+      .filter((x) => x.s && !x.s.hidden && x.s.getClientRects().length);
+    const topos = itens.map((x) => x.s.getBoundingClientRect().top - linha);
+    let k = -1;
+    topos.forEach((t, j) => { if (t <= 0) k = j; });
+    const noFim = window.innerHeight + window.scrollY >= doc.scrollHeight - 4;
+    if (noFim && itens.length) k = itens.length - 1; // a última seção, curta, também fica ativa
+    if (fimDoHero > window.innerHeight * 0.4 || k < 0) {
       ativar(null);
+      alvo.o = 0;
+      moverIndicador(instantaneo);
       return;
     }
-    let atual = null;
-    for (const a of links) {
-      const secao = document.getElementById(a.dataset.secao);
-      if (secao && !secao.hidden && secao.getBoundingClientRect().top <= window.innerHeight * 0.35) atual = a.dataset.secao;
+    let t = 0;
+    if (!noFim && k < itens.length - 1) {
+      const p = -topos[k] / (topos[k + 1] - topos[k]); // quanto da seção k já passou da linha
+      t = limitar((p - 0.72) / 0.28, 0, 1);
     }
-    // no fim da página, a última seção curta (Método) também fica ativa
-    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) atual = links[links.length - 1].dataset.secao;
-    ativar(atual);
+    const a = geoLinks[itens[k].i];
+    const b = geoLinks[itens[Math.min(k + 1, itens.length - 1)].i];
+    alvo.l = misturar(a.l, b.l, suavizar(limitar(t * 1.6 - 0.6, 0, 1)));
+    alvo.r = misturar(a.r, b.r, suavizar(limitar(t * 1.6, 0, 1)));
+    alvo.o = 1;
+    ativar(itens[t >= 0.5 ? Math.min(k + 1, itens.length - 1) : k].a.dataset.secao);
+    moverIndicador(instantaneo);
   }
 
   let pedido = 0;
@@ -87,10 +140,34 @@
   window.addEventListener("scroll", espiarNoProximoQuadro, { passive: true });
   window.addEventListener("resize", () => {
     bordasDaNav();
-    moverIndicador(links.find((a) => a.dataset.secao === ativa), true);
-    espiarNoProximoQuadro();
+    medirLinks();
+    espiar(true);
   });
-  document.fonts?.ready.then(() => moverIndicador(links.find((a) => a.dataset.secao === ativa), true));
+  document.fonts?.ready.then(() => { medirLinks(); espiar(true); });
+
+  // Rolagem até uma seção: animada pelo anime.js (começo e fim suaves, duração pela distância).
+  // Qualquer gesto da pessoa (roda, toque, tecla, clique) interrompe e devolve o controle.
+  let rolagem = null;
+  function pararRolagem() {
+    if (!rolagem) return;
+    rolagem.pause();
+    rolagem = null;
+  }
+  for (const tipo of ["wheel", "touchstart", "keydown", "pointerdown"]) window.addEventListener(tipo, pararRolagem, { passive: true });
+  function rolarAte(y) {
+    const maximo = document.documentElement.scrollHeight - window.innerHeight;
+    const destino = Math.round(limitar(y, 0, Math.max(0, maximo)));
+    pararRolagem();
+    if (semMovimento()) { window.scrollTo(0, destino); return; }
+    const posicao = { y: window.scrollY };
+    const distancia = Math.abs(destino - posicao.y);
+    if (distancia < 2) return;
+    rolagem = A.animate(posicao, {
+      y: destino, duration: limitar(480 + distancia * 0.12, 650, 1500), ease: "inOutQuart",
+      onUpdate: () => window.scrollTo(0, posicao.y),
+      onComplete: () => { rolagem = null; },
+    });
+  }
 
   // Links internos (nav, marca e botões do hero): rolam até a seção e põem o foco no título
   // dela, sem trocar o hash (que é dos filtros).
@@ -100,11 +177,63 @@
     const secao = document.getElementById(link.dataset.secao);
     if (!secao) return;
     evento.preventDefault();
-    const comportamento = reduzido.matches ? "auto" : "smooth";
-    if (link.dataset.secao === "inicio") window.scrollTo({ top: 0, behavior: comportamento });
-    else secao.scrollIntoView({ behavior: comportamento, block: "start" });
+    const margem = parseFloat(getComputedStyle(secao).scrollMarginTop) || 0;
+    rolarAte(link.dataset.secao === "inicio" ? 0 : secao.getBoundingClientRect().top + window.scrollY - margem);
     (document.getElementById(`t-${link.dataset.secao}`) ?? secao).focus?.({ preventScroll: true });
   });
+
+  // --- Entrada das seções --------------------------------------------------------------
+  // Ao entrar na tela: o kicker "decodifica" (scrambleText), as palavras do título sobem saindo
+  // do desfoque (splitText) e os cartões deslizam para cima, em sequência. Sem movimento (ou sem
+  // o anime.js), nada fica escondido.
+  function prepararEntradas() {
+    const raiz = document.documentElement;
+    if (!raiz.classList.contains("movimento")) return;
+    if (semMovimento()) { raiz.classList.remove("movimento"); return; }
+    const alvos = [...document.querySelectorAll(".bloco-cabecalho, .cartao")];
+    for (const el of alvos) {
+      el.style.opacity = "0";
+      el.classList.add("preparado");
+    }
+    const observador = new IntersectionObserver((entradas) => {
+      let n = 0;
+      for (const e of entradas) {
+        if (!e.isIntersecting) continue;
+        observador.unobserve(e.target);
+        revelar(e.target, n++ * 90);
+      }
+    }, { rootMargin: "0px 0px -10% 0px", threshold: 0.06 });
+    alvos.forEach((el) => observador.observe(el));
+    // se a pessoa ligar "reduzir movimento" no meio, tudo aparece na hora
+    reduzido.addEventListener?.("change", () => {
+      if (!reduzido.matches) return;
+      observador.disconnect();
+      for (const el of alvos) el.style.removeProperty("opacity");
+      raiz.classList.remove("movimento");
+    });
+  }
+
+  function revelar(el, atraso) {
+    const limpar = () => { el.style.removeProperty("opacity"); el.style.removeProperty("transform"); };
+    if (!el.classList.contains("bloco-cabecalho")) {
+      A.animate(el, { opacity: [0, 1], translateY: [26, 0], duration: 900, delay: atraso, ease: "outExpo", onComplete: limpar });
+      return;
+    }
+    el.style.opacity = "1";
+    const kicker = el.querySelector(".kicker");
+    const titulo = el.querySelector(".titulo-bloco");
+    const lead = el.querySelector(".bloco-lead");
+    if (kicker) A.animate(kicker, { textContent: A.scrambleText({ chars: "A-Z0-9", cursor: true }), delay: atraso });
+    if (titulo) {
+      const { words } = A.splitText(titulo, { words: true });
+      A.utils.set(words, { opacity: 0, translateY: "0.35em", filter: "blur(8px)" });
+      A.animate(words, { opacity: 1, translateY: "0em", filter: "blur(0px)", duration: 850, delay: A.stagger(55, { start: atraso + 120 }), ease: "outExpo" });
+    }
+    if (lead) {
+      A.utils.set(lead, { opacity: 0, translateY: 10 });
+      A.animate(lead, { opacity: 1, translateY: 0, duration: 800, delay: atraso + 320, ease: "outQuad", onComplete: () => { lead.style.removeProperty("opacity"); lead.style.removeProperty("transform"); } });
+    }
+  }
 
   // --- Mapa de pontos ----------------------------------------------------------------
   const canvas = document.getElementById("mapa-hero");
@@ -305,6 +434,8 @@
   matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", redesenhar);
 
   carregarMapa();
+  medirLinks();
   bordasDaNav();
-  espiar();
+  espiar(true);
+  prepararEntradas();
 })();

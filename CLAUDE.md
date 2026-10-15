@@ -162,6 +162,12 @@ BCB. **O repositório é PÚBLICO.**
   volume relevante (≥ 10 mil t num ano e grupo, ou rota acima do corte) sem coordenada reprova
   o teste: acrescentar em `URF_LOCAL` e rodar `python -m src.mapa urfs` (ou `paises --manter`).
   O teste de navegador (`tests/e2e/`) é pulado sem Playwright e sem `RADAR_E2E_LIBS`.
+- Movimento da página (`dashboard/assets/hero.js`): rolagem dos links internos pelo anime.js
+  (interrompível por roda, toque, tecla ou clique), indicador do menu calculado a cada quadro a
+  partir da rolagem (sem transição de posição no CSS), barra de progresso e entrada das seções
+  (`scrambleText` no kicker, `splitText` no título, cartões deslizando). A classe `movimento` no
+  `<html>` (script inline no `<head>`) só existe sem "reduzir movimento"; o CSS tem um fallback
+  que mostra tudo em 2,5 s se o JS não rodar. Nunca esconder conteúdo sem esse fallback.
 - Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):
   N azul, P laranja, K água, NPK amarelo, "Todos" violeta. Não reordenar.
 - Não commitar dados grandes: se `data/raw/` passar de ~20 MB, colocá-lo no `.gitignore`

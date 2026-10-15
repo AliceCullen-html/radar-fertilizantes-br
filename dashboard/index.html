@@ -19,6 +19,8 @@
 <link rel="preload" href="assets/fontes/inter-tight-latin-300-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fontes/jetbrains-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/radar.css">
+<!-- Liga as entradas animadas das seções antes da primeira pintura (sem elas, nada fica escondido). -->
+<script>if (!matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("movimento");</script>
 <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js" integrity="sha384-InMmvD3VoYcY7hGjSC80aLb2bNNE4CzpX+Eq6FVDlmB0IKgDvmfPw4UY8L/M++iG" crossorigin="anonymous" defer></script>
 <script src="assets/hero.js" defer></script>
 <script src="assets/fluxos.js" defer></script>
@@ -26,6 +28,7 @@
 <body>
 <a class="pular" href="#conteudo">Pular para o conteúdo</a>
 <header class="barra-topo sobre-hero" id="barra-topo">
+  <span class="barra-progresso" aria-hidden="true"></span>
   <a class="marca" href="#inicio" data-secao="inicio"><strong>Radar</strong><span>de fertilizantes</span></a>
   <nav class="nav-pilula" id="nav-secoes" aria-label="Seções">
     <span class="nav-indicador" aria-hidden="true"></span>
