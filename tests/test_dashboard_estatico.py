@@ -35,3 +35,9 @@ def test_pagina_cita_as_fontes_e_a_base_cartografica():
     assert "Base cartográfica: Natural Earth" in html
     assert "no porto" in html and "não é o preço ao produtor" in html.lower()
 
+
+def test_anime_js_com_versao_fixa_e_sri():
+    html = (DASH / "index.html").read_text(encoding="utf-8")
+    tag = re.search(r'<script src="https://cdn\.jsdelivr\.net/npm/animejs@([^/"]+)/[^"]+"([^>]*)>', html)
+    assert tag and re.fullmatch(r"4\.\d+\.\d+", tag.group(1)), "anime.js v4 com versão fixa"
+    assert 'integrity="sha384-' in tag.group(2) and 'crossorigin="anonymous"' in tag.group(2)

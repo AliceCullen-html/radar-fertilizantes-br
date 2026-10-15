@@ -19,7 +19,9 @@
 <link rel="preload" href="assets/fontes/inter-tight-latin-300-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fontes/jetbrains-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/radar.css">
+<script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js" integrity="sha384-InMmvD3VoYcY7hGjSC80aLb2bNNE4CzpX+Eq6FVDlmB0IKgDvmfPw4UY8L/M++iG" crossorigin="anonymous" defer></script>
 <script src="assets/hero.js" defer></script>
+<script src="assets/fluxos.js" defer></script>
 </head>
 <body>
 <a class="pular" href="#conteudo">Pular para o conteúdo</a>
@@ -30,6 +32,7 @@
       <a href="#boletim" data-secao="boletim">Boletim</a>
       <a href="#volumes" data-secao="volumes">Volumes</a>
       <a href="#origens" data-secao="origens">Origens</a>
+      <a href="#fluxos" data-secao="fluxos">Fluxos</a>
       <a href="#portos" data-secao="portos">Portos e rotas</a>
       <a href="#precos" data-secao="precos">Preços</a>
       <a href="#troca" data-secao="troca">Troca</a>
@@ -50,7 +53,7 @@
       <h1 id="titulo-hero">De onde vem o adubo do Brasil</h1>
       <p class="lead">Importações de fertilizantes mês a mês: de que país vêm, por qual porto entram, quanto custam e quanto de soja paga cada tonelada no porto.</p>
       <div class="botoes">
-        <a class="botao-contorno principal" href="#portos" data-secao="portos"><span class="icone"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="12" r="1.6" fill="currentColor"/><circle cx="13" cy="4" r="1.6" fill="currentColor"/><path d="M3 12C5 5 9 3 13 4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></span>Explorar as rotas</a>
+        <a class="botao-contorno principal" href="#fluxos" data-secao="fluxos"><span class="icone"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="12" r="1.6" fill="currentColor"/><circle cx="13" cy="4" r="1.6" fill="currentColor"/><path d="M3 12C5 5 9 3 13 4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></span>Explorar o mapa</a>
         <a class="botao-contorno" href="#volumes" data-secao="volumes"><span class="icone"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 14V9M6 14V5M10 14V7M14 14V2" stroke="currentColor" stroke-width="1.6" fill="none"/></svg></span>Ver a evolução</a>
         <a class="botao-contorno" href="#troca" data-secao="troca"><span class="icone"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5h10M9 2l3 3-3 3M14 11H4M7 8l-3 3 3 3" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></span>Simular a troca</a>
       </div>
@@ -164,9 +167,48 @@
     </section>
     </section>
 
+    <section class="bloco" id="fluxos" aria-labelledby="t-fluxos">
+      <header class="bloco-cabecalho">
+        <p class="kicker">04 · Mapa de fluxos</p>
+        <h2 class="titulo-bloco" id="t-fluxos" tabindex="-1">Do porto de origem ao porto de chegada</h2>
+        <p class="bloco-lead">Toneladas por país de origem e as rotas até cada porto brasileiro, ano a ano. Clique (ou use Tab e Enter) numa origem ou num porto; Esc volta à visão geral.</p>
+      </header>
+      <div class="fluxos" id="fluxos-app">
+        <div class="fluxos-controles">
+          <div class="segmentado" id="fluxos-grupo" role="group" aria-label="Grupo de nutriente"></div>
+          <button class="botao-contorno fluxos-voltar" id="fluxos-voltar" type="button" hidden><span class="icone"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>Visão geral</button>
+        </div>
+        <div class="fluxos-quadro">
+          <div class="fluxos-palco" id="fluxos-palco">
+            <canvas id="fluxos-canvas" aria-hidden="true"></canvas>
+            <svg id="fluxos-svg" role="group" aria-label="Mapa de fluxos: países de origem e portos de chegada"></svg>
+            <p class="chip-mapa fluxos-chip" id="fluxos-chip-brasil" hidden></p>
+            <p class="fluxos-carregando" id="fluxos-carregando">Carregando o mapa…</p>
+          </div>
+          <aside class="fluxos-painel" id="fluxos-painel" aria-live="polite" aria-labelledby="fluxos-painel-titulo" hidden>
+            <p class="kicker" id="fluxos-painel-kicker"></p>
+            <h3 id="fluxos-painel-titulo"></h3>
+            <dl class="fluxos-numeros" id="fluxos-numeros"></dl>
+            <h4 id="fluxos-lista-titulo"></h4>
+            <ol class="fluxos-lista" id="fluxos-lista"></ol>
+            <p class="nota" id="fluxos-painel-nota"></p>
+          </aside>
+        </div>
+        <div class="fluxos-tempo">
+          <button class="botao-contorno" id="fluxos-play" type="button" aria-label="Reproduzir a linha do tempo"><span class="icone"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"/></svg></span><span>Play</span></button>
+          <label class="fluxos-ano"><span class="rotulo">Ano</span> <output id="fluxos-ano-valor"></output>
+            <input type="range" id="fluxos-ano" min="0" max="0" step="1" value="0" aria-describedby="fluxos-ano-valor">
+          </label>
+          <ol class="fluxos-marcas" id="fluxos-marcas" aria-hidden="true"></ol>
+        </div>
+        <p class="nota fluxos-fonte" id="fluxos-fonte">Fonte: Comex Stat/MDIC · Base cartográfica: Natural Earth. Arcos só para rotas com pelo menos 50 mil t no ano (proporcional num ano parcial); as menores ficam em "outras".</p>
+        <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-fluxos"></div></details>
+      </div>
+    </section>
+
     <section class="bloco" id="portos" aria-labelledby="t-portos">
       <header class="bloco-cabecalho">
-        <p class="kicker">04 · Portos e rotas</p>
+        <p class="kicker">05 · Portos e rotas</p>
         <h2 class="titulo-bloco" id="t-portos" tabindex="-1">Por onde entra</h2>
         <p class="bloco-lead">Unidades da Receita (URF) onde a carga é desembaraçada e as rotas do país de origem ao porto, com o frete por rota.</p>
       </header>
@@ -196,7 +238,7 @@
 
     <section class="bloco" id="precos" aria-labelledby="t-precos">
       <header class="bloco-cabecalho">
-        <p class="kicker">05 · Preços</p>
+        <p class="kicker">06 · Preços</p>
         <h2 class="titulo-bloco" id="t-precos" tabindex="-1">Quanto custa</h2>
         <p class="bloco-lead">Preço implícito FOB e CIF, frete por tonelada e a comparação com a Pink Sheet do Banco Mundial.</p>
       </header>
@@ -242,7 +284,7 @@
 
     <section class="bloco" id="troca" aria-labelledby="t-troca">
       <header class="bloco-cabecalho">
-        <p class="kicker">06 · Troca</p>
+        <p class="kicker">07 · Troca</p>
         <h2 class="titulo-bloco" id="t-troca" tabindex="-1">Quanto de soja paga o adubo</h2>
         <p class="bloco-lead">Relação de troca medida no porto: soja exportada contra fertilizante importado no mesmo mês. Não é o preço ao produtor.</p>
       </header>
@@ -261,7 +303,7 @@
 
     <section class="bloco" id="metodo" aria-labelledby="t-metodo">
       <header class="bloco-cabecalho">
-        <p class="kicker">07 · Método</p>
+        <p class="kicker">08 · Método</p>
         <h2 class="titulo-bloco" id="t-metodo" tabindex="-1">Método e fontes</h2>
         <p class="bloco-lead">Só dados abertos oficiais. Cada gráfico tem a tabela com os números.</p>
       </header>
@@ -1443,8 +1485,13 @@ function lerUrl() {
   if (!estado.de || estado.de > estado.ate) estado.de = p[0];
 }
 function gravarUrl() {
-  const q = new URLSearchParams({ grupo: estado.grupo, de: estado.de, ate: estado.ate });
+  // Mantém as chaves de outras seções (o mapa de fluxos grava ano, origem e porto).
+  const q = new URLSearchParams(location.hash.slice(1));
+  q.set("grupo", estado.grupo);
+  q.set("de", estado.de);
+  q.set("ate", estado.ate);
   if (dados.benchmark && estado.bm) q.set("bm", estado.bm);
+  else q.delete("bm");
   history.replaceState(null, "", `#${q}`);
 }
 
@@ -1507,6 +1554,8 @@ function rodape() {
 function atualizar() {
   gravarUrl();
   sincronizarFiltros();
+  // O mapa de fluxos (assets/fluxos.js) usa o mesmo filtro de grupo.
+  document.dispatchEvent(new CustomEvent("radar:filtros", { detail: { grupo: estado.grupo, de: estado.de, ate: estado.ate } }));
   const indices = indicesEntre(estado.de, estado.ate);
   desenharKpis();
   desenharToneladas(indices);
@@ -1616,6 +1665,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   rodape();
   // O hero (assets/hero.js) usa os mesmos dados: números do kicker e do mapa sempre do JSON.
   window.radarDados = dados;
+  window.radarDefinirGrupo = (g) => {
+    if (["TOTAL", ...GRUPOS].includes(g) && g !== estado.grupo) {
+      estado.grupo = g;
+      atualizar();
+    }
+  };
   document.dispatchEvent(new CustomEvent("radar:dados", { detail: dados }));
   carregarBoletim().then(desenharBoletim);
   montarFiltros();
