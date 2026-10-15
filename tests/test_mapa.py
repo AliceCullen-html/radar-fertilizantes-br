@@ -5,7 +5,7 @@ import json
 import pandas as pd
 import pytest
 
-from src import config, mapa
+from src import config, mapa, transform
 
 RAIZ = config.RAIZ
 
@@ -89,3 +89,49 @@ def test_todo_pais_com_volume_relevante_tem_iso3_e_centroide():
     assert not sem, f"Países sem ISO3 ou centróide: {sem}. Rode python -m src.mapa paises --manter"
     assert paises.loc[list(relevantes), "lon"].between(-180, 180).all() and paises.loc[list(relevantes), "lat"].between(-60, 85).all()
     assert paises.loc["676", "iso3"] == "RUS" and paises.loc["105", "iso3"] == "BRA"
+
+
+# --- Bloco "mapa" do dashboard.json -----------------------------------------------------------
+
+
+def _bloco_versionado():
+    return json.loads((config.PROCESSED_DIR / "dashboard.json").read_text(encoding="utf-8"))["mapa"]
+
+
+def test_bloco_do_mapa_bate_com_as_tabelas_processadas():
+    bloco = _bloco_versionado()
+    share = pd.read_csv(config.PROCESSED_DIR / "share_origem_ano.csv", dtype={"co_pais": str})
+    rotas = pd.read_csv(config.PROCESSED_DIR / "rotas_ano.csv", dtype={"co_pais": str, "co_urf": str})
+    urfs = mapa.ler_urfs().set_index("co_urf")
+    assert bloco["anos"] == sorted(int(a) for a in share["ano"].unique())
+    for ano in bloco["anos"]:
+        for grupo, d in bloco["dados"][str(ano)].items():
+            s = share[(share["ano"] == ano) & (share["grupo"] == grupo)]
+            # toda tonelada do ano está em alguma origem ou em "outros"
+            assert sum(o[1] for o in d["origens"]) + d["outros_t"] == pytest.approx(s["toneladas"].sum(), abs=len(s) + 1)
+            assert d["t"] == pytest.approx(s["toneladas"].sum(), abs=1)
+            assert all(o[1] >= mapa.MINIMO_ORIGEM_T and o[0] in bloco["paises"] for o in d["origens"])
+            # só rotas acima do corte ganham arco, e a soma por porto não passa do total do porto
+            r = rotas[(rotas["ano"] == ano) & (rotas["grupo"] == grupo) & rotas["relevante"]]
+            assert sum(x[2] for x in d["rotas"]) == pytest.approx(r[r["co_urf"].isin(urfs.index)]["toneladas"].sum(), abs=len(r) + 1)
+            total_porto = {p: t for p, t in d["portos"]}
+            for i, t in total_porto.items():
+                assert sum(x[2] for x in d["rotas"] if x[1] == i) <= t + 1
+    nomes = [p[0] for p in bloco["portos"]]
+    assert len(nomes) == len(set(nomes)) and "Paranaguá" in nomes
+
+
+def test_bloco_do_mapa_com_dados_sinteticos(tmp_path):
+    from tests.test_transform import dois_anos  # mesmo conjunto dos testes do transform
+
+    tabelas = transform.gerar(dois_anos(), tmp_path)
+    paises = pd.DataFrame({"co_pais": ["149", "676", "160"], "no_pais": ["Canadá", "Rússia", "China"], "iso3": ["CAN", "RUS", "CHN"],
+                           "lon": [-100.0, 45.0, 104.0], "lat": [56.0, 58.0, 35.0], "fonte": ["x"] * 3})
+    urfs = pd.DataFrame({"co_urf": ["0917800"], "no_urf": ["PORTO DE PARANAGUA"], "porto": ["Paranaguá"], "uf": ["PR"],
+                         "local_ne": ["Paranagua"], "lon": [-48.5], "lat": [-25.5], "fonte": ["x"], "observacao": [""]})
+    bloco = mapa.bloco_dashboard(tabelas, paises, urfs, transform._num)
+    k = bloco["dados"]["2025"]["K"]
+    assert [o[0] for o in k["origens"]] == sorted([o[0] for o in k["origens"]], key=lambda c: -dict((o[0], o[1]) for o in k["origens"])[c])
+    assert bloco["portos"][0][:2] == ["Paranaguá", "PR"] and bloco["portos"][0][4] == ["0917800"]
+    assert all(x[1] == 0 for x in k["rotas"])  # índice do único porto
+    assert set(bloco["paises"]) <= {"149", "676", "160"}

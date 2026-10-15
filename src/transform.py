@@ -39,7 +39,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import benchmark, comparacao, config, ingest, troca
+from . import benchmark, comparacao, config, ingest, mapa, troca
 
 log = logging.getLogger(__name__)
 
@@ -339,11 +339,14 @@ def _ranking(tabela: pd.DataFrame, codigo: str, nome: str, com_preco: bool) -> l
     return linhas
 
 
-def dashboard(tabelas: dict[str, pd.DataFrame], fonte_pink: dict | None = None, ncms: dict | None = None) -> dict:
+def dashboard(
+    tabelas: dict[str, pd.DataFrame], fonte_pink: dict | None = None, ncms: dict | None = None, ref_mapa: tuple | None = None
+) -> dict:
     """Export compacto (séries mensais, resumo anual, rankings e sazonalidade) para a fase 3.
 
     `ncms` ({"monitorados": n, "com_importacao": n}) vai para o meta: o hero do dashboard
-    mostra esses números, sempre vindos dos dados.
+    mostra esses números, sempre vindos dos dados. `ref_mapa` (países e URFs com coordenadas,
+    de data/ref) liga o bloco do mapa de fluxos.
     """
     precos_grupo = tabelas["precos_mes_grupo"]
     origens, urfs = tabelas["share_origem_ano"], tabelas["share_urf_ano"]
@@ -452,6 +455,8 @@ def dashboard(tabelas: dict[str, pd.DataFrame], fonte_pink: dict | None = None, 
         painel["troca"] = troca.bloco_dashboard(tabelas["troca_mensal"], periodos, _num)
     if "benchmark_mensal" in tabelas:
         painel["benchmark"] = comparacao.bloco_dashboard(tabelas["benchmark_mensal"], periodos, _num, fonte_pink)
+    if ref_mapa is not None and "rotas_ano" in tabelas:
+        painel["mapa"] = mapa.bloco_dashboard(tabelas, *ref_mapa, _num)
     return painel
 
 
@@ -510,7 +515,12 @@ def gerar(
     ncms = {"com_importacao": int(base["co_ncm"].nunique())}
     if config.NCM_CSV.exists():
         ncms = {"monitorados": len(pd.read_csv(config.NCM_CSV, dtype=str)), **ncms}
-    painel = json.dumps(dashboard(tabelas, fonte_pink, ncms), ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    ref_mapa = None
+    if mapa.PAISES_CSV.exists() and mapa.URFS_CSV.exists():
+        ref_mapa = (mapa.ler_paises(), mapa.ler_urfs())
+    else:
+        log.warning("Sem %s ou %s: o mapa de fluxos fica de fora. Rode: python -m src.mapa paises e urfs", mapa.PAISES_CSV, mapa.URFS_CSV)
+    painel = json.dumps(dashboard(tabelas, fonte_pink, ncms, ref_mapa), ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     (saida / "dashboard.json").write_text(painel + "\n", encoding="utf-8")
     return tabelas
 
