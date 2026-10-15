@@ -17,6 +17,12 @@ venv/
 # --- Gravação atômica do Parquet (arquivo temporário) ---------------------------
 *.tmp
 
+# --- Site montado pelo build_site.sh e arquivos locais do wrangler -------------
+site/
+_site/
+.wrangler/
+node_modules/
+
 # --- Editores e sistema ---------------------------------------------------------
 .DS_Store
 .idea/

@@ -1,4 +1,5 @@
-# Publica o dashboard (dashboard/ + data/processed/dashboard.json + boletins/latest.json) no GitHub Pages.
+# Publica o dashboard (dashboard/ + data/processed/dashboard.json + boletins/latest.json) no GitHub Pages,
+# montado pelo build_site.sh (o mesmo do deploy na Cloudflare).
 # Não usa nenhum segredo: o deploy se autentica com o token OIDC do próprio Actions.
 # Pré-requisito único: Settings → Pages → Source: "GitHub Actions".
 # Também é chamado pela atualização mensal (atualizacao.yml), porque commits feitos com o
@@ -12,6 +13,7 @@ on:
       - "dashboard/**"
       - "data/processed/dashboard.json"
       - "boletins/latest.json"
+      - "build_site.sh"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
   workflow_call:
@@ -42,15 +44,10 @@ jobs:
           persist-credentials: false
       - uses: actions/configure-pages@v6
       - name: Montar o site
+        # o mesmo script do deploy na Cloudflare: copia dashboard/, o dashboard.json e o boletim.json
+        # para a raiz do site e falha se faltar algum arquivo ou algum JSON for inválido
         run: |
-          mkdir -p _site
-          cp -R dashboard/. _site/
-          cp data/processed/dashboard.json _site/dashboard.json
-          # Boletim do mês (fase 5); sem boletim ainda, um {} vazio deixa o card oculto sem erro 404.
-          if [[ -f boletins/latest.json ]]; then cp boletins/latest.json _site/boletim.json; else echo '{}' > _site/boletim.json; fi
-          atualizado="$(git log -1 --format=%cs -- data/processed/dashboard.json)"
-          sed -i "s|<meta name=\"atualizado\" content=\"\">|<meta name=\"atualizado\" content=\"${atualizado}\">|" _site/index.html
-          grep -q "name=\"atualizado\" content=\"${atualizado}\"" _site/index.html
+          bash build_site.sh _site
           ls -la _site
       - uses: actions/upload-pages-artifact@v5
         with:

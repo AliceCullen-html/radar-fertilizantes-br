@@ -86,6 +86,12 @@ BCB. **O repositório é PÚBLICO.**
   `/dashboard/`. O deploy é feito pelo `.github/workflows/pages.yml` (push na main que mude
   `dashboard/`, o `dashboard.json` ou o `boletins/latest.json`, ou manual), sem segredos. Pré-requisito: Settings →
   Pages → Source: "GitHub Actions".
+  O site é montado SÓ pelo `build_site.sh` (Pages em `_site`; Cloudflare em `site/`, publicado pelo
+  `wrangler.jsonc` com `"assets": {"directory": "./site"}`): `dashboard/` mais `dashboard.json` e
+  `boletim.json` na raiz, que é onde o `index.html` os busca. O script termina com exit 1 se faltar
+  o `index.html`, um dado ou um asset, ou se um JSON for inválido; não relaxar essas verificações
+  nem montar o site de outro jeito em outro lugar. Sem segredos no `wrangler.jsonc` (nada de
+  `account_id` nem `vars`).
 - Fase 4: `.github/workflows/atualizacao.yml` roda nos dias 1 a 15 de cada mês. Se o mês
   anterior já está gravado (`--ultimo-gravado`), encerra sem chamar nenhuma fonte; senão faz a
   ingestão incremental das quatro séries (Pink Sheet e PTAX primeiro; o Comex Stat só até o

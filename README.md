@@ -139,6 +139,24 @@ cada push na `main` que altere `dashboard/`, o `dashboard.json` ou o `boletins/l
 Actions → Pages → Run workflow. Ele não usa nenhum segredo; o único pré-requisito é, em
 **Settings → Pages**, escolher **Source: GitHub Actions**.
 
+O site é montado pelo [`build_site.sh`](build_site.sh), o mesmo no GitHub Pages e na Cloudflare.
+Ele copia `dashboard/` e põe os dados na raiz do site, onde o `index.html` os procura:
+`dashboard.json` (de `data/processed/`, com todos os gráficos e o mapa de fluxos) e
+`boletim.json` (de `boletins/latest.json`; `{}` enquanto não houver boletim). No fim, o build
+**falha** (exit 1) se faltar o `index.html`, o `dashboard.json` ou algum arquivo de `assets/`, ou se
+algum JSON for inválido ou não tiver os blocos que a página lê: melhor um deploy que falha do que
+um site no ar sem dados. Para ver o site montado localmente:
+
+```bash
+bash build_site.sh            # monta em site/
+python -m http.server -d site # e abra http://localhost:8000/
+```
+
+Na Cloudflare (Workers com assets estáticos, sem nenhum segredo no repositório), o
+[`wrangler.jsonc`](wrangler.jsonc) publica a pasta `./site` (`assets.directory`). Nas configurações
+de build do Worker: comando de build `bash build_site.sh` e comando de deploy `npx wrangler deploy`.
+O nome do Worker precisa ser o mesmo do campo `name` do `wrangler.jsonc`.
+
 ### Mapa de fluxos
 
 ![Mapa de fluxos: a entrada animada, o clique na Rússia e a linha do tempo do potássio de 2021 a 2023](dashboard/mapa-fluxos.gif)

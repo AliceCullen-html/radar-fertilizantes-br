@@ -1,0 +1,12 @@
+// Deploy do dashboard na Cloudflare (Workers com assets estáticos), sem nenhum segredo.
+// O build monta o site em ./site com `bash build_site.sh` (index.html, assets/, dashboard.json
+// e boletim.json na raiz) e o `npx wrangler deploy` publica essa pasta. O "name" precisa ser o
+// mesmo do Worker na Cloudflare.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "radar-fertilizantes-br",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./site"
+  }
+}
