@@ -73,7 +73,11 @@ BCB. **O repositório é PÚBLICO.**
   leia com `src.benchmark.ler_pink()` e `ler_ptax()`.
 - Rotas (`rotas_ano.csv` e bloco "rotas" do dashboard.json): país de origem → URF por ano.
   Frete por rota só para rotas com ≥ 50 mil t no ano (`CORTE_ROTA_T`, proporcional em ano
-  parcial). O Sankey é SVG próprio, sem lib externa.
+  parcial). O Sankey é SVG próprio, sem lib externa. Fluxo de entrada (anime.js, no script
+  principal): ao aparecer na tela e a cada troca de grupo ou ano, uma máscara com a linha do meio
+  de cada fita se desenha (`svg.createDrawable`) e as fitas "escorrem" das origens para as URFs;
+  tema e largura não repetem o fluxo; sem movimento, nada fica escondido; a impressão anula a
+  máscara.
 - Relação de troca (`src/troca.py`): preço CIF de KCl 31042090, ureia 31021010 e MAP
   31054000 ÷ preço FOB da soja no mesmo mês. É "no porto", não o preço ao produtor; dizer
   isso em toda saída pública que a mostrar. É US$/US$ e NÃO muda com o câmbio: nunca criar
@@ -154,7 +158,9 @@ BCB. **O repositório é PÚBLICO.**
   `dashboard/assets/fluxos.js` usa o anime.js 4.5.0 (UMD do jsDelivr, com SRI; só a API v4:
   `animate`, `createTimeline`, `stagger`, `svg.createDrawable`, `svg.createMotionPath`, `cubicBezier`): pontos em
   canvas; arcos, cometas, marcadores e rótulos em SVG. O palco do mapa é noturno nos dois temas e
-  os arcos usam versões claras das cores fixas dos grupos. Manter: resumo acima do mapa e ranking
+  os arcos usam versões claras das cores fixas dos grupos. Rótulos do mapa na fonte do site
+  (Inter Tight, números tabulares), sem contorno (`stroke`): só o halo difuso `#fluxos-halo`
+  (filtro SVG da cor do palco). Manter: resumo acima do mapa e ranking
   no painel; "reduzir movimento" sem câmera, entrada, cometas nem pulsos, e o botão "Pausar
   animação"; mapa com uma parada de Tab (setas entre os marcadores) e linhas do ranking como
   botões; foco nunca no <body> depois de selecionar; corte de rota do ano vindo de `corte_rota_t`; anúncios em `#fluxos-anuncio` (`aria-live`, nada durante o play);
@@ -173,6 +179,13 @@ BCB. **O repositório é PÚBLICO.**
   `clip-path` abrindo os gráficos e o palco do mapa. O fim de cada abertura usa `leave: "min+=…"`,
   para terminar na rolagem máxima mesmo em tela alta (nada fica cortado no fim da página); a
   impressão (`@media print`) anula os estilos inline; "reduzir movimento" no meio desfaz tudo.
+  Rotas vetoriais do hero (`#rotas-hero`, SVG sobre o canvas): as 6 maiores origens do último ano
+  completo (4 no celular, rótulos só para as 3 maiores com o mapa ao lado do título), sempre do
+  dashboard.json; o ponto da origem fica dentro do recorte do mapa. Entrada com
+  `svg.createDrawable` e `scrambleText`, depois pulsos em ciclo que param fora da tela; sem
+  movimento, arcos prontos e parados. Ícones dos botões do hero se redesenham no hover/foco
+  (`createDrawable` criado já desenhado: `createDrawable(el, 0, 1)`, porque o padrão `0 0` some
+  com o traço) e o ícone do tema gira com `createSpring`.
 - Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):
   N azul, P laranja, K água, NPK amarelo, "Todos" violeta. Não reordenar.
 - Não commitar dados grandes: se `data/raw/` passar de ~20 MB, colocá-lo no `.gitignore`

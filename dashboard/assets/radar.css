@@ -63,7 +63,7 @@
   --hero-texto-2: rgba(255, 255, 255, 0.82);
   --hero-ponto: rgba(255, 255, 255, 0.2);
   --hero-ponto-destaque: #ffffff;
-  --hero-onda: 255, 255, 255;
+  --hero-onda: 255, 255, 255; --hero-rota: #ffffff; --hero-pulso: #ffffff;
   --chip-fundo: #ffffff;
   --chip-texto: #2b34d1;
   --nav-fundo: rgba(255, 255, 255, 0.86);
@@ -103,7 +103,7 @@
     --hero-texto-2: rgba(236, 238, 255, 0.78);
     --hero-ponto: rgba(98, 110, 240, 0.5);
     --hero-ponto-destaque: #a6adff;
-    --hero-onda: 166, 173, 255;
+    --hero-onda: 166, 173, 255; --hero-rota: #a6adff; --hero-pulso: #f2f3ff;
     --chip-fundo: #2b34d1;
     --chip-texto: #ffffff;
     --nav-fundo: rgba(14, 20, 54, 0.84);
@@ -143,7 +143,7 @@
   --hero-texto-2: rgba(236, 238, 255, 0.78);
   --hero-ponto: rgba(98, 110, 240, 0.5);
   --hero-ponto-destaque: #a6adff;
-  --hero-onda: 166, 173, 255;
+  --hero-onda: 166, 173, 255; --hero-rota: #a6adff; --hero-pulso: #f2f3ff;
   --chip-fundo: #2b34d1;
   --chip-texto: #ffffff;
   --nav-fundo: rgba(14, 20, 54, 0.84);
@@ -234,6 +234,17 @@
   color: var(--hero-texto);
 }
 .hero .mapa-pontos { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; display: block; }
+/* rotas vetoriais sobre o mapa de pontos (hero.js): arcos das maiores origens até o Brasil */
+.hero .rotas-hero { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; display: block; overflow: visible; pointer-events: none; }
+.rotas-hero .rota { fill: none; stroke-linecap: round; }
+.rotas-hero .rota-ini { stop-color: var(--hero-rota); stop-opacity: 0.12; }
+.rotas-hero .rota-fim { stop-color: var(--hero-rota); stop-opacity: 0.78; }
+.rotas-hero .pulso { fill: none; stroke: var(--hero-pulso); stroke-linecap: round; }
+.rotas-hero .origem-ponto { fill: var(--hero-ponto-destaque); }
+.rotas-hero .origem-anel, .rotas-hero .chegada { fill: none; stroke: var(--hero-ponto-destaque); stroke-width: 1.2; opacity: 0; }
+.rotas-hero .rotulo-rota { fill: var(--hero-texto); font: 400 11px var(--mono); letter-spacing: 0.01em; filter: url(#halo-hero); }
+.rotas-hero .halo-cor { flood-color: var(--hero-fundo); flood-opacity: 0.85; }
+.rotas-hero .rotulo-rota .t { fill: var(--hero-texto-2); }
 .hero-conteudo {
   position: relative; max-width: 1360px; min-height: 100vh; min-height: 100svh; margin: 0 auto;
   display: grid; grid-template-rows: auto 1fr auto; gap: 24px; padding: 104px 40px 32px;
@@ -266,7 +277,8 @@
 }
 .hero .botao-contorno { color: var(--hero-texto); border-color: rgba(255, 255, 255, 0.55); }
 .botao-contorno .icone { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid currentColor; border-radius: 1px; }
-.botao-contorno .icone svg { width: 14px; height: 14px; }
+.botao-contorno .icone svg { width: 14px; height: 14px; overflow: visible; }
+.botao-contorno .icone circle { transform-box: fill-box; transform-origin: center; }
 .botao-contorno:hover { background: rgba(255, 255, 255, 0.12); }
 .hero .botao-contorno.principal { background: var(--chip-fundo); color: var(--chip-texto); border-color: var(--chip-fundo); }
 .hero .botao-contorno.principal:hover { background: var(--chip-fundo); filter: brightness(1.04); }
@@ -274,8 +286,8 @@
   display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; align-items: end;
   color: var(--hero-texto-2); font: 400 11px/1.4 var(--mono);
 }
-.hero-rodape .legenda-mapa { display: inline-flex; gap: 16px; }
-.hero-rodape .legenda-mapa span { display: inline-flex; align-items: center; gap: 7px; }
+.hero-rodape .legenda-mapa { display: inline-flex; flex-wrap: wrap; gap: 6px 16px; }
+.hero-rodape .legenda-mapa span { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
 .hero-rodape .legenda-mapa i { width: 8px; height: 8px; display: inline-block; }
 .chip-mapa {
   position: absolute; z-index: 2; display: inline-flex; align-items: center; gap: 8px; padding: 6px 9px;
@@ -329,6 +341,7 @@
 .pular:focus { top: 12px; }
 .hero-rodape .ponto-outros { background: var(--hero-ponto); outline: 1px solid rgba(255, 255, 255, 0.25); outline-offset: -1px; }
 .hero-rodape .ponto-brasil { background: var(--hero-ponto-destaque); }
+.hero-rodape .legenda-mapa i.linha-rota { width: 16px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--hero-rota)); }
 .lista-metodo { margin: 12px 0 0; padding: 0 0 0 18px; color: var(--texto-2); display: grid; gap: 8px; max-width: 90ch; }
 .lista-metodo li::marker { color: var(--titulo); }
 .titulo-bloco:focus { outline: none; }
@@ -418,10 +431,12 @@
   .fluxos svg .origem .anel { animation: pulsar 2.6s var(--facil) infinite; }
   .fluxos svg .hub .anel { animation: pulsar 3s var(--facil) infinite; }
 }
-.fluxos svg .rotulo { pointer-events: none; paint-order: stroke; stroke: var(--mapa-fundo); stroke-width: 4px; stroke-linejoin: round; }
-.fluxos svg .rotulo .nome { fill: var(--fluxo-texto); font: 600 12.5px var(--fonte); letter-spacing: 0.01em; }
-.fluxos svg .rotulo .valor { fill: var(--fluxo-texto-2); font: 400 10.5px var(--mono); }
-.fluxos svg .hub .rotulo .nome { font: 500 10.5px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; }
+/* rótulos na fonte do site, sem contorno: só um halo difuso da cor do palco (#fluxos-halo) */
+.fluxos svg .rotulo { pointer-events: none; filter: url(#fluxos-halo); font-variant-numeric: tabular-nums; }
+.fluxos svg .halo-cor { flood-color: #0a0e38; flood-opacity: 0.72; }
+.fluxos svg .rotulo .nome { fill: var(--fluxo-texto); font: 600 13px var(--fonte); letter-spacing: -0.005em; }
+.fluxos svg .rotulo .valor { fill: var(--fluxo-texto-2); font: 400 11.5px var(--fonte); letter-spacing: 0.005em; }
+.fluxos svg .hub .rotulo .nome { fill: #ffffff; }
 .fluxos svg.com-destaque .fluxo:not(.destacado) { opacity: 0.1; }
 .fluxos svg.com-destaque .marcador:not(.destacado) .corpo { opacity: 0.3; }
 .fluxos svg.com-destaque .etiqueta:not(.destacado) .rotulo { opacity: 0.3; }
@@ -572,8 +587,10 @@ a { color: inherit; text-underline-offset: 2px; }
 /* na impressão, nada fica preso no meio da animação de rolagem (estilos inline do anime.js) */
 @media print {
   .fundo-pontos { display: none; }
-  .grafico, .sankey, .fluxos-palco { clip-path: none !important; }
-  .hero-conteudo, .titulo-bloco, #mapa-hero { opacity: 1 !important; transform: none !important; }
+  .grafico, .fluxos-palco { clip-path: none !important; }
+  .sankey g { mask: none !important; }
+  .sankey rect, .sankey text { opacity: 1 !important; transform: none !important; }
+  .hero-conteudo, .titulo-bloco, #mapa-hero, #rotas-hero { opacity: 1 !important; transform: none !important; }
 }
 
 
@@ -662,6 +679,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .sankey.focado .fita { fill-opacity: 0.08; }
 .sankey.focado .fita.ativa { fill-opacity: 0.72; }
 .sankey text { font-size: 12px; fill: var(--texto); }
+.sankey rect { transform-box: fill-box; transform-origin: center; } /* nós crescem do centro no fluxo de entrada */
 .sankey text .share { fill: var(--texto-3); }
 @media (prefers-reduced-motion: reduce) { .sankey .fita { transition: none; } }
 h3.subtitulo { font-size: 14px; font-weight: 650; margin: 20px 0 0; }

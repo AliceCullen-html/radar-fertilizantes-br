@@ -133,8 +133,11 @@ cartões deslizam). Outras animações acompanham a própria rolagem (o `onScrol
 suavização) e voltam quando se rola para cima: o mapa do topo cresce e esmaece ao sair de cena,
 um fundo de pontos se move devagar atrás das seções, os títulos têm um leve parallax, cada
 gráfico se abre da esquerda para a direita conforme sobe na tela e o palco do mapa de fluxos se
-expande de uma janela recortada até a largura toda. Com "reduzir movimento" ligado no sistema,
-nada disso acontece e nada fica escondido.
+expande de uma janela recortada até a largura toda. No topo, arcos vetoriais ligam as maiores
+origens do último ano completo ao Brasil: cada um se desenha da origem até aqui e, depois, pulsos
+de luz correm por eles. No diagrama de rotas, as fitas "escorrem" das origens para os portos ao
+aparecer na tela e a cada troca de grupo ou ano. Com "reduzir movimento" ligado no sistema, nada
+disso acontece e nada fica escondido.
 
 Os filtros de grupo e período valem para todos os gráficos e ficam na URL (por exemplo,
 `#grupo=K&de=2021-10&ate=2026-09`), então dá para compartilhar uma visão específica. A página

@@ -8,8 +8,10 @@
  *   animada pelo anime.js até a seção. Os links não mexem no hash da URL, que guarda os filtros
  *   (#grupo=...&de=...).
  * - Entrada das seções ao aparecer na tela (kicker decodificado, título por palavras, cartões).
- * - Animações ligadas à rolagem (onScroll do anime.js): hero, fundo de pontos, títulos, gráficos,
- *   diagrama de rotas e mapa de fluxos acompanham a rolagem nos dois sentidos.
+ * - Rotas vetoriais (SVG) sobre o mapa: as maiores origens do último ano completo ligadas ao
+ *   Brasil por arcos que se desenham (svg.createDrawable), com pulsos de luz em ciclo.
+ * - Animações ligadas à rolagem (onScroll do anime.js): hero, fundo de pontos, títulos, gráficos e
+ *   mapa de fluxos acompanham a rolagem nos dois sentidos.
  * Com prefers-reduced-motion: sem onda de brilho, sem rolagem animada, sem entradas e sem nada
  *   ligado à rolagem.
  */
@@ -241,8 +243,8 @@
   // --- Animações ligadas à rolagem -------------------------------------------------------------
   // Diferente das entradas (que tocam uma vez), estas acompanham a rolagem nos dois sentidos, com
   // o onScroll do anime.js sincronizado (e uma suavização leve): o hero "mergulha" ao sair, o fundo
-  // de pontos anda devagar, os títulos flutuam, os gráficos e o diagrama de rotas se desenham da
-  // esquerda para a direita enquanto sobem na tela e o mapa de fluxos se abre como uma janela.
+  // de pontos anda devagar, os títulos flutuam, os gráficos se desenham da esquerda para a direita
+  // enquanto sobem na tela e o mapa de fluxos se abre como uma janela.
   // O anime.js recalcula as posições sozinho quando a página muda de altura.
   const ligadas = []; // [animação, observador]
   function ligarRolagem() {
@@ -253,14 +255,15 @@
       ligadas.push([A.animate(alvo, { ...valores, ease: "linear", autoplay: observador }), observador]);
     };
     const saidaDoHero = { target: hero, enter: "start start", leave: "start end" };
-    aRolagem(canvas, { scale: [1, 1.14], opacity: [1, 0.3] }, saidaDoHero);
+    aRolagem([canvas, rotasSvg], { scale: [1, 1.14], opacity: [1, 0.3] }, saidaDoHero);
     aRolagem(hero.querySelector(".hero-conteudo"), { translateY: [0, -120], opacity: [1, 0] }, saidaDoHero);
     aRolagem(document.querySelector(".fundo-pontos"), { translateY: [0, -840] }, { target: document.body, enter: "start start", leave: "end end", sync: 0.1 });
     for (const t of document.querySelectorAll(".titulo-bloco")) {
       aRolagem(t, { translateY: [26, -26] }, { target: t, enter: "end start", leave: "start end", sync: 0.25 });
     }
     // "min+=": no fim da página, o gráfico que não chega a 65% da tela termina de abrir na rolagem máxima
-    for (const g of document.querySelectorAll(".grafico, .sankey")) {
+    // (o diagrama de rotas tem a sua própria entrada: as fitas escorrem, no script principal)
+    for (const g of document.querySelectorAll(".grafico")) {
       aRolagem(g, { clipPath: ["inset(0% 100% 0% 0%)", "inset(0% 0% 0% 0%)"] }, { target: g, enter: "end start", leave: "min+=65% start", sync: 0.2 });
     }
     const palcoFluxos = document.getElementById("fluxos-palco");
@@ -271,6 +274,36 @@
       if (!reduzido.matches) return;
       for (const [animacao, observador] of ligadas) { observador.revert(); animacao.revert(); }
       ligadas.length = 0;
+    });
+  }
+
+  // --- Ícones dos botões do hero -------------------------------------------------------------
+  // Ao passar o mouse ou focar um botão, o ícone se redesenha: os traços correm de novo
+  // (svg.createDrawable, criado já desenhado) e os pontos nascem com uma mola.
+  function ligarIcones() {
+    if (!A?.svg) return;
+    for (const botao of document.querySelectorAll(".hero .botao-contorno")) {
+      const desenho = botao.querySelector(".icone svg");
+      if (!desenho) continue;
+      const tracos = A.svg.createDrawable(desenho.querySelectorAll("path"), 0, 1);
+      const pontos = [...desenho.querySelectorAll("circle")];
+      let tocando = null;
+      const tocar = () => {
+        if (semMovimento() || tocando) return;
+        tocando = A.createTimeline({ onComplete: () => { tocando = null; } })
+          .add(tracos, { draw: ["0 0", "0 1"], duration: 650, ease: "inOutCubic", delay: A.stagger(70) }, 0);
+        if (pontos.length) tocando.add(pontos, { scale: [0, 1], duration: 520, ease: "outBack(3)", delay: A.stagger(380) }, 0);
+      };
+      botao.addEventListener("pointerenter", tocar);
+      botao.addEventListener("focus", tocar);
+    }
+    // botão do tema: o ícone de meio círculo gira meia volta, com uma mola, a cada troca
+    const iconeTema = document.querySelector("#botao-tema svg");
+    let giro = 0;
+    document.getElementById("botao-tema")?.addEventListener("click", () => {
+      if (semMovimento() || !iconeTema) return;
+      giro += 180;
+      A.animate(iconeTema, { rotate: giro, ease: A.createSpring ? A.createSpring({ bounce: 0.45, duration: 650 }) : "outBack(2)", duration: 900 });
     });
   }
 
@@ -392,10 +425,161 @@
       rodando = true;
       inicioOnda = performance.now() - CICLO_ONDA + 600; // primeira onda logo depois de aparecer
       requestAnimationFrame(quadro);
+      entradaRotas?.resume();
+      for (const a of pulsos) a.resume();
     } else if (!deve && rodando) {
       rodando = false;
       requestAnimationFrame(quadro); // um último quadro limpo, sem a faixa
+      entradaRotas?.pause();
+      for (const a of pulsos) a.pause();
     }
+  }
+
+  // --- Rotas vetoriais (SVG) sobre o mapa de pontos ------------------------------------------
+  // As maiores origens do último ano completo (bloco "mapa" do dashboard.json, todos os grupos),
+  // ligadas ao Brasil por arcos com espessura pelas toneladas. Na entrada, o ponto de cada origem
+  // nasce, o arco se desenha até o Brasil (svg.createDrawable) e, ao chegar, abre um anel; os
+  // rótulos das três maiores se "decodificam". Depois, pulsos de luz correm pelos arcos em ciclo
+  // (um traço que anda com stroke-dashoffset), cada chegada com o seu anel. Os pulsos param fora
+  // da tela; sem movimento, os arcos aparecem prontos e parados.
+  const NS = "http://www.w3.org/2000/svg";
+  const rotasSvg = document.getElementById("rotas-hero");
+  const legendaRotas = document.getElementById("legenda-rotas-hero");
+  let rotas = []; // [{ linha, pulso, ponto, anel, chegada, rotulo, r }]
+  let pulsos = []; // animações em ciclo (pausam fora da tela)
+  let entradaRotas = null;
+  let rotasEntraram = false; // a entrada toca uma vez; depois (resize, tema) tudo é refeito pronto
+  const no = (tag, attrs = {}, ...filhos) => {
+    const e = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+    e.append(...filhos);
+    return e;
+  };
+
+  function origensDoHero() {
+    const m = dados?.mapa, anual = dados?.anual;
+    if (!m?.paises || !m.dados || !anual?.anos) return null;
+    let i = anual.anos.length - 1;
+    while (i >= 0 && anual.n_meses[i] !== 12) i--; // o mesmo ano do chip do Brasil
+    if (i < 0) return null;
+    const ano = anual.anos[i];
+    const lista = m.dados[String(ano)]?.TOTAL?.origens ?? [];
+    const itens = lista.slice(0, largura < 700 ? 4 : 6)
+      .map(([co, t]) => ({ nome: m.paises[co]?.[0], lon: m.paises[co]?.[2], lat: m.paises[co]?.[3], t }))
+      .filter((x) => x.nome && Number.isFinite(x.lon) && Number.isFinite(x.lat) && x.t > 0);
+    return itens.length ? { ano, itens } : null;
+  }
+
+  function arco(a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1;
+    let nx = -dy / d, ny = dx / d;
+    if (ny > 0) { nx = -nx; ny = -ny; } // curva para cima, como no mapa de fluxos
+    const c = { x: (a.x + b.x) / 2 + nx * d * 0.22, y: (a.y + b.y) / 2 + ny * d * 0.22 };
+    return `M${a.x.toFixed(1)} ${a.y.toFixed(1)} Q${c.x.toFixed(1)} ${c.y.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+  }
+
+  function pararPulsos() {
+    for (const a of pulsos) a.revert?.();
+    pulsos = [];
+  }
+
+  function montarRotas() {
+    const brasil = mapa?.rotulos?.[BRASIL];
+    const fonte = origensDoHero();
+    if (!rotasSvg || !geo || !brasil || !fonte) return;
+    entradaRotas?.pause();
+    entradaRotas = null;
+    pararPulsos();
+    rotasSvg.setAttribute("viewBox", `0 0 ${largura} ${altura}`);
+    const destino = lonLat(brasil[0], brasil[1]);
+    const maior = fonte.itens[0].t;
+    // o mesmo halo difuso dos rótulos do mapa de fluxos, na cor do fundo do hero
+    const defs = no("defs", {}, no("filter", { id: "halo-hero", x: "-20%", y: "-60%", width: "140%", height: "220%", "color-interpolation-filters": "sRGB" },
+      no("feMorphology", { in: "SourceAlpha", operator: "dilate", radius: 1.2, result: "grosso" }),
+      no("feGaussianBlur", { in: "grosso", stdDeviation: 2.4, result: "difuso" }),
+      no("feFlood", { class: "halo-cor" }),
+      no("feComposite", { in2: "difuso", operator: "in", result: "sombra" }),
+      no("feMerge", {}, no("feMergeNode", { in: "sombra" }), no("feMergeNode", { in: "SourceGraphic" }))));
+    const camadas = { arcos: no("g"), pulsos: no("g"), pontos: no("g"), rotulos: no("g") };
+    const chegadas = no("g");
+    rotas = fonte.itens.map((item, k) => {
+      // o ponto fica dentro do recorte do mapa (o Canadá, por exemplo, passa da borda oeste)
+      const o = lonLat(limitar(item.lon, RECORTE.oeste + 2, RECORTE.leste - 2), item.lat);
+      const d = arco(o, destino);
+      const espessura = 0.9 + 2.6 * Math.sqrt(item.t / maior);
+      const id = `rota-hero-${k}`;
+      defs.append(no("linearGradient", { id, gradientUnits: "userSpaceOnUse", x1: o.x, y1: o.y, x2: destino.x, y2: destino.y },
+        no("stop", { offset: 0, class: "rota-ini" }), no("stop", { offset: 1, class: "rota-fim" })));
+      const linha = no("path", { class: "rota", d, stroke: `url(#${id})`, "stroke-width": espessura.toFixed(2) });
+      const pulso = no("path", { class: "pulso", d, "stroke-width": (espessura + 0.8).toFixed(2), opacity: 0 });
+      const r = 2 + 2.6 * Math.sqrt(item.t / maior);
+      const ponto = no("circle", { class: "origem-ponto", cx: o.x.toFixed(1), cy: o.y.toFixed(1), r: r.toFixed(2) });
+      const anel = no("circle", { class: "origem-anel", cx: o.x.toFixed(1), cy: o.y.toFixed(1), r: r.toFixed(2) });
+      const chegada = no("circle", { class: "chegada", cx: destino.x.toFixed(1), cy: destino.y.toFixed(1), r: 3 });
+      let rotulo = null;
+      if (k < 3 && largura >= 900) { // rótulos só para as três maiores e com o mapa ao lado do título
+        const texto = `${item.nome} ${fmtCompacto.format(item.t)} t`;
+        const aDireita = o.x + r + 6 + texto.length * 6.7 < largura - 12;
+        rotulo = no("text", { class: "rotulo-rota", x: (o.x + (aDireita ? 1 : -1) * (r + 6)).toFixed(1), y: (o.y - r - 4).toFixed(1), "text-anchor": aDireita ? "start" : "end" },
+          no("tspan", { class: "n" }, item.nome), no("tspan", { class: "t", dx: 6 }, `${fmtCompacto.format(item.t)} t`));
+        camadas.rotulos.append(rotulo);
+      }
+      camadas.arcos.append(linha);
+      camadas.pulsos.append(pulso);
+      camadas.pontos.append(anel, ponto);
+      chegadas.append(chegada);
+      return { linha, pulso, ponto, anel, chegada, rotulo, r };
+    });
+    rotasSvg.replaceChildren(defs, camadas.arcos, camadas.pulsos, chegadas, camadas.pontos, camadas.rotulos);
+    if (legendaRotas) {
+      legendaRotas.lastElementChild.textContent = `${rotas.length} maiores origens em ${fonte.ano}`;
+      legendaRotas.hidden = false;
+    }
+    if (semMovimento() || !A.svg) { rotasEntraram = true; return; }
+    if (rotasEntraram) { ligarPulsos(); return; }
+    rotasEntraram = true;
+    entrarRotas();
+  }
+
+  function entrarRotas() {
+    const linha = A.createTimeline({ onComplete: () => { entradaRotas = null; ligarPulsos(); } });
+    rotas.forEach((x, k) => {
+      const inicio = 350 + k * 190;
+      const [traco] = A.svg.createDrawable(x.linha);
+      A.utils.set(x.ponto, { r: 0 });
+      A.utils.set(traco, { draw: "0 0" });
+      linha
+        .add(x.ponto, { r: [0, x.r], duration: 650, ease: "outBack(2.6)" }, inicio)
+        .add(x.anel, { r: [x.r, x.r * 4.2], opacity: [0.85, 0], duration: 1100, ease: "outQuad" }, inicio)
+        .add(traco, { draw: ["0 0", "0 1"], duration: 1500, ease: "inOutQuart" }, inicio + 120)
+        .add(x.chegada, { r: [2, 18], opacity: [0.9, 0], duration: 1000, ease: "outQuad" }, inicio + 1500);
+      if (x.rotulo) {
+        A.utils.set(x.rotulo, { opacity: 0 });
+        linha.add(x.rotulo, { opacity: [0, 1], duration: 300, ease: "outQuad" }, inicio + 500);
+        for (const parte of x.rotulo.children) linha.add(parte, { textContent: A.scrambleText({ chars: "A-Z0-9", duration: 900 }) }, inicio + 500);
+      }
+    });
+    entradaRotas = linha;
+    if (!rodando) linha.pause(); // hero fora da tela: espera voltar (animar() retoma)
+  }
+
+  // Pulso: um traço do tamanho de ~12% do arco que sai da origem e some no Brasil.
+  function ligarPulsos() {
+    pararPulsos();
+    if (semMovimento() || !A?.animate) return;
+    rotas.forEach((x, k) => {
+      const comprimento = x.linha.getTotalLength();
+      if (comprimento < 12) return;
+      const traco = Math.max(12, comprimento * 0.12);
+      x.pulso.setAttribute("stroke-dasharray", `${traco.toFixed(1)} ${(comprimento + traco).toFixed(1)}`);
+      x.pulso.setAttribute("opacity", "1");
+      pulsos.push(A.animate(x.pulso, {
+        strokeDashoffset: [traco, -comprimento], duration: limitar(comprimento * 4, 1600, 3800), ease: "inOutSine",
+        delay: 300 + k * 520, loop: true, loopDelay: 1400 + (k % 3) * 650,
+        onLoop: () => { if (rodando) A.animate(x.chegada, { r: [2, 14], opacity: [0.7, 0], duration: 900, ease: "outQuad" }); },
+      }));
+    });
+    if (!rodando) for (const a of pulsos) a.pause();
   }
 
   function redesenhar() {
@@ -405,6 +589,7 @@
     desenharBase();
     quadro(performance.now());
     posicionarChip();
+    montarRotas();
     animar();
   }
 
@@ -444,6 +629,7 @@
       }
     }
     posicionarChip();
+    montarRotas();
   }
 
   document.addEventListener("radar:dados", (e) => preencher(e.detail));
@@ -478,4 +664,5 @@
   espiar(true);
   prepararEntradas();
   ligarRolagem();
+  ligarIcones();
 })();

@@ -75,7 +75,7 @@
     return `${nomes.slice(0, -1).join(", ")} e ${nomes[nomes.length - 1]}`;
   }
   const slug = (s) => s.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const SVG_TAGS = new Set(["g", "path", "circle", "rect", "text", "tspan", "title", "defs", "linearGradient", "stop"]);
+  const SVG_TAGS = new Set(["g", "path", "circle", "rect", "text", "tspan", "title", "defs", "linearGradient", "stop", "filter", "feMorphology", "feGaussianBlur", "feFlood", "feComposite", "feMerge", "feMergeNode"]);
   function el(tag, attrs = {}, ...filhos) {
     const e = SVG_TAGS.has(tag) ? document.createElementNS("http://www.w3.org/2000/svg", tag) : document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
@@ -143,6 +143,14 @@
     el("circle", { classe: "anel", r: "6" }), el("circle", { classe: "nucleo", r: "4.5" }),
     el("text", { classe: "rotulo", x: "-11", y: "4", "text-anchor": "end" }, el("tspan", { classe: "nome" }, "Brasil")));
   hub.style.opacity = "0";
+  // Halo dos rótulos: uma sombra difusa da cor do palco, em vez de contorno. Some sobre o fundo e
+  // só aparece onde o texto passa por cima de um arco ou de pontos (cor e força no CSS).
+  defs.append(el("filter", { id: "fluxos-halo", x: "-30%", y: "-60%", width: "160%", height: "220%", "color-interpolation-filters": "sRGB" },
+    el("feMorphology", { in: "SourceAlpha", operator: "dilate", radius: "1.2", result: "grosso" }),
+    el("feGaussianBlur", { in: "grosso", stdDeviation: "2.4", result: "difuso" }),
+    el("feFlood", { classe: "halo-cor" }),
+    el("feComposite", { in2: "difuso", operator: "in", result: "sombra" }),
+    el("feMerge", {}, el("feMergeNode", { in: "sombra" }), el("feMergeNode", { in: "SourceGraphic" }))));
   svg.append(defs, camadaArcos, camadaNavios, hub, camadaMarcadores, camadaRotulos);
 
   // --- Estado ------------------------------------------------------------------------------
@@ -630,7 +638,7 @@
       const mostrar = (visiveis.has(m.dados.chave) || m.g === document.activeElement) && m.naTela;
       if (!mostrar) { m.rotulo.style.display = "none"; continue; }
       const s = m.s, r = (m.raio ?? 4) + 5;
-      const largura = Math.max(nome.textContent.length * 7, comValor ? valor.textContent.length * 6.4 : 0) + 6;
+      const largura = Math.max(nome.textContent.length * 7.2, comValor ? valor.textContent.length * 6 : 0) + 6;
       const alto = comValor ? 28 : 16;
       const opcoes = [
         { ancora: "start", x: r, yn: -1, yv: 12, caixa: { x0: s.x + r - 2, x1: s.x + r + largura, y0: s.y - 12, y1: s.y - 12 + alto } },

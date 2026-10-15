@@ -50,6 +50,7 @@
 
 <section class="hero" id="inicio" aria-labelledby="titulo-hero">
   <canvas class="mapa-pontos" id="mapa-hero" aria-hidden="true"></canvas>
+  <svg class="rotas-hero" id="rotas-hero" aria-hidden="true" focusable="false"></svg>
   <div class="hero-conteudo">
     <p class="chip-legenda">Do país de origem ao porto de chegada.</p>
     <div class="hero-texto">
@@ -64,7 +65,7 @@
     </div>
     <div class="hero-rodape">
       <span id="fonte-hero">Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX · Base cartográfica: Natural Earth</span>
-      <span class="legenda-mapa" aria-hidden="true"><span><i class="ponto-outros"></i>Demais países</span><span><i class="ponto-brasil"></i>Brasil</span></span>
+      <span class="legenda-mapa" aria-hidden="true"><span><i class="ponto-outros"></i>Demais países</span><span><i class="ponto-brasil"></i>Brasil</span><span id="legenda-rotas-hero" hidden><i class="linha-rota"></i><span></span></span></span>
     </div>
   </div>
   <p class="chip-mapa" id="chip-brasil" hidden></p>
@@ -883,6 +884,7 @@ function desenharSankey(bloco, g, ano) {
   const caixa = document.getElementById("sankey");
   caixa.classList.remove("focado");
   if (!bloco || !bloco.fluxos.length) {
+    prepararFluxoSankey(null);
     caixa.replaceChildren(el("p", { classe: "nota" }, "Sem importações neste ano e grupo."));
     caixa.setAttribute("aria-label", "Sem importações neste ano e grupo.");
     return;
@@ -916,11 +918,14 @@ function desenharSankey(bloco, g, ano) {
 
   const camadaFitas = svg("g", {});
   const porFita = new Map();
+  const centrais = []; // linha do meio de cada fita (máscara do fluxo de entrada)
   for (const f of [...fitas].sort((a, b) => b.t - a.t)) {
     const d = `M${x0},${f.ys} C${xm},${f.ys} ${xm},${f.yt} ${x1},${f.yt} L${x1},${f.yt + f.h} C${xm},${f.yt + f.h} ${xm},${f.ys + f.h} ${x0},${f.ys + f.h} Z`;
     const caminho = svg("path", { d, class: `fita${ehOutros(f) ? " outros" : ""}`, fill: ehOutros(f) ? "var(--outros)" : corBase });
     porFita.set(caminho, f);
     camadaFitas.append(caminho);
+    const ym0 = f.ys + f.h / 2, ym1 = f.yt + f.h / 2;
+    centrais.push({ d: `M${x0},${ym0} C${xm},${ym0} ${xm},${ym1} ${x1},${ym1}`, h: f.h, o: f.o });
   }
   const camadaNos = svg("g", {});
   const rotulo = (nome, t, x, y, ancora) => {
@@ -939,20 +944,26 @@ function desenharSankey(bloco, g, ano) {
   };
   const yO = centros(pO), yU = centros(pU);
   const alvos = new Map(); // nó ou rótulo -> { lado, i }
+  const lados = { nosO: [], rotulosO: [], nosU: [], rotulosU: [] };
   bloco.origens.forEach((o, i) => {
     const no = svg("rect", { x: esq, y: pO[i].y, width: larguraNo, height: pO[i].h, rx: 2, fill: o[1] === "Outros" ? "var(--outros)" : corBase });
     const r = rotulo(nomeO(i), o[2], esq - 6, yO[i], "end");
     alvos.set(no, { lado: "o", i }).set(r, { lado: "o", i });
     camadaNos.append(no, r);
+    lados.nosO.push(no);
+    lados.rotulosO.push(r);
   });
   bloco.urfs.forEach((u, i) => {
     const no = svg("rect", { x: x1, y: pU[i].y, width: larguraNo, height: pU[i].h, rx: 2, fill: u[1] === "Outros" ? "var(--outros)" : corBase });
     const r = rotulo(nomeU(i), u[2], x1 + larguraNo + 6, yU[i], "start");
     alvos.set(no, { lado: "u", i }).set(r, { lado: "u", i });
     camadaNos.append(no, r);
+    lados.nosU.push(no);
+    lados.rotulosU.push(r);
   });
   const desenho = svg("svg", { viewBox: `0 0 ${largura} ${altura}`, width: largura, height: altura, "aria-hidden": "true" }, camadaFitas, camadaNos);
   caixa.replaceChildren(desenho);
+  prepararFluxoSankey({ assinatura: `${g}|${ano}`, desenho, camadaFitas, centrais, largura, altura, ...lados });
   const maiores = [...fitas].filter((f) => !ehOutros(f)).sort((a, b) => b.t - a.t).slice(0, 3);
   caixa.setAttribute("aria-label", `Fluxo das importações, ${NOMES[g]}, ${rotuloAno(ano)}: das maiores origens para as maiores URFs. Maiores rotas: ${maiores.map((f) => `${nomeO(f.o)} para ${nomeU(f.u)}, ${toneladas(f.t)}`).join("; ")}. A tabela abaixo traz o frete por rota.`);
 
@@ -991,6 +1002,71 @@ function desenharSankey(bloco, g, ano) {
   desenho.addEventListener("pointermove", mover);
   desenho.addEventListener("pointerdown", mover);
   desenho.addEventListener("pointerleave", (evento) => { if (evento.pointerType !== "touch") soltar(); });
+}
+
+// Fluxo de entrada do diagrama (anime.js): ao aparecer na tela, e a cada troca de grupo ou de ano,
+// as fitas "escorrem" das origens para as URFs. Uma máscara com a linha do meio de cada fita (da
+// largura da fita) se desenha com svg.createDrawable, as das maiores origens primeiro; os nós e
+// rótulos de cada lado aparecem em sequência. Redesenhos pelo tema ou pela largura da caixa não
+// repetem o fluxo. Sem movimento (ou sem o anime.js), nada fica escondido; na impressão, o CSS
+// anula a máscara.
+let sankeyFluiu = null; // grupo|ano do último fluxo tocado
+let sankeyPendente = null; // fluxo preparado (fitas escondidas) esperando o diagrama aparecer
+let sankeyFluindo = null; // fluxo em andamento
+let sankeyNaTela = false;
+let idFluxo = 0;
+const semAnimacaoSankey = () => matchMedia("(prefers-reduced-motion: reduce)").matches || !window.anime?.svg;
+
+function prepararFluxoSankey(p) {
+  encerrarFluxoSankey();
+  if (!p || semAnimacaoSankey() || p.assinatura === sankeyFluiu) return;
+  const A = window.anime;
+  const id = `sankey-fluxo-${++idFluxo}`;
+  const tracos = p.centrais.map((c) => svg("path", { d: c.d, fill: "none", stroke: "#fff", "stroke-width": (c.h + 2).toFixed(2) }));
+  const mascara = svg("mask", { id, maskUnits: "userSpaceOnUse", x: 0, y: 0, width: p.largura, height: p.altura }, ...tracos);
+  p.desenho.prepend(svg("defs", {}, mascara));
+  p.camadaFitas.setAttribute("mask", `url(#${id})`);
+  const desenhaveis = A.svg.createDrawable(tracos);
+  A.utils.set(desenhaveis, { draw: "0 0" });
+  A.utils.set([...p.nosO, ...p.nosU], { scaleY: 0 });
+  A.utils.set([...p.rotulosO, ...p.rotulosU], { opacity: 0 });
+  sankeyPendente = { ...p, mascara, desenhaveis };
+  if (sankeyNaTela) fluirSankey();
+}
+
+function fluirSankey() {
+  const p = sankeyPendente;
+  if (!p) return;
+  sankeyPendente = null;
+  sankeyFluiu = p.assinatura;
+  const A = window.anime;
+  sankeyFluindo = p;
+  p.animacao = A.createTimeline({ onComplete: () => limparFluxoSankey(p) })
+    .add(p.nosO, { scaleY: [0, 1], duration: 600, ease: "outExpo", delay: A.stagger(45) }, 0)
+    .add(p.rotulosO, { opacity: [0, 1], translateX: [-8, 0], duration: 500, ease: "outQuad", delay: A.stagger(45) }, 60)
+    .add(p.desenhaveis, { draw: ["0 0", "0 1"], duration: 1150, ease: "inOutCubic", delay: (_, i) => 90 * p.centrais[i].o }, 180)
+    .add(p.nosU, { scaleY: [0, 1], duration: 600, ease: "outExpo", delay: A.stagger(45) }, 900)
+    .add(p.rotulosU, { opacity: [0, 1], translateX: [8, 0], duration: 500, ease: "outQuad", delay: A.stagger(45) }, 960);
+}
+
+function limparFluxoSankey(p) {
+  p.camadaFitas.removeAttribute("mask");
+  p.mascara.parentNode?.remove();
+  for (const e of [...p.nosO, ...p.nosU, ...p.rotulosO, ...p.rotulosU]) {
+    e.style.removeProperty("opacity");
+    e.style.removeProperty("transform");
+  }
+  if (sankeyFluindo === p) sankeyFluindo = null;
+}
+
+// Interrompe um fluxo em andamento ou pendente e mostra tudo (redesenho, "reduzir movimento").
+function encerrarFluxoSankey() {
+  for (const p of [sankeyFluindo, sankeyPendente]) {
+    if (!p) continue;
+    p.animacao?.pause();
+    limparFluxoSankey(p);
+  }
+  sankeyFluindo = sankeyPendente = null;
 }
 
 function tabelaRotas(bloco, g, ano) {
@@ -1716,6 +1792,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     larguraSankey = nova;
     desenharSankey(dados.rotas.dados[String(anoRotas())]?.[chaveGrupo()], chaveGrupo(), anoRotas());
   }).observe(document.getElementById("sankey"));
+  // O fluxo de entrada do diagrama toca quando ele aparece na tela.
+  new IntersectionObserver(([entrada]) => {
+    sankeyNaTela = entrada.isIntersecting;
+    if (sankeyNaTela) fluirSankey();
+  }, { threshold: 0.3 }).observe(document.getElementById("sankey"));
+  matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", (e) => { if (e.matches) encerrarFluxoSankey(); });
 });
 </script>
 </body>

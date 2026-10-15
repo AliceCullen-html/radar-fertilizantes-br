@@ -234,7 +234,7 @@ def test_menu_rola_suave_ate_a_secao_e_revela_o_titulo(navegador, servidor):
 
 
 # corte à direita do clip-path inline ("inset(0%)" = inteiro; sem estilo = sem animação)
-CORTES = """() => [...document.querySelectorAll('.grafico, .sankey, #fluxos-palco')].map((g) => {
+CORTES = """() => [...document.querySelectorAll('.grafico, #fluxos-palco')].map((g) => {
   const m = g.style.clipPath.match(/inset\\(([^)]*)\\)/);
   if (!m) return null;
   const partes = m[1].replace(/ round .*/, '').split(' ').map(parseFloat);
@@ -269,5 +269,98 @@ def test_rolagem_abre_os_graficos_e_nada_fica_cortado_no_fim_da_pagina(navegador
     pg.wait_for_timeout(400)
     assert pg.evaluate(CORTES) == [None] * len(pg.evaluate(CORTES))
     assert pg.evaluate("document.querySelector('.fundo-pontos').style.transform") == ""
+    assert erros == []
+    ctx.close()
+
+
+def _pagina(navegador, servidor, largura=1440, tema="light", reduzido=False, altura=900):
+    ctx = navegador.new_context(viewport={"width": largura, "height": altura}, color_scheme=tema, reduced_motion="reduce" if reduzido else "no-preference")
+    pg = ctx.new_page()
+    erros = []
+    pg.on("pageerror", lambda e: erros.append(str(e)))
+    pg.on("console", lambda m: erros.append(m.text) if m.type == "error" and "404" not in m.text else None)
+    pg.route("https://cdn.jsdelivr.net/**", _cdn)
+    pg.goto(servidor)
+    pg.wait_for_function("window.anime && window.radarDados", timeout=20_000)
+    return ctx, pg, erros
+
+
+# as maiores origens do último ano completo, pelos dados (nunca fixas no teste)
+MAIORES = """() => { const d = window.radarDados, a = d.anual; let i = a.anos.length - 1;
+  while (a.n_meses[i] !== 12) i--;
+  const ano = a.anos[i];
+  return { ano, nomes: d.mapa.dados[String(ano)].TOTAL.origens.slice(0, 6).map((o) => d.mapa.paises[o[0]][0]) }; }"""
+ROTAS = """() => ({ rotas: [...document.querySelectorAll('#rotas-hero .rota')].map((r) => [r.getAttribute('stroke-dasharray'), r.getAttribute('stroke-dashoffset')]),
+  pulsos: [...document.querySelectorAll('#rotas-hero .pulso')].map((p) => p.getAttribute('stroke-dasharray') && getComputedStyle(p).strokeDashoffset),
+  rotulos: [...document.querySelectorAll('#rotas-hero .rotulo-rota .n')].map((t) => t.textContent),
+  legenda: document.getElementById('legenda-rotas-hero').textContent })"""
+
+
+def test_rotas_do_hero_se_desenham_das_maiores_origens_e_pulsam(navegador, servidor):
+    ctx, pg, erros = _pagina(navegador, servidor)
+    maiores = pg.evaluate(MAIORES)
+    pg.wait_for_function("document.querySelectorAll('#rotas-hero .pulso[stroke-dasharray]').length > 0", timeout=15_000)
+    r = pg.evaluate(ROTAS)
+    assert len(r["rotas"]) == 6
+    assert all(d in (None, "1000 0") and o in (None, "0") for d, o in r["rotas"]), "todos os arcos terminam inteiros"
+    assert r["rotulos"] == maiores["nomes"][:3]
+    assert r["legenda"] == f"6 maiores origens em {maiores['ano']}"
+    antes = pg.evaluate(ROTAS)["pulsos"]
+    pg.wait_for_timeout(500)
+    assert pg.evaluate(ROTAS)["pulsos"] != antes, "os pulsos correm pelos arcos"
+    # fora da tela, os pulsos param
+    pg.evaluate("window.scrollTo(0, document.querySelector('.hero').offsetHeight + 400)")
+    pg.wait_for_timeout(500)
+    parado = pg.evaluate(ROTAS)["pulsos"]
+    pg.wait_for_timeout(500)
+    assert pg.evaluate(ROTAS)["pulsos"] == parado
+    assert erros == []
+    ctx.close()
+    # celular: menos arcos e sem rótulos; reduzir movimento: arcos prontos, sem pulsos
+    ctx, pg, erros = _pagina(navegador, servidor, largura=390, reduzido=True)
+    pg.wait_for_function("document.querySelectorAll('#rotas-hero .rota').length > 0", timeout=15_000)
+    pg.wait_for_timeout(600)
+    r = pg.evaluate(ROTAS)
+    assert len(r["rotas"]) == 4 and r["rotulos"] == []
+    assert all(d is None for d, _ in r["rotas"]) and all(p is None for p in r["pulsos"])
+    assert erros == []
+    ctx.close()
+
+
+SANKEY = """() => { const s = document.querySelector('#sankey svg');
+  return { mascara: !!s?.querySelector('g[mask]'), escondidos: [...(s?.querySelectorAll('rect, text') ?? [])].filter((e) => e.style.opacity === '0' || e.style.transform.includes('scaleY(0)')).length }; }"""
+
+
+def test_fitas_do_diagrama_de_rotas_escorrem_ao_aparecer_e_ao_trocar_o_ano(navegador, servidor):
+    ctx, pg, erros = _pagina(navegador, servidor)
+    pg.wait_for_function("!!document.querySelector('#sankey svg')", timeout=15_000)
+    assert pg.evaluate(SANKEY)["mascara"], "longe da tela, o fluxo espera (fitas atrás da máscara)"
+    pg.evaluate("document.getElementById('sankey').scrollIntoView({block: 'center'})")
+    pg.wait_for_function(f"(() => {{ const e = ({SANKEY})(); return !e.mascara && e.escondidos === 0; }})()", timeout=15_000)
+    # trocar o ano refaz o fluxo; redimensionar a caixa, não
+    pg.select_option("#filtro-ano-rotas", index=1)
+    assert pg.evaluate(SANKEY)["mascara"]
+    pg.wait_for_function(f"!({SANKEY})().mascara", timeout=15_000)
+    pg.set_viewport_size({"width": 1200, "height": 900})
+    pg.wait_for_timeout(500)
+    assert pg.evaluate(SANKEY) == {"mascara": False, "escondidos": 0}
+    assert erros == []
+    ctx.close()
+    ctx, pg, erros = _pagina(navegador, servidor, reduzido=True)
+    pg.wait_for_function("!!document.querySelector('#sankey svg')", timeout=15_000)
+    assert pg.evaluate(SANKEY) == {"mascara": False, "escondidos": 0}
+    assert erros == []
+    ctx.close()
+
+
+def test_rotulos_do_mapa_na_fonte_do_site_e_sem_contorno(navegador, servidor):
+    ctx, pg, erros = _abrir(navegador, servidor, 1440, "dark")
+    estilos = pg.evaluate("""() => [...document.querySelectorAll('#fluxos-svg .rotulo')].filter((t) => t.style.display !== 'none').map((t) => {
+      const c = getComputedStyle(t), n = getComputedStyle(t.querySelector('.nome')), v = t.querySelector('.valor');
+      return { stroke: c.stroke, filtro: c.filter, nome: n.fontFamily, valor: v ? getComputedStyle(v).fontFamily : n.fontFamily }; })""")
+    assert len(estilos) >= 3
+    for e in estilos:
+        assert e["stroke"] == "none" and "fluxos-halo" in e["filtro"]
+        assert e["nome"].startswith('"Inter Tight"') and e["valor"].startswith('"Inter Tight"')
     assert erros == []
     ctx.close()
