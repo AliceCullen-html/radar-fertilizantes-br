@@ -117,13 +117,17 @@ O [dashboard](https://alicecullen-html.github.io/radar-fertilizantes-br/) é uma
   chegada, com ranking e linha do tempo de 2015 a 2026;
 - [rotas país de origem → porto](#rotas-e-frete-por-rota): diagrama de fluxo (Sankey) por
   grupo e ano e tabela de frete US$/t das rotas com volume relevante;
-- preço implícito US$/t FOB x CIF e frete US$/t;
+- preço implícito US$/t FOB x CIF e frete US$/t, com a legenda do que é FOB e CIF ao lado;
+- [custo por nutriente](#custo-por-nutriente-custo-por-molécula): quanto custa, no porto, a
+  tonelada de N, de P₂O₅ e de K₂O em cada fertilizante, em US$ e em R$;
 - [relação de troca no porto](#relação-de-troca-no-porto) entre soja e KCl, ureia e MAP, com a
   média histórica como referência;
 - [Brasil x mercado internacional](#brasil-x-mercado-internacional-fase-6): preço FOB e CIF do
   Brasil contra a Pink Sheet do Banco Mundial, spread na base comparável e CIF em reais, para
   KCl, ureia, MAP, DAP e TSP;
-- concentração de fornecedores (HHI) por ano.
+- concentração de fornecedores (HHI) por ano;
+- um glossário (FOB, CIF, CFR, custo por nutriente, crédito de N, URF, UF de destino, PTAX,
+  spread e outros termos), no fim da página.
 
 A navegação é animada com o anime.js: os links do menu rolam até a seção com início e fim
 suaves (qualquer gesto interrompe), o indicador do menu acompanha a rolagem e desliza de um item
@@ -139,7 +143,9 @@ cometas de luz correm por eles. Os pontos do mapa acendem sob o cursor e o conti
 se destaca; um clique (ou o botão "Explorar por continente") abre os dados dele no lugar do
 título: toneladas importadas, parte do total do Brasil, variação sobre o ano anterior, divisão
 por grupo de nutriente e maiores origens, com as rotas do continente no mapa. Os continentes são
-os do Natural Earth (a Rússia conta na Europa). No diagrama de rotas, as fitas "escorrem" das
+os do Natural Earth (a Rússia conta na Europa). Um clique no Brasil (ou no chip dele) abre a
+[visão por estado](#importações-por-estado): um quadrado por UF, na cor da variação sobre o ano
+anterior, com os estados que mais cresceram e mais caíram em toneladas. No diagrama de rotas, as fitas "escorrem" das
 origens para os portos ao aparecer na tela e a cada troca de grupo ou ano. Com "reduzir
 movimento" ligado no sistema, nada disso se mexe e nada fica escondido.
 
@@ -506,7 +512,7 @@ arquivo.
 | `mes` | mês (1 a 12) |
 | `co_ncm` | NCM, 8 dígitos |
 | `co_pais`, `no_pais` | país de origem: código e nome |
-| `sg_uf`, `no_uf` | UF do produto (na importação, a UF do importador): sigla e nome |
+| `sg_uf`, `no_uf` | UF do produto (na importação, a UF de destino da mercadoria, qualquer que seja a sede do importador): sigla e nome |
 | `co_via`, `no_via` | via de transporte: código e nome |
 | `co_urf`, `no_urf` | URF de desembaraço: código e nome |
 | `vl_fob` | valor US$ FOB |
@@ -557,7 +563,9 @@ independente à API, que filtra pelas posições SH4 em vez da lista de NCMs.
 | `rotas_ano.csv` | ano × grupo × país × URF | [rotas](#rotas-e-frete-por-rota): toneladas, US$ FOB, CIF e frete, frete US$/t e % do CIF, share, meses com carga e se passa do corte de volume |
 | `troca_mensal.csv` | mês × produto | [relação de troca](#relação-de-troca-no-porto): preço CIF do fertilizante, preço FOB da soja, t de soja por t e sacas por t |
 | `benchmark_mensal.csv` | mês × produto | [Brasil x mercado internacional](#brasil-x-mercado-internacional-fase-6): toneladas, preços FOB e CIF do Brasil, benchmark e base, spread FOB, custo posto, spread comparável (US$/t e %), PTAX, CIF em reais e a marca de amostra pequena |
-| `dashboard.json` | — | export compacto para o dashboard: séries mensais, resumo anual, top 10 origens e URFs, rotas, sazonalidade, relação de troca, benchmark |
+| `share_uf_ano.csv` | ano × grupo × UF | [importações por estado](#importações-por-estado): toneladas, share e variação sobre o mesmo período do ano anterior, por UF de destino |
+| `custo_nutriente_mensal.csv` | mês × produto | [custo por nutriente](#custo-por-nutriente-custo-por-molécula): teores, toneladas, CIF, custo por tonelada de nutriente com e sem o crédito de N, custo por ponto, PTAX e custo em reais |
+| `dashboard.json` | — | export compacto para o dashboard: séries mensais, resumo anual, top 10 origens e URFs, rotas, sazonalidade, relação de troca, benchmark, estados e custo por nutriente |
 
 Como os números são calculados:
 
@@ -626,6 +634,67 @@ entre a compra do adubo e a venda da safra. Serve para ver a direção e a inten
 poder de compra da soja frente ao adubo importado, não para orçar a compra de uma fazenda.
 
 A relação é US$/US$ e não muda com o câmbio: a soja e o fertilizante estão em dólar.
+
+### Custo por nutriente (custo por molécula)
+
+[![Custo por tonelada de nutriente no porto, de 2015 a 2026: ureia (N), MAP (P₂O₅) e KCl (K₂O)](dashboard/print-nutrientes.png)](https://alicecullen-html.github.io/radar-fertilizantes-br/)
+
+O que se compra no adubo é o nutriente. Uma tonelada de ureia traz 460 kg de N; uma de KCl,
+600 kg de K₂O. Para comparar produtos diferentes, `src/nutrientes.py` divide o preço CIF pelo
+teor do nutriente (`custo_nutriente_mensal.csv` e o cartão "Custo por nutriente" do dashboard):
+
+```text
+custo do nutriente (US$/t)    = CIF do produto (US$/t) ÷ teor do nutriente
+MAP e DAP (P₂O₅)              = (CIF − teor de N × custo do N da ureia no mês) ÷ teor de P₂O₅
+custo por ponto (MAP e DAP)   = CIF ÷ (teor de N + teor de P₂O₅)
+em reais (R$/t)               = custo em US$ × PTAX venda média do mês
+```
+
+Exemplo: ureia a US$ 460/t CIF, com 46% de N, sai a US$ 1.000 por tonelada de N.
+
+| Produto | NCM | Teor usado | Nutriente |
+| --- | --- | --- | --- |
+| Ureia | 31021010 | 46% de N | N |
+| Sulfato de amônio | 31022100 | 21% de N | N |
+| Nitrato de amônio | 31023000 | 34% de N | N |
+| MAP | 31054000 | 11% de N e 52% de P₂O₅ | P₂O₅ (com crédito de N) |
+| DAP | 31053000, 31053010, 31053090 | 18% de N e 46% de P₂O₅ | P₂O₅ (com crédito de N) |
+| TSP | 31031030, 31031100 | 46% de P₂O₅ | P₂O₅ |
+| KCl | 31042090 | 60% de K₂O | K₂O |
+
+- **Teores:** o grau comercial usual de cada produto, porque o Comex Stat não traz o teor de
+  cada carga. Um teor diferente muda o custo na mesma proporção (ureia com 45% de N em vez de
+  46%: custo do N 2,2% maior).
+- **Crédito de N:** o MAP e o DAP levam N junto com o P₂O₅. Esse N vale o que custaria
+  comprado na ureia do mesmo mês, e o resto do preço é o custo do P₂O₅. O CSV e o tooltip
+  trazem também o custo sem esse desconto. O enxofre do sulfato de amônio (cerca de 24% de S)
+  não é descontado.
+- **Amostra pequena:** meses com menos de 10 mil t do produto ficam fora do gráfico (um navio
+  decide o preço) e aparecem marcados na tabela.
+- **No porto:** é o custo CIF, antes de impostos, frete interno e margens. Não é o preço ao
+  produtor. Em reais, pela PTAX venda média do mês, e não pelo câmbio de cada declaração.
+
+Fonte: Comex Stat/MDIC; BCB/PTAX.
+
+### Importações por estado
+
+[![Painel do Brasil por estado no mapa do topo: um quadrado por UF, na cor da variação de 2025 sobre 2024, com as maiores altas e quedas em toneladas](dashboard/print-estados.png)](https://alicecullen-html.github.io/radar-fertilizantes-br/)
+
+O Comex Stat traz a UF de cada importação: a **UF de destino da mercadoria**, qualquer que seja
+a sede do importador, e não a UF do porto de chegada. Mato Grosso, sem porto, aparece entre os
+maiores destinos. O transform soma as toneladas por ano, grupo e UF (`share_uf_ano.csv`, com o
+share e a variação sobre os mesmos meses do ano anterior; quem parou de importar entra com
+zero) e o dashboard mostra isso no painel do Brasil, no mapa do topo:
+
+- um quadrado por UF, na posição aproximada do mapa, na cor da variação em toneladas (quente
+  para alta, fria para queda, mais forte até ±50%); estados com menos de 0,5% do total nos dois
+  períodos ficam em cinza, porque um navio a mais ou a menos muda muito a porcentagem deles;
+- o total, a variação e quantos estados cresceram; as três maiores altas e quedas em toneladas;
+- filtros de grupo (todos, N, P, K, NPK) e de ano (o último ano completo e o ano em curso);
+  as rotas do mapa viram as das maiores origens do grupo e do ano escolhidos;
+- a tabela com todos os estados. Pelo teclado, as setas andam entre os estados vizinhos.
+
+Fonte: Comex Stat/MDIC.
 
 ## Brasil x mercado internacional (fase 6)
 

@@ -71,23 +71,53 @@
         <button class="pc-fechar" id="pc-fechar" type="button" aria-label="Fechar os dados do continente"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>
       </div>
       <h2 class="pc-titulo" id="pc-titulo" tabindex="-1"></h2>
-      <div class="pc-abas" id="pc-abas" role="group" aria-label="Escolher o continente"></div>
-      <dl class="pc-numeros">
-        <div><dt id="pc-rotulo-t">importadas</dt><dd id="pc-t"></dd></div>
-        <div><dt>do total do Brasil</dt><dd id="pc-share"></dd></div>
-        <div><dt id="pc-rotulo-var">sobre o ano anterior</dt><dd id="pc-var"></dd></div>
-      </dl>
-      <div class="pc-bloco">
-        <p class="pc-rotulo">Por grupo de nutriente</p>
-        <div class="pc-barra" id="pc-barra" aria-hidden="true"></div>
-        <ul class="pc-grupos" id="pc-grupos"></ul>
+      <div class="pc-abas" id="pc-abas" role="group" aria-label="Escolher o Brasil por estado ou um continente"></div>
+      <div id="pc-continente">
+        <dl class="pc-numeros">
+          <div><dt id="pc-rotulo-t">importadas</dt><dd id="pc-t"></dd></div>
+          <div><dt>do total do Brasil</dt><dd id="pc-share"></dd></div>
+          <div><dt id="pc-rotulo-var">sobre o ano anterior</dt><dd id="pc-var"></dd></div>
+        </dl>
+        <div class="pc-bloco">
+          <p class="pc-rotulo">Por grupo de nutriente</p>
+          <div class="pc-barra" id="pc-barra" aria-hidden="true"></div>
+          <ul class="pc-grupos" id="pc-grupos"></ul>
+        </div>
+        <div class="pc-bloco">
+          <p class="pc-rotulo">Maiores origens</p>
+          <ol class="pc-paises" id="pc-paises"></ol>
+        </div>
       </div>
-      <div class="pc-bloco">
-        <p class="pc-rotulo">Maiores origens</p>
-        <ol class="pc-paises" id="pc-paises"></ol>
+      <!-- Brasil por estado: UF de destino, um quadrado por estado, na cor da variação -->
+      <div class="pc-brasil" id="pc-brasil" hidden>
+        <div class="pb-filtros">
+          <div class="pc-chips" id="pb-grupos" role="group" aria-label="Grupo de nutriente"></div>
+          <div class="pc-chips" id="pb-anos" role="group" aria-label="Período"></div>
+        </div>
+        <div class="pb-corpo">
+          <div class="pb-mapa" id="pb-mapa" role="group" aria-label="Estados: use as setas para andar entre eles"></div>
+          <div class="pb-lado">
+            <dl class="pc-numeros pb-numeros">
+              <div><dt id="pb-rotulo-t">importadas</dt><dd id="pb-t"></dd></div>
+              <div><dt id="pb-rotulo-var">sobre o ano anterior</dt><dd id="pb-var"></dd></div>
+              <div class="largo"><dt>estados com alta</dt><dd id="pb-altas"></dd></div>
+            </dl>
+            <p class="pc-rotulo">Mais cresceram (em t)</p>
+            <ol class="pb-lista" id="pb-sobe"></ol>
+            <p class="pc-rotulo">Mais caíram (em t)</p>
+            <ol class="pb-lista" id="pb-desce"></ol>
+          </div>
+        </div>
+        <div class="pb-escala" aria-hidden="true">
+          <span>queda</span><i class="pb-gradiente"></i><span>alta</span>
+          <span class="pb-chave"><i class="pequena"></i>pouco volume</span>
+          <span class="pb-chave"><i class="vazia"></i>sem importação</span>
+        </div>
+        <p class="pb-detalhe" id="pb-detalhe"></p>
+        <details class="pb-tabela"><summary>Todos os estados</summary><div class="pb-rolagem" id="pb-tabela"></div></details>
       </div>
       <p class="pc-nota" id="pc-nota"></p>
-      <p class="pc-rodape"><span>Fonte: Comex Stat/MDIC · continentes do Natural Earth</span><a href="#fluxos" data-secao="fluxos">Ver no mapa de fluxos</a></p>
+      <p class="pc-rodape"><span id="pc-fonte">Fonte: Comex Stat/MDIC · continentes do Natural Earth</span><a id="pc-link" href="#fluxos" data-secao="fluxos">Ver no mapa de fluxos</a></p>
       <p class="leitor" id="pc-anuncio" aria-live="polite"></p>
     </section>
     <div class="hero-rodape">
@@ -98,7 +128,7 @@
       </div>
     </div>
   </div>
-  <p class="chip-mapa" id="chip-brasil" hidden></p>
+  <button class="chip-mapa" id="chip-brasil" type="button" aria-controls="painel-continente" aria-expanded="false" hidden></button>
   <p class="dica-continente" id="dica-continente" aria-hidden="true" hidden></p>
 </section>
 
@@ -158,6 +188,12 @@
           <h3 id="titulo-acumulado">Acumulado no ano</h3>
           <div class="kpi-linha" id="kpis-acumulado"></div>
         </div>
+        <dl class="termos" aria-label="O que querem dizer FOB e CIF">
+          <div><dt>FOB</dt><dd>preço da carga no porto de embarque, sem frete nem seguro internacionais</dd></div>
+          <div><dt>CIF</dt><dd>preço posto no porto brasileiro: FOB mais frete e seguro</dd></div>
+          <div><dt>Frete no CIF</dt><dd>quanto do CIF é frete internacional</dd></div>
+          <div><dt>Outros termos</dt><dd><a href="#glossario" data-secao="glossario">no glossário</a></dd></div>
+        </dl>
       </div>
     </section>
     </section>
@@ -299,12 +335,17 @@
       <header class="bloco-cabecalho">
         <p class="kicker">06 · Preços</p>
         <h2 class="titulo-bloco" id="t-precos" tabindex="-1">Quanto custa</h2>
-        <p class="bloco-lead">Preço implícito FOB e CIF, frete por tonelada e a comparação com a Pink Sheet do Banco Mundial.</p>
+        <p class="bloco-lead">Preço implícito FOB e CIF, frete por tonelada, custo por tonelada de nutriente e a comparação com a Pink Sheet do Banco Mundial.</p>
       </header>
     <div class="grade duas">
       <section class="cartao" aria-labelledby="titulo-precos">
         <h3 class="titulo-cartao" id="titulo-precos">Preço implícito: FOB x CIF</h3>
         <p class="nota" id="nota-precos"></p>
+        <dl class="termos" aria-label="O que querem dizer FOB e CIF">
+          <div><dt>FOB</dt><dd>no porto de embarque, sem frete nem seguro</dd></div>
+          <div><dt>CIF</dt><dd>no porto brasileiro, com frete e seguro</dd></div>
+          <div><dt>CIF − FOB</dt><dd>frete e seguro internacionais</dd></div>
+        </dl>
         <ul class="legenda" id="legenda-precos"></ul>
         <div class="grafico alto-260"><canvas id="grafico-precos" role="img"></canvas></div>
         <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-precos"></div></details>
@@ -317,11 +358,29 @@
       </section>
     </div>
 
+    <section class="cartao grade oculto" aria-labelledby="titulo-nutrientes" id="secao-nutrientes">
+      <div>
+        <h3 class="titulo-cartao" id="titulo-nutrientes">Custo por nutriente: quanto custa a molécula</h3>
+        <p class="nota" id="nota-nutrientes"></p>
+        <p class="ressalva"><strong>Por tonelada de nutriente, no porto.</strong> Preço CIF do produto ÷ teor do nutriente: ureia a US$ 460/t, com 46% de N, sai a US$ 1.000 por tonelada de N. No MAP e no DAP, o N que vem junto é descontado pelo custo do N da ureia no mesmo mês, e o resto do preço vai para o P₂O₅. Não é o preço ao produtor: ficam de fora impostos, frete interno e margens.</p>
+        <div class="chips" id="unidade-nutrientes" role="group" aria-label="Moeda" style="margin-top: 12px"></div>
+        <div class="kpi-linha produtos" id="kpis-nutrientes"></div>
+        <ul class="legenda" id="legenda-nutrientes"></ul>
+        <div class="grafico alto-300"><canvas id="grafico-nutrientes" role="img"></canvas></div>
+        <p class="nota" id="nota-teores"></p>
+        <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-nutrientes"></div></details>
+      </div>
+    </section>
+
     <section class="cartao grade oculto" aria-labelledby="titulo-bm" id="secao-bm">
       <div>
         <h3 class="titulo-cartao" id="titulo-bm">Brasil x mercado internacional</h3>
         <p class="nota" id="nota-bm"></p>
         <p class="ressalva"><strong>Referência de outro lugar, não ágio.</strong> O benchmark do Banco Mundial (Pink Sheet) é o preço num porto de referência (Golfo dos EUA, Oriente Médio, Mar Negro, Vancouver) ou no destino (KCl desde 2020, TSP). A diferença para o preço do Brasil mistura origem, frete até o ponto de referência, prazo de contrato e defasagem entre o negócio e o desembarque.</p>
+        <dl class="termos" aria-label="Bases da comparação">
+          <div><dt>FOB×FOB</dt><dd>FOB do Brasil contra um benchmark na origem (ureia, MAP/DAP, KCl até 2019)</dd></div>
+          <div><dt>CIF×CFR</dt><dd>CIF do Brasil contra um benchmark no destino; CFR é com frete e sem seguro (KCl desde 2020, TSP)</dd></div>
+        </dl>
         <div class="chips" id="chips-bm" role="group" aria-label="Produto" style="margin-top: 12px"></div>
         <div class="kpi-linha" id="kpis-bm" style="margin-top: 12px"></div>
         <p class="nota oculto" id="vazio-bm"></p>
@@ -375,7 +434,32 @@
           <li>Relação de troca = preço CIF do fertilizante importado (KCl NCM 31042090, ureia 31021010, MAP 31054000) ÷ preço FOB da soja em grão exportada (NCM 12019000) no mesmo mês; média histórica = média simples dos meses da série. É medida no porto, não é o preço ao produtor.</li>
           <li id="rodape-bm" class="oculto">Brasil x mercado internacional: preço implícito do Brasil (KCl NCM 31042090, ureia 31021010, MAP 31054000, DAP 310530, TSP 31031030 e 31031100) contra a Pink Sheet do Banco Mundial (CC BY 4.0); o MAP usa o DAP como referência. Spread comparável = FOB Brasil − benchmark quando o benchmark é FOB; CIF Brasil − benchmark quando ele é um preço no destino. CIF em reais pela PTAX venda média do mês (BCB, SGS 3698, ODbL).</li>
           <li>Mapa: pontos gerados a partir do Natural Earth 1:110m (domínio público), em projeção equirretangular.</li>
+          <li>Custo por nutriente = preço CIF ÷ teor do nutriente no grau comercial usual (ureia 46% de N, sulfato de amônio 21% de N, nitrato de amônio 34% de N, MAP 11-52, DAP 18-46, TSP 46% de P₂O₅, KCl 60% de K₂O); no MAP e no DAP, o N é descontado pelo custo do N da ureia no mesmo mês. Em reais pela PTAX venda média do mês. A tabela completa está em data/processed/custo_nutriente_mensal.csv.</li>
+          <li>Estados: a UF do produto no Comex Stat, que na importação é a UF de destino da mercadoria, qualquer que seja a sede do importador (e não a do porto de chegada); a tabela completa está em data/processed/share_uf_ano.csv.</li>
         </ul>
+      </div>
+    </section>
+
+    <section class="cartao grade metodo" aria-labelledby="t-glossario" id="glossario">
+      <div>
+        <h3 class="titulo-cartao" id="t-glossario" tabindex="-1">Glossário</h3>
+        <dl class="glossario">
+          <div><dt>FOB (free on board)</dt><dd>Valor da carga embarcada no porto de origem. Não inclui o frete nem o seguro internacionais.</dd></div>
+          <div><dt>CIF (cost, insurance and freight)</dt><dd>Valor da carga posta no porto brasileiro: FOB mais frete e seguro internacionais. Não inclui impostos, taxas portuárias, frete interno nem margens.</dd></div>
+          <div><dt>CFR (cost and freight)</dt><dd>Como o CIF, mas sem o seguro. É a base do Banco Mundial para o KCl (desde 2020) e o TSP.</dd></div>
+          <div><dt>Frete no CIF</dt><dd>Parte do valor CIF que é frete internacional (frete ÷ CIF).</dd></div>
+          <div><dt>Preço implícito (US$/t)</dt><dd>Valor importado ÷ toneladas: a média ponderada pelo peso, e não o preço de um contrato.</dd></div>
+          <div><dt>Custo por nutriente</dt><dd>O "custo da molécula": preço CIF ÷ teor do nutriente (N, P₂O₅ ou K₂O). Ureia a US$ 460/t com 46% de N = US$ 1.000 por tonelada de N.</dd></div>
+          <div><dt>Crédito de N</dt><dd>No MAP e no DAP, o N que vem junto vale o que custaria na ureia do mesmo mês; o resto do preço é o custo do P₂O₅.</dd></div>
+          <div><dt>NCM</dt><dd>Nomenclatura Comum do Mercosul: o código de 8 dígitos do produto na importação.</dd></div>
+          <div><dt>URF</dt><dd>Unidade da Receita Federal onde a carga é desembaraçada (o porto de chegada, na prática).</dd></div>
+          <div><dt>UF de destino</dt><dd>A UF do produto no Comex Stat: na importação, é a UF de destino da mercadoria, qualquer que seja a sede do importador, e não a do porto de chegada.</dd></div>
+          <div><dt>PTAX</dt><dd>Taxa de câmbio de referência do Banco Central; aqui, a média mensal da PTAX de venda.</dd></div>
+          <div><dt>Spread</dt><dd>Diferença entre o preço do Brasil e o benchmark do Banco Mundial na base comparável. Não é ágio: o benchmark é de outro lugar e de outro momento de contrato.</dd></div>
+          <div><dt>Relação de troca</dt><dd>Toneladas de soja exportada que pagam 1 t de fertilizante importado no mesmo mês, no porto. Não é o preço ao produtor.</dd></div>
+          <div><dt>HHI</dt><dd>Índice de concentração dos fornecedores, de 0 a 10.000 (10.000 = um único país de origem).</dd></div>
+          <div><dt>Ano parcial</dt><dd>Ano ainda incompleto (ex.: jan–set). A variação compara com os mesmos meses do ano anterior.</dd></div>
+        </dl>
       </div>
     </section>
     </section>
@@ -406,7 +490,8 @@ const PRESETS = [
 ];
 
 // anoRotas: ano escolhido no diagrama de rotas; null segue o ano do fim do período.
-const estado = { grupo: "TOTAL", de: null, ate: null, anoRotas: null, bm: null };
+// nutrMoeda: "usd" ou "brl" no custo por nutriente.
+const estado = { grupo: "TOTAL", de: null, ate: null, anoRotas: null, bm: null, nutrMoeda: "usd" };
 const graficos = {};
 let dados = null;
 
@@ -414,6 +499,7 @@ let dados = null;
 const fmt0 = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
 const fmt1 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const fmt2 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt4 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
 const fmtCompacto = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
 const MENOS = "−";
 
@@ -476,9 +562,9 @@ const texto = (id, valor) => { document.getElementById(id).textContent = valor; 
 function legenda(id, itens) {
   const ul = document.getElementById(id);
   ul.replaceChildren(...itens.map(({ rotulo, corItem, tipo }) => {
-    const classe = { limiar: "chave-limiar", linha: "chave-linha", tracejada: "chave-tracejada", quebra: "chave-quebra" }[tipo] ?? "chave-area";
+    const classe = { limiar: "chave-limiar", linha: "chave-linha", tracejada: "chave-tracejada", pontilhada: "chave-pontilhada", quebra: "chave-quebra" }[tipo] ?? "chave-area";
     const chave = el("span", { classe });
-    if (tipo === "tracejada") chave.style.color = corItem;
+    if (tipo === "tracejada" || tipo === "pontilhada") chave.style.color = corItem;
     else if (tipo !== "limiar" && tipo !== "quebra") chave.style.background = corItem;
     return el("li", {}, chave, rotulo);
   }));
@@ -1313,13 +1399,147 @@ function desenharTroca(indices) {
     }));
 }
 
+// --- Custo por nutriente ("custo da molécula") ---------------------------------------------
+// Produtos por filtro de grupo; "Todos" e NPK mostram um de cada nutriente. A cor é a do grupo
+// do nutriente (N, P, K); produtos do mesmo nutriente se separam pelo traço da linha.
+const PRODUTOS_NUTR = { N: ["ureia", "sulfato_amonio", "nitrato_amonio"], P: ["map", "dap", "tsp"], K: ["kcl"] };
+const GRUPO_NUTRIENTE = { N: "N", P2O5: "P", K2O: "K" };
+const TRACOS = [{ dash: [], tipo: "linha" }, { dash: [6, 4], tipo: "tracejada" }, { dash: [2, 3], tipo: "pontilhada" }];
+const MOEDAS_NUTR = { usd: { rotulo: "US$", campo: "custo" }, brl: { rotulo: "R$", campo: "custo_brl" } };
+const CURTO_NUTR = { sulfato_amonio: "Sulfato", nitrato_amonio: "Nitrato" };  // rótulo na ponta da linha
+const teorTexto = (prod) => Object.entries(prod.teores).map(([n, v]) => `${v}% de ${dados.nutrientes.nutrientes[n]}`).join(" e ");
+
+function desenharNutrientes(indices) {
+  const secao = document.getElementById("secao-nutrientes");
+  const nu = dados.nutrientes;
+  secao.classList.toggle("oculto", !nu);
+  if (!nu) return;
+  const p = periodos();
+  const rotulos = indices.map((i) => rotuloMes(p[i]));
+  const j = (i) => nu.periodos.indexOf(p[i]);
+  const temReais = nu.ptax.some((v) => !nulo(v));
+  if (!temReais) estado.nutrMoeda = "usd";
+  const moeda = MOEDAS_NUTR[estado.nutrMoeda];
+  const vezes = {};
+  const produtos = (PRODUTOS_NUTR[estado.grupo] ?? ["ureia", "map", "kcl"]).filter((k) => nu.produtos[k]).map((k) => {
+    const prod = nu.produtos[k];
+    const n = (vezes[prod.nutriente] = (vezes[prod.nutriente] ?? -1) + 1);
+    return { chave: k, ...prod, simbolo: nu.nutrientes[prod.nutriente], corSerie: corGrupo(GRUPO_NUTRIENTE[prod.nutriente]), traco: TRACOS[n % TRACOS.length] };
+  });
+  const valor = (prod, campo, i) => { const k = j(i); return k < 0 || !prod[campo] ? null : prod[campo][k]; };
+  const pequena = (prod, i) => { const k = j(i); return k >= 0 && prod.amostra_pequena[k]; };
+  const dinheiro = (v) => (nulo(v) ? "–" : `${moeda.rotulo} ${fmt0.format(v)}`);
+  const porNutriente = (v, prod) => (nulo(v) ? "–" : `${dinheiro(v)}/t de ${prod.simbolo}`);
+  // Sem o crédito de N (MAP e DAP): o JSON traz em US$; em reais, pela PTAX do mês.
+  const semCredito = (prod, i) => {
+    const v = valor(prod, "custo_sem_credito", i);
+    if (estado.nutrMoeda === "usd" || nulo(v)) return v;
+    const ptax = nu.ptax[j(i)];
+    return nulo(ptax) ? null : v * ptax;
+  };
+  const corte = fmt0.format(nu.corte_amostra_t);
+
+  document.getElementById("unidade-nutrientes").replaceChildren(...Object.entries(MOEDAS_NUTR).map(([k, m]) => {
+    const botao = el("button", { type: "button", classe: "chip", "aria-pressed": String(k === estado.nutrMoeda) }, m.rotulo === "US$" ? "US$ por t de nutriente" : "R$ por t de nutriente (PTAX)");
+    if (k === "brl" && !temReais) botao.disabled = true;
+    botao.addEventListener("click", () => { estado.nutrMoeda = k; esconderDica(); desenharNutrientes(indicesEntre(estado.de, estado.ate)); });
+    return botao;
+  }));
+  texto("nota-nutrientes", `${produtos.map((x) => x.nome).join(", ")} · ${moeda.rotulo} por tonelada de nutriente · ${rotulos[0]} a ${rotulos[rotulos.length - 1]}${estado.grupo === "NPK" ? " · os compostos NPK não entram (o teor varia de carga para carga): mostrando um produto de cada nutriente" : ""}`);
+
+  // KPIs: o último mês do intervalo, contra o mesmo mês do ano anterior.
+  const ate = indices[indices.length - 1];
+  const anoAntes = p.indexOf(`${Number(p[ate].slice(0, 4)) - 1}-${p[ate].slice(5, 7)}`);
+  document.getElementById("kpis-nutrientes").replaceChildren(...produtos.map((prod) => {
+    const t = valor(prod, "t", ate);
+    const ok = !nulo(t) && t > 0 && !pequena(prod, ate);
+    const v = ok ? valor(prod, moeda.campo, ate) : null;
+    const antes = anoAntes >= 0 && !pequena(prod, anoAntes) ? valor(prod, moeda.campo, anoAntes) : null;
+    const ponto = el("span", { classe: "ponto" });
+    ponto.style.background = prod.corSerie;
+    const conta = prod.credito_n
+      ? `(CIF ${porTonelada(valor(prod, "cif", ate))} − N pela ureia) ÷ ${prod.teores[prod.nutriente]}%`
+      : `CIF ${porTonelada(valor(prod, "cif", ate))} ÷ ${prod.teores[prod.nutriente]}%`;
+    const motivo = nulo(t) || t === 0 ? "sem importação no mês" : `amostra pequena (${toneladas(t)}), fora do gráfico`;
+    return el("div", { classe: "kpi" },
+      el("div", { classe: "rotulo titulo-produto" }, ponto, `${prod.nome} · ${rotuloMes(p[ate])}`),
+      el("div", { classe: "valor" }, ok ? porNutriente(v, prod) : "–"),
+      el("div", { classe: "delta" }, ok ? `${conta}${nulo(antes) ? "" : ` · ${variacao(variacaoPct(v, antes))} vs ${rotuloMes(p[anoAntes])}`}` : motivo));
+  }));
+
+  legenda("legenda-nutrientes", produtos.map((prod) => ({
+    rotulo: `${prod.nome} (${teorTexto(prod)}) · ${moeda.rotulo}/t de ${prod.simbolo}`, corItem: prod.corSerie, tipo: prod.traco.tipo,
+  })));
+  // Mês entre dois sem linha (amostra pequena ou borda do período) vira um ponto.
+  const isolado = (data, k) => !nulo(data[k]) && nulo(data[k - 1]) && nulo(data[k + 1]);
+  const datasets = produtos.map((prod) => {
+    const data = indices.map((i) => (pequena(prod, i) ? null : valor(prod, moeda.campo, i)));
+    return {
+      label: prod.nome, chave: prod.chave, data, rotuloFinal: produtos.length > 1 ? CURTO_NUTR[prod.chave] ?? prod.nome : null,
+      borderColor: prod.corSerie, backgroundColor: prod.corSerie, borderWidth: 2, borderDash: prod.traco.dash,
+      pointRadius: (c) => (isolado(data, c.dataIndex) ? 3 : 0),
+      pointHoverRadius: 4, pointHoverBorderWidth: 2, pointHoverBorderColor: cor("--superficie"), tension: 0, spanGaps: false,
+    };
+  });
+  document.getElementById("grafico-nutrientes").setAttribute("aria-label", `Custo por tonelada de nutriente no porto, em ${moeda.rotulo}, de ${produtos.map((x) => x.nome).join(", ")}, de ${rotulos[0]} a ${rotulos[rotulos.length - 1]}. A tabela abaixo traz os valores.`);
+  novoGrafico("grafico-nutrientes", {
+    type: "line",
+    data: { labels: rotulos, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: produtos.length > 1 && !estreito() ? 64 : 8 } },
+      interaction: { mode: "index", intersect: false },
+      scales: eixos({ formatarY: (v) => (estado.nutrMoeda === "brl" ? fmtCompacto.format(v) : fmt0.format(v)), maxTicksX: estreito() ? 4 : 8 }),
+      plugins: {
+        legend: { display: false },
+        rotulosFinais: { ativo: produtos.length > 1 && !estreito() },
+        tooltip: {
+          enabled: false,
+          external: dicaExterna((pontos) => {
+            const i = indices[pontos[0].dataIndex];
+            const linhas = pontos.filter((d) => !nulo(d.raw)).map((d) => {
+              const prod = produtos.find((x) => x.chave === d.dataset.chave);
+              return { corSerie: prod.corSerie, valor: porNutriente(d.raw, prod), serie: `${prod.nome} · CIF ${porTonelada(valor(prod, "cif", i))}` };
+            });
+            const extras = produtos.filter((x) => x.credito_n && !pequena(x, i) && !nulo(semCredito(x, i)))
+              .map((x) => `${x.nome} sem o crédito de N: ${porNutriente(semCredito(x, i), x)}`);
+            const fora = produtos.filter((x) => pequena(x, i));
+            if (fora.length) extras.push(`Amostra pequena (menos de ${corte} t), fora do gráfico: ${fora.map((x) => `${x.nome} ${toneladas(valor(x, "t", i))}`).join(", ")}`);
+            if (estado.nutrMoeda === "brl" && !nulo(nu.ptax[j(i)])) extras.push(`PTAX média do mês: R$ ${fmt4.format(nu.ptax[j(i)])}`);
+            return { titulo: pontos[0].label, linhas, extras };
+          }),
+        },
+      },
+    },
+    plugins: [pluginCruz, pluginRotulosFinais],
+  });
+
+  const credito = produtos.filter((x) => x.credito_n);
+  texto("nota-teores", [
+    `Teores usados: ${produtos.map((x) => `${x.nome} ${teorTexto(x)}`).join("; ")}. O Comex Stat não traz o teor de cada carga.`,
+    credito.length ? `No ${credito.map((x) => x.nome).join(" e no ")}, o N que vem junto é descontado pelo custo do N da ureia no mesmo mês; o tooltip traz o custo sem esse desconto.` : "",
+    produtos.some((x) => x.chave === "sulfato_amonio") ? "O enxofre do sulfato de amônio (cerca de 24% de S) não é descontado." : "",
+    `Meses com menos de ${corte} t do produto ficam fora do gráfico (na tabela, com *).`,
+    `Fonte: ${nu.fonte}.`,
+  ].filter(Boolean).join(" "));
+  const n = (v, f) => (nulo(v) ? "–" : f.format(v));
+  tabela("tabela-nutrientes",
+    [{ titulo: "Mês" }, ...produtos.flatMap((x) => [
+      { titulo: `${x.nome} t`, num: true }, { titulo: `${x.nome} CIF US$/t`, num: true },
+      { titulo: `${x.nome} US$/t de ${x.simbolo}`, num: true }, { titulo: `${x.nome} R$/t de ${x.simbolo}`, num: true },
+    ])],
+    indices.map((i) => [rotuloMes(p[i]), ...produtos.flatMap((x) => {
+      const marca = pequena(x, i) ? "*" : "";
+      return [n(valor(x, "t", i), fmt0), n(valor(x, "cif", i), fmt0), `${n(valor(x, "custo", i), fmt0)}${marca}`, `${n(valor(x, "custo_brl", i), fmt0)}${marca}`];
+    })]));
+}
+
 // --- Brasil x mercado internacional (fase 6) ------------------------------------------------
 // Produtos por filtro de grupo; "Todos" e NPK mostram os cinco (NPK não tem benchmark).
 const PRODUTOS_BM = { K: ["kcl"], N: ["ureia"], P: ["map", "dap", "tsp"] };
 const ORDEM_BM = ["kcl", "ureia", "map", "dap", "tsp"];
 const produtosBm = () => (PRODUTOS_BM[estado.grupo] ?? ORDEM_BM).filter((k) => dados.benchmark?.produtos?.[k]);
 const reais = (v) => (nulo(v) ? "–" : `R$ ${fmt0.format(v)}/t`);
-const fmt4 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
 
 // Linha vertical tracejada onde a base do benchmark muda, com o nome da nova base.
 const pluginQuebras = {
@@ -1677,7 +1897,8 @@ function sincronizarFiltros() {
 }
 
 function rodape() {
-  if (dados.benchmark) texto("fonte-rodape", "Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX");
+  const ptax = dados.benchmark || dados.nutrientes?.ptax?.some((v) => !nulo(v));
+  texto("fonte-rodape", ["Fonte: Comex Stat/MDIC", ...(dados.benchmark ? ["Banco Mundial (Pink Sheet)"] : []), ...(ptax ? ["BCB/PTAX"] : [])].join("; "));
   const fim = dados.meta.periodo.fim;
   const atualizado = document.querySelector('meta[name="atualizado"]').content;
   const partes = [`Dados de ${rotuloMes(dados.meta.periodo.inicio)} a ${rotuloMes(fim)}`];
@@ -1698,6 +1919,7 @@ function atualizar() {
   desenharRotas();
   desenharPrecos(indices);
   desenharFrete(indices);
+  desenharNutrientes(indices);
   desenharTroca(indices);
   desenharBenchmark(indices);
   desenharHhi();

@@ -1,4 +1,4 @@
-"""Cenário de navegador do mapa de fluxos (só em desenvolvimento).
+"""Cenários de navegador do dashboard: mapa de fluxos, hero, painéis e cartões (só em desenvolvimento).
 
 Roda com Playwright e Chromium, servindo o repositório em localhost. As bibliotecas do CDN
 (Chart.js e anime.js) vêm de cópias locais, porque os testes não acessam a rede:
@@ -11,7 +11,9 @@ Sem o Playwright ou sem RADAR_E2E_LIBS, o teste é pulado (como no CI).
 import functools
 import http.server
 import json
+import math
 import os
+import re
 import threading
 from pathlib import Path
 
@@ -411,7 +413,8 @@ def test_continente_acende_no_cursor_e_o_clique_abre_os_dados_dele(navegador, se
     asia = pg.evaluate(f"({ESPERADO})('AS')")
     pg.wait_for_function(f"document.getElementById('pc-titulo').textContent === {asia['nome']!r} && document.getElementById('pc-t').textContent === {asia['t']!r}", timeout=10_000)
     assert pg.evaluate("document.querySelector('#pc-abas [aria-pressed=true]').dataset.cont") == "AS"
-    assert [b for b in pg.evaluate("[...document.querySelectorAll('#pc-abas button')].map((b) => b.dataset.cont)")] == asia["ordem"]
+    # o Brasil (por estado) vem antes dos continentes
+    assert pg.evaluate("[...document.querySelectorAll('#pc-abas button')].map((b) => b.dataset.cont)") == ["BR", *asia["ordem"]]
     # trocas seguidas: a contagem nova cancela a anterior (o número final não volta atrás)
     pg.click("#pc-abas button[data-cont=AF]")
     pg.click("#pc-abas button[data-cont=EU]")
@@ -467,3 +470,174 @@ def test_continente_no_celular_abre_abaixo_do_mapa(navegador, servidor):
     assert caixas["rolagem"] <= 0, "sem rolagem lateral"
     assert erros == []
     ctx.close()
+
+
+# --- Brasil por estado (clique no Brasil do hero) -----------------------------------------------
+# Esperado pelos dados: total, estados com alta, maiores altas e quedas em toneladas e um estado
+# de cada cor (variação acima de 20% para cima ou para baixo, sem ser de pouco volume).
+ESTADOS = """([ano, grupo]) => { const d = window.radarDados, e = d.estados, a = d.anual;
+  if (ano === null) { let i = a.anos.length - 1; while (a.n_meses[i] !== 12) i--; ano = a.anos[i]; }
+  const linhas = e.dados[String(ano)][grupo].map(([uf, t, s, v, ta]) => ({ uf, nome: e.ufs[uf], t, v, ta, d: t - ta }));
+  const total = linhas.reduce((s, x) => s + x.t, 0), totalAnt = linhas.reduce((s, x) => s + x.ta, 0);
+  const corte = 0.005 * Math.max(total, totalAnt);
+  const grandes = linhas.filter((x) => Math.max(x.t, x.ta) >= corte && x.v !== null);
+  const ativos = linhas.filter((x) => x.t > 0 || x.ta > 0 || x.v !== null);
+  const compacto = new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 });
+  return { ano, t: compacto.format(total) + ' t', altas: `${ativos.filter((x) => x.d > 0.5).length} de ${ativos.length}`,
+    sobe: linhas.filter((x) => x.d > 0.5).sort((p, q) => q.d - p.d).slice(0, 3).map((x) => x.nome),
+    desce: linhas.filter((x) => x.d < -0.5).sort((p, q) => p.d - q.d).slice(0, 3).map((x) => x.nome),
+    alta: grandes.find((x) => x.v > 20)?.uf ?? null, queda: grandes.find((x) => x.v < -20)?.uf ?? null }; }"""
+BRASIL = """() => ({ aberto: window.radarMapaHero.continenteAberto(), titulo: document.getElementById('pc-titulo').textContent,
+  kicker: document.getElementById('pc-kicker').textContent, t: document.getElementById('pb-t').textContent,
+  altas: document.getElementById('pb-altas').textContent, textoOculto: document.querySelector('.hero-texto').hidden,
+  sobe: [...document.querySelectorAll('#pb-sobe .nome')].map((n) => n.textContent),
+  desce: [...document.querySelectorAll('#pb-desce .nome')].map((n) => n.textContent),
+  quadros: document.querySelectorAll('#pb-mapa .pb-uf').length, paradas: document.querySelectorAll('#pb-mapa .pb-uf[tabindex="0"]').length,
+  abas: [...document.querySelectorAll('#pc-abas button')].map((b) => b.dataset.cont), continente: !document.getElementById('pc-continente').hidden,
+  legenda: document.getElementById('legenda-rotas-hero').textContent, detalhe: document.getElementById('pb-detalhe').textContent,
+  foco: document.activeElement.id || document.activeElement.dataset?.uf || '' })"""
+
+
+def _rgb(cor):
+    return [int(x) for x in re.findall(r"\d+", cor)[:3]]
+
+
+def test_brasil_abre_por_estado_com_altas_quedas_filtros_e_setas(navegador, servidor):
+    ctx, pg, erros = _pagina(navegador, servidor)
+    br = _ponto(pg, "BR")
+    pg.mouse.move(br["x"] - 40, br["y"] - 20)
+    pg.mouse.move(br["x"], br["y"], steps=6)
+    pg.wait_for_function("!document.getElementById('dica-continente').hidden", timeout=5_000)
+    assert pg.evaluate("document.getElementById('dica-continente').textContent").startswith("Brasil · ")
+    assert "por estado" in pg.evaluate("document.getElementById('dica-continente').textContent")
+    pg.mouse.click(br["x"], br["y"])
+    esperado = pg.evaluate(f"({ESTADOS})([null, 'TOTAL'])")
+    pg.wait_for_function(f"document.getElementById('pb-t').textContent === {esperado['t']!r}", timeout=10_000)  # a contagem termina
+    r = pg.evaluate(BRASIL)
+    assert r["aberto"] == "BR" and r["titulo"] == "Brasil" and r["textoOculto"] and not r["continente"]
+    assert r["altas"] == esperado["altas"] and r["sobe"] == esperado["sobe"] and r["desce"] == esperado["desce"]
+    assert r["quadros"] == 27 and r["paradas"] == 1, "um quadrado por UF e uma só parada de Tab"
+    assert r["abas"][0] == "BR" and str(esperado["ano"]) in r["kicker"]
+    # cor: alta quente, queda fria
+    for uf, quente in ((esperado["alta"], True), (esperado["queda"], False)):
+        if uf:
+            vermelho, _, azul = _rgb(pg.evaluate(f"getComputedStyle(document.querySelector('.pb-uf[data-uf={uf}]')).backgroundColor"))
+            assert (vermelho > azul) == quente, uf
+    # filtros: grupo K e o último ano (o parcial, se houver); as listas e as rotas acompanham
+    pg.click("#pb-grupos button[data-grupo=K]")
+    ultimo = pg.evaluate("Math.max(...[...document.querySelectorAll('#pb-anos button')].map((b) => Number(b.dataset.ano)))")
+    pg.click(f"#pb-anos button[data-ano='{ultimo}']", force=True)  # a fileira some quando só há um ano
+    k = pg.evaluate(f"({ESTADOS})([{ultimo}, 'K'])")
+    pg.wait_for_function(f"document.getElementById('pb-t').textContent === {k['t']!r}", timeout=10_000)
+    r = pg.evaluate(BRASIL)
+    assert r["sobe"] == k["sobe"] and r["desce"] == k["desce"] and r["altas"] == k["altas"]
+    assert "potássicos" in r["legenda"], "as rotas viram as do grupo escolhido"
+    # setas andam entre vizinhos do mapa; Enter fixa o estado; Esc fecha e devolve o foco
+    pg.focus(".pb-uf[data-uf=PR]")
+    for tecla, uf in (("ArrowRight", "SP"), ("ArrowUp", "DF"), ("ArrowLeft", "MS")):
+        pg.keyboard.press(tecla)
+        assert pg.evaluate("document.activeElement.dataset.uf") == uf
+    assert pg.evaluate(BRASIL)["detalhe"].startswith("Mato Grosso do Sul")
+    assert pg.evaluate("document.querySelectorAll('#pb-mapa .pb-uf[tabindex=\"0\"]').length") == 1
+    pg.keyboard.press("Enter")
+    assert pg.evaluate("document.querySelector('.pb-uf[data-uf=MS]').getAttribute('aria-pressed')") == "true"
+    pg.keyboard.press("Escape")
+    pg.wait_for_function("document.getElementById('painel-continente').hidden", timeout=5_000)
+    assert pg.evaluate("document.activeElement.id") == "explorar-continentes"
+    assert erros == []
+    ctx.close()
+
+
+def test_brasil_pelo_chip_com_teclado_e_sem_movimento(navegador, servidor):
+    for reduzido in (False, True):
+        ctx, pg, erros = _pagina(navegador, servidor, reduzido=reduzido)
+        pg.wait_for_function("(() => { const c = document.getElementById('chip-brasil'); return !c.hidden && !c.disabled; })()", timeout=15_000)
+        esperado = pg.evaluate(f"({ESTADOS})([null, 'TOTAL'])")
+        pg.focus("#chip-brasil")
+        pg.keyboard.press("Enter")
+        if reduzido:  # sem movimento: tudo na hora, sem contagem nem entrada dos quadrados
+            assert pg.evaluate("document.getElementById('pb-t').textContent") == esperado["t"]
+            assert pg.evaluate("document.querySelector('.pb-uf').getAttribute('style').includes('opacity')") is False
+        pg.wait_for_function("document.activeElement.id === 'pc-titulo'", timeout=5_000)
+        assert pg.evaluate("document.getElementById('chip-brasil').getAttribute('aria-expanded')") == "true"
+        pg.wait_for_function(f"document.getElementById('pb-t').textContent === {esperado['t']!r}", timeout=5_000)
+        pg.keyboard.press("Escape")
+        pg.wait_for_function("document.getElementById('painel-continente').hidden", timeout=5_000)
+        assert pg.evaluate("document.activeElement.id") == "chip-brasil", "o foco volta para o chip que abriu o painel"
+        assert pg.evaluate("document.getElementById('chip-brasil').getAttribute('aria-expanded')") == "false"
+        assert erros == []
+        ctx.close()
+
+
+def test_brasil_no_celular_abre_abaixo_do_mapa(navegador, servidor):
+    ctx = navegador.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+    pg = ctx.new_page()
+    erros = []
+    pg.on("pageerror", lambda e: erros.append(str(e)))
+    pg.route("https://cdn.jsdelivr.net/**", _cdn)
+    pg.goto(servidor)
+    pg.wait_for_function("window.anime && window.radarDados", timeout=20_000)
+    br = _ponto(pg, "BR")
+    pg.tap("body", position={"x": int(br["x"]), "y": int(br["y"])})
+    pg.wait_for_function("window.radarMapaHero.continenteAberto() === 'BR'", timeout=5_000)
+    pg.wait_for_timeout(1500)
+    caixas = pg.evaluate("""() => ({ painel: document.getElementById('painel-continente').getBoundingClientRect().top,
+      chip: document.getElementById('chip-brasil').getBoundingClientRect().bottom, rolagem: document.documentElement.scrollWidth - innerWidth,
+      quadro: document.querySelector('.pb-uf[data-uf=PR]').getBoundingClientRect().width,
+      nomes: [...document.querySelectorAll('#pb-sobe .nome')].map((n) => n.getBoundingClientRect().width) })""")
+    assert caixas["painel"] >= caixas["chip"], "o painel não cobre o mapa"
+    assert caixas["rolagem"] <= 0, "sem rolagem lateral"
+    assert caixas["quadro"] >= 40, "quadrados grandes o bastante para o toque"
+    assert all(w > 60 for w in caixas["nomes"]), "o nome do estado aparece na lista"
+    assert erros == []
+    ctx.close()
+
+
+# --- Custo por nutriente, legenda de FOB e CIF e glossário ---------------------------------------
+NUTRIENTES = """(chaves) => { const d = window.radarDados, nu = d.nutrientes, p = d.mensal.periodos, k = nu.periodos.indexOf(p[p.length - 1]);
+  return chaves.map((c) => { const x = nu.produtos[c]; return { nome: x.nome, custo: x.custo[k], brl: x.custo_brl[k], t: x.t[k], pequena: x.amostra_pequena[k] }; }); }"""
+
+
+def _milhar(v):
+    return f"{math.floor(v + 0.5):,}".replace(",", ".")
+
+
+def test_custo_por_nutriente_um_produto_por_nutriente_moeda_e_tracos(navegador, servidor):
+    ctx, pg, erros = _pagina(navegador, servidor)
+    pg.evaluate("document.getElementById('secao-nutrientes').scrollIntoView()")
+    pg.wait_for_function("document.querySelectorAll('#kpis-nutrientes .kpi').length === 3", timeout=10_000)
+    kpis = "[...document.querySelectorAll('#kpis-nutrientes .kpi')].map((k) => [k.querySelector('.rotulo').textContent, k.querySelector('.valor').textContent])"
+    esperado = pg.evaluate(f"({NUTRIENTES})(['ureia', 'map', 'kcl'])")
+    for (rotulo, valor), e, simbolo in zip(pg.evaluate(kpis), esperado, ("N", "P₂O₅", "K₂O")):
+        assert rotulo.startswith(e["nome"])
+        assert valor == (f"US$ {_milhar(e['custo'])}/t de {simbolo}" if e["t"] and not e["pequena"] else "–")
+    pg.click("#unidade-nutrientes button:nth-child(2)")
+    for (_, valor), e in zip(pg.evaluate(kpis), esperado):
+        assert valor == "–" or valor.startswith(f"R$ {_milhar(e['brl'])}/t de ")
+    # filtro N: os três produtos de N, na mesma cor e com traços diferentes
+    pg.click("#filtro-grupo .chip[data-grupo=N]")
+    pg.wait_for_function("document.querySelectorAll('#kpis-nutrientes .kpi').length === 3", timeout=5_000)
+    assert pg.evaluate("[...document.querySelectorAll('#legenda-nutrientes li span')].map((s) => s.className)") == ["chave-linha", "chave-tracejada", "chave-pontilhada"]
+    assert "Sulfato de amônio" in pg.evaluate("document.getElementById('nota-nutrientes').textContent")
+    meses = pg.evaluate("window.radarDados.mensal.periodos.length")
+    assert pg.evaluate("document.querySelectorAll('#tabela-nutrientes tbody tr').length") == meses
+    assert "não é o preço ao produtor" in pg.evaluate("document.querySelector('#secao-nutrientes .ressalva').textContent").lower()
+    assert erros == []
+    ctx.close()
+
+
+def test_legenda_de_fob_e_cif_e_glossario(navegador, servidor):
+    ctx, pg, erros = _pagina(navegador, servidor)
+    assert pg.evaluate("[...document.querySelectorAll('.kpis .termos dt')].map((d) => d.textContent)")[:2] == ["FOB", "CIF"]
+    assert pg.evaluate("[...document.querySelectorAll('#secao-bm .termos dt')].map((d) => d.textContent)") == ["FOB×FOB", "CIF×CFR"]
+    hash_antes = pg.evaluate("location.hash")
+    pg.click(".kpis a[data-secao=glossario]")
+    pg.wait_for_function("document.activeElement.id === 't-glossario'", timeout=5_000)
+    assert pg.evaluate("location.hash") == hash_antes, "o link não troca o hash (que guarda os filtros)"
+    termos = pg.evaluate("[...document.querySelectorAll('#glossario dt')].map((d) => d.textContent)")
+    for termo in ("FOB (free on board)", "CIF (cost, insurance and freight)", "Custo por nutriente", "UF de destino", "Spread"):
+        assert termo in termos
+    assert pg.evaluate("document.getElementById('fonte-rodape').textContent") == "Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX"
+    assert erros == []
+    ctx.close()
+

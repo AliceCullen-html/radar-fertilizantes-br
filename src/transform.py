@@ -13,6 +13,11 @@ Lê os dados brutos (data/raw/, via ingest.ler_raw) e o grupo de cada NCM
 - sazonalidade_grupo.csv: média de toneladas por mês do calendário e grupo;
 - rotas_ano.csv: toneladas e frete US$/t por ano × grupo × país de origem × URF,
   marcando as rotas com volume relevante (CORTE_ROTA_T);
+- share_uf_ano.csv: o mesmo share por UF de destino (a UF do produto no Comex Stat),
+  com a variação sobre o mesmo período do ano anterior: a visão por estado do dashboard;
+- custo_nutriente_mensal.csv: custo por nutriente, o "custo por molécula" (src/nutrientes.py):
+  US$ por tonelada de N, P2O5 e K2O de cada fertilizante no porto (CIF ÷ teor), e em reais pela
+  PTAX se houver data/raw_cambio;
 - benchmark_mensal.csv: Brasil x mercado internacional (src/comparacao.py): FOB e CIF
   implícitos de KCl, ureia, MAP, DAP e TSP contra a Pink Sheet do Banco Mundial, spread,
   custo posto e CIF em reais pela PTAX, se houver data/raw_benchmark e data/raw_cambio;
@@ -39,7 +44,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import benchmark, comparacao, config, ingest, mapa, troca
+from . import benchmark, comparacao, config, ingest, mapa, nutrientes, troca
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +61,7 @@ _ORDEM_GRUPO = {grupo: i for i, grupo in enumerate([*GRUPOS, TOTAL])}
 VALORES = ["toneladas", "vl_fob", "vl_cif", "vl_frete", "vl_seguro"]
 PAIS = ["co_pais", "no_pais"]
 URF = ["co_urf", "no_urf"]
+UF = ["sg_uf", "no_uf"]
 TOP_DASHBOARD = 10  # origens e URFs por ano e grupo no dashboard.json; o resto vira "Outros"
 # Rota (país de origem -> URF) com volume relevante: pelo menos 50 mil t no ano, cerca de um
 # navio Supramax cheio, proporcional aos meses num ano parcial. Abaixo disso o frete US$/t
@@ -339,6 +345,30 @@ def _ranking(tabela: pd.DataFrame, codigo: str, nome: str, com_preco: bool) -> l
     return linhas
 
 
+def _bloco_estados(share_uf: pd.DataFrame) -> dict:
+    """Visão por estado: toneladas de cada UF de destino por ano e grupo, com o share, a
+    variação sobre os mesmos meses do ano anterior e as toneladas desse período anterior (quem
+    deixou de importar entra com zero e −100%)."""
+    ufs = share_uf.drop_duplicates("sg_uf").set_index("sg_uf")["no_uf"].sort_index()
+    dados = {}
+    for (ano, grupo), g in share_uf.groupby(["ano", "grupo"], sort=True):
+        g = g.sort_values(["toneladas", "sg_uf"], ascending=[False, True], kind="mergesort")
+        dados.setdefault(str(int(ano)), {})[grupo] = [
+            [_texto(r.sg_uf), _num(r.toneladas, 0), _num(r.share_t_pct, 3), _num(r.var_t_pct, 1), _num(r.toneladas_ano_anterior, 0)]
+            for r in g.itertuples()
+        ]
+    return {
+        "colunas": ["uf", "t", "share_pct", "var_t_pct", "t_ano_anterior"],
+        "ufs": {str(k): str(v) for k, v in ufs.items()},
+        "dados": dados,
+        "notas": [
+            "UF de destino: a UF do produto no Comex Stat, que na importação é a UF de destino da mercadoria,"
+            " qualquer que seja a sede do importador, e não a do porto de chegada.",
+            "Variação sobre os mesmos meses do ano anterior; quem deixou de importar entra com zero.",
+        ],
+    }
+
+
 def dashboard(
     tabelas: dict[str, pd.DataFrame], fonte_pink: dict | None = None, ncms: dict | None = None, ref_mapa: tuple | None = None
 ) -> dict:
@@ -451,6 +481,10 @@ def dashboard(
                 for ano in anos
             },
         }
+    if "share_uf_ano" in tabelas:
+        painel["estados"] = _bloco_estados(tabelas["share_uf_ano"])
+    if "custo_nutriente_mensal" in tabelas:
+        painel["nutrientes"] = nutrientes.bloco_dashboard(tabelas["custo_nutriente_mensal"], periodos, _num)
     if "troca_mensal" in tabelas:
         painel["troca"] = troca.bloco_dashboard(tabelas["troca_mensal"], periodos, _num)
     if "benchmark_mensal" in tabelas:
@@ -493,13 +527,15 @@ def gerar(
 
     Sem `soja` (exportação de soja em grão), a relação de troca fica de fora; sem `pink` (Pink
     Sheet do Banco Mundial), a comparação com o mercado internacional também. `ptax` (BCB) só
-    serve para o CIF em reais.
+    serve para os valores em reais (CIF e custo por nutriente).
     """
     tabelas = {
         "precos_mes_grupo_origem": precos(base, por_origem=True),
         "precos_mes_grupo": precos(base, por_origem=False),
         "share_origem_ano": shares_anuais(base, PAIS),
         "share_urf_ano": shares_anuais(base, URF),
+        "share_uf_ano": shares_anuais(base, UF),
+        "custo_nutriente_mensal": nutrientes.custo_mensal(base, ptax),
     }
     tabelas["hhi_ano_grupo"] = concentracao(tabelas["share_origem_ano"])
     tabelas["sazonalidade_grupo"] = sazonalidade(base)

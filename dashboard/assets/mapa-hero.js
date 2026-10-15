@@ -13,6 +13,10 @@
  * - Rotas: cada arco se desenha da origem ao Brasil com uma ponta de luz (svg.createDrawable e
  *   svg.createMotionPath); depois, cometas (cabeça e cauda) correm pelos arcos em ciclo, com um
  *   anel na chegada. Tudo para quando o hero sai da tela.
+ * - Brasil por estado: o clique no Brasil (ou no chip dele) abre o mesmo painel com um quadrado
+ *   por UF de destino, na cor da variação sobre o mesmo período do ano anterior (bloco "estados"),
+ *   as maiores altas e quedas em toneladas e os filtros de grupo e de ano; as rotas viram as das
+ *   maiores origens do grupo e do ano escolhidos. Teclado: setas entre os estados.
  * - Sem movimento: sem onda, luz, ping, varredura, cometas nem contagem dos números; o destaque
  *   e o painel aparecem na hora.
  */
@@ -55,7 +59,28 @@
   const DURACAO_PING = 1500;
   const CICLO_VARREDURA = 3400;
   const GRUPOS = ["N", "P", "K", "NPK"];
-  const CURTO = { NA: "Am. do Norte", SA: "Am. do Sul" }; // rótulo das abas (o nome inteiro vai no aria-label)
+  const CURTO = { NA: "Am. Norte", SA: "Am. Sul" }; // rótulo das abas (o nome inteiro vai no aria-label)
+  const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  const NOMES_GRUPO = { TOTAL: "todos os grupos", N: "nitrogenados", P: "fosfatados", K: "potássicos", NPK: "compostos (NPK)" };
+  // Brasil por estado: posição (linha, coluna) de cada UF no mapa de quadrados.
+  const GRADE_UF = {
+    RR: [0, 1], AP: [0, 2],
+    AC: [1, 0], AM: [1, 1], PA: [1, 2], MA: [1, 3], CE: [1, 4], RN: [1, 5],
+    RO: [2, 1], TO: [2, 2], PI: [2, 3], PB: [2, 4], PE: [2, 5],
+    MT: [3, 1], GO: [3, 2], BA: [3, 3], SE: [3, 4], AL: [3, 5],
+    MS: [4, 1], DF: [4, 2], MG: [4, 3], ES: [4, 4],
+    PR: [5, 1], SP: [5, 2], RJ: [5, 3],
+    SC: [6, 1],
+    RS: [7, 1],
+  };
+  const NOMES_UF = {
+    AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas", BA: "Bahia", CE: "Ceará", DF: "Distrito Federal", ES: "Espírito Santo",
+    GO: "Goiás", MA: "Maranhão", MT: "Mato Grosso", MS: "Mato Grosso do Sul", MG: "Minas Gerais", PA: "Pará", PB: "Paraíba",
+    PR: "Paraná", PE: "Pernambuco", PI: "Piauí", RJ: "Rio de Janeiro", RN: "Rio Grande do Norte", RS: "Rio Grande do Sul",
+    RO: "Rondônia", RR: "Roraima", SC: "Santa Catarina", SP: "São Paulo", SE: "Sergipe", TO: "Tocantins",
+  };
+  const POUCO_VOLUME = 0.005; // abaixo de 0,5% do total nos dois períodos, a cor fica neutra
+  const ESCALA_VAR = 50; // a cor satura em ±50%
 
   let mapa = null;
   let dados = null;
@@ -79,15 +104,20 @@
     canvas.height = Math.round(altura * escala);
   }
 
+  // Altura de referência do mapa: a da tela. Se o painel aberto alonga o hero, o mapa fica onde
+  // está, sem pular de lugar nem de tamanho.
+  const alturaDoMapa = () => Math.min(altura, Math.max(480, window.innerHeight || altura));
+
   function projetar() {
     const c0 = Math.floor((RECORTE.oeste - mapa.oeste) / mapa.passo);
     const c1 = Math.ceil((RECORTE.leste - mapa.oeste) / mapa.passo);
     const colunas = c1 - c0;
     // Desktop largo: mapa à direita do título. Abaixo de 1100 px: mapa em cima, texto embaixo.
     const empilhado = largura < 1100;
+    const alturaMapa = alturaDoMapa();
     const area = empilhado
-      ? { x: 8, y: largura < 820 ? 132 : 150, w: largura - 16, h: Math.min(altura * 0.4, (largura - 16) * (mapa.linhas / colunas)) }
-      : { x: largura * 0.44, y: altura * 0.12, w: largura * 0.56 - 24, h: altura * 0.74 };
+      ? { x: 8, y: largura < 820 ? 132 : 150, w: largura - 16, h: Math.min(alturaMapa * 0.4, (largura - 16) * (mapa.linhas / colunas)) }
+      : { x: largura * 0.44, y: alturaMapa * 0.12, w: largura * 0.56 - 24, h: alturaMapa * 0.74 };
     const passo = Math.min(area.w / colunas, area.h / mapa.linhas);
     const x0 = empilhado ? (largura - passo * colunas) / 2 : area.x + area.w - passo * colunas;
     const y0 = area.y + (area.h - passo * mapa.linhas) / 2;
@@ -106,6 +136,7 @@
           pontos.push(p);
           celulas.set(linha * 1000 + c, p);
           if (cont) (porCont[cont] ??= []).push(p);
+          if (brasil) (porCont.BR ??= []).push(p); // o Brasil abre por estado
         }
       }
     });
@@ -118,8 +149,11 @@
         x0c = Math.min(x0c, p.x); x1c = Math.max(x1c, p.x); y0c = Math.min(y0c, p.y); y1c = Math.max(y1c, p.y);
       }
       const cx = sx / lista.length, cy = sy / lista.length;
-      let perto = lista[0], dist = Infinity; // o ponto do continente mais perto do centro (sempre em terra)
-      for (const p of lista) {
+      // o ponto do continente mais perto do centro (sempre em terra); o da América do Sul fica fora
+      // do Brasil, porque o clique no Brasil abre o painel por estado
+      const candidatos = cod !== "BR" && lista.some((p) => !p.brasil) ? lista.filter((p) => !p.brasil) : lista;
+      let perto = candidatos[0], dist = Infinity;
+      for (const p of candidatos) {
         const d = (p.x - cx) ** 2 + (p.y - cy) ** 2;
         if (d < dist) { dist = d; perto = p; }
       }
@@ -354,6 +388,14 @@
     return melhor;
   }
 
+  // O Brasil abre por estado; o resto do mapa, pelo continente.
+  const disponivel = (cod) => !!porCont[cod] && (cod === "BR" ? !!dados?.estados?.dados : !!dados?.mapa?.continentes?.[cod]);
+  function regiaoDe(p) {
+    if (!p) return null;
+    if (p.brasil && disponivel("BR")) return "BR";
+    return disponivel(p.cont) ? p.cont : null;
+  }
+
   function definirSobre(cod) {
     if (cod === sobre) return;
     sobre = cod;
@@ -364,18 +406,19 @@
 
   function preencherDica() {
     if (!dica) return;
-    const info = sobre && dados?.mapa?.continentes ? resumo(sobre) : null;
+    const info = !sobre ? null : sobre === "BR" ? resumoDoBrasil() : dados?.mapa?.continentes ? resumo(sobre) : null;
     if (!info) { dica.hidden = true; return; }
     const nome = document.createElement("strong");
     nome.textContent = info.nome;
     const acao = document.createElement("span");
     acao.className = "acao";
-    acao.textContent = sobre === aberto ? "clique para fechar" : "clique para ver os dados";
+    acao.textContent = sobre === aberto ? "clique para fechar" : sobre === "BR" ? "clique para ver por estado" : "clique para ver os dados";
     dica.replaceChildren(nome, ` · ${toneladas(info.t)} em ${info.ano}`, acao);
   }
 
   function moverDica(evento) {
-    if (!dica || !sobre || evento.pointerType === "touch") { if (dica) dica.hidden = true; return; }
+    const noChip = evento.target.closest?.("#chip-brasil");
+    if (!dica || !sobre || noChip || evento.pointerType === "touch") { if (dica) dica.hidden = true; return; }
     const r = hero.getBoundingClientRect();
     dica.hidden = false;
     let x = evento.clientX - r.left + 16;
@@ -391,8 +434,9 @@
     ponteiro.x = x;
     ponteiro.y = y;
     ponteiro.dentro = !fora;
-    const p = fora ? null : pontoEm(x, y);
-    definirSobre(porCont[p?.cont] && dados?.mapa?.continentes ? p.cont : null);
+    // sobre o chip do Brasil, o Brasil acende (o chip é o rótulo dele)
+    const noChip = evento.target.closest?.("#chip-brasil") && evento.pointerType !== "touch";
+    definirSobre(noChip ? (disponivel("BR") ? "BR" : null) : regiaoDe(fora ? null : pontoEm(x, y)));
     moverDica(evento);
     pedirQuadro();
   });
@@ -405,10 +449,10 @@
   hero.addEventListener("click", (evento) => {
     if (!geo || evento.button !== 0 || interativo(evento.target)) return;
     const ponto = noMapa(evento);
-    const p = pontoEm(ponto.x, ponto.y);
-    if (p?.cont && porCont[p.cont] && dados?.mapa?.continentes) {
-      if (p.cont === aberto) fechar();
-      else abrir(p.cont, ponto);
+    const cod = regiaoDe(pontoEm(ponto.x, ponto.y));
+    if (cod) {
+      if (cod === aberto) fechar();
+      else abrir(cod, ponto);
     } else if (aberto && ponto.x >= geo.x0) {
       fechar(); // clique no mar fecha
     }
@@ -466,45 +510,71 @@
   function montarAbas() {
     const abas = $("pc-abas");
     if (!abas || abas.childElementCount) return;
-    for (const cod of ordem()) {
+    for (const cod of [...(disponivel("BR") ? ["BR"] : []), ...ordem()]) {
       const b = document.createElement("button");
       b.type = "button";
       b.dataset.cont = cod;
-      b.textContent = CURTO[cod] ?? dados.mapa.continentes[cod];
-      if (CURTO[cod]) b.setAttribute("aria-label", dados.mapa.continentes[cod]);
+      b.textContent = cod === "BR" ? "Brasil" : CURTO[cod] ?? dados.mapa.continentes[cod];
+      if (cod === "BR") { b.className = "aba-brasil"; b.setAttribute("aria-label", "Brasil por estado"); }
+      else if (CURTO[cod]) b.setAttribute("aria-label", dados.mapa.continentes[cod]);
       b.setAttribute("aria-pressed", "false");
       b.addEventListener("click", () => { if (cod !== aberto) abrir(cod, null, { manterFoco: true }); });
       abas.append(b);
     }
   }
 
-  function preencherPainel(cod, animado) {
-    const info = resumo(cod);
-    montarAbas();
-    $("pc-kicker").textContent = `Continente · ${info.ano}`;
-    const titulo = $("pc-titulo");
-    if (animado && !semMovimento()) A.animate(titulo, { textContent: A.scrambleText({ text: info.nome, chars: "A-Z", duration: 600 }) });
-    else titulo.textContent = info.nome;
-    for (const b of $("pc-abas").children) b.setAttribute("aria-pressed", String(b.dataset.cont === cod));
-    $("pc-rotulo-t").textContent = `importadas em ${info.ano}`;
-    $("pc-rotulo-var").textContent = `sobre ${info.ano - 1}`;
-    contar($("pc-t"), info.t, toneladas, animado);
-    contar($("pc-share"), info.share, pct, animado);
-    // variação: a seta é só visual; o leitor de tela ouve "alta de" ou "queda de"
-    const dd = $("pc-var");
+  // Variação com seta: a seta é só visual; o leitor de tela ouve "alta de" ou "queda de".
+  function mostrarVariacao(dd, valor, animado) {
     if (!dd.querySelector(".num")) {
       const parte = (classe) => Object.assign(document.createElement("span"), { className: classe });
       dd.replaceChildren(parte("seta"), parte("leitor"), parte("num"));
       dd.firstChild.setAttribute("aria-hidden", "true");
     }
     const [seta, falada, num] = dd.children;
-    contar(num, info.var, (v) => {
+    contar(num, valor, (v) => {
       const texto = variacao(v);
       const sobe = texto.startsWith("▲"), desce = texto.startsWith("▼");
       seta.textContent = sobe ? "▲" : desce ? "▼" : "";
       falada.textContent = sobe ? "alta de " : desce ? "queda de " : "";
       return texto.replace(/^[▲▼] /, "");
     }, animado);
+  }
+
+  function escreverTitulo(texto, animado) {
+    const titulo = $("pc-titulo");
+    if (animado && !semMovimento()) A.animate(titulo, { textContent: A.scrambleText({ text: texto, chars: "A-Z", duration: 600 }) });
+    else titulo.textContent = texto;
+  }
+
+  function preencherPainel(cod, animado) {
+    const brasil = cod === "BR";
+    montarAbas();
+    for (const b of $("pc-abas").children) b.setAttribute("aria-pressed", String(b.dataset.cont === cod));
+    // painel já aberto passando do continente para o Brasil (ou o contrário): o corpo entra de leve
+    const mudou = $("pc-brasil").hidden === brasil && !painel.hidden;
+    $("pc-continente").hidden = brasil;
+    $("pc-brasil").hidden = !brasil;
+    $("pc-link").hidden = brasil;
+    $("pc-fonte").textContent = brasil ? "Fonte: Comex Stat/MDIC · UF de destino" : "Fonte: Comex Stat/MDIC · continentes do Natural Earth";
+    hero.classList.toggle("painel-brasil", brasil);
+    if (mudou && animado && !semMovimento()) {
+      const corpo = $(brasil ? "pc-brasil" : "pc-continente");
+      A.animate(corpo, { opacity: [0, 1], translateY: [10, 0], duration: 460, ease: "outExpo",
+        onComplete: () => { corpo.style.removeProperty("opacity"); corpo.style.removeProperty("transform"); } });
+    }
+    if (brasil) {
+      escreverTitulo("Brasil", animado);
+      preencherBrasil(animado, { entrada: true });
+      return;
+    }
+    const info = resumo(cod);
+    $("pc-kicker").textContent = `Continente · ${info.ano}`;
+    escreverTitulo(info.nome, animado);
+    $("pc-rotulo-t").textContent = `importadas em ${info.ano}`;
+    $("pc-rotulo-var").textContent = `sobre ${info.ano - 1}`;
+    contar($("pc-t"), info.t, toneladas, animado);
+    contar($("pc-share"), info.share, pct, animado);
+    mostrarVariacao($("pc-var"), info.var, animado);
 
     // grupos: barra empilhada com as cores fixas e a legenda com o percentual
     const soma = info.grupos.reduce((s, x) => s + x.t, 0) || 1;
@@ -570,6 +640,339 @@
     $("pc-anuncio").textContent = `${info.nome}: ${toneladas(info.t)} importadas em ${info.ano}, ${pct(info.share)} do total do Brasil.`;
   }
 
+  // --- Brasil por estado -----------------------------------------------------------------------
+  // Bloco "estados" do dashboard.json: por ano e grupo, [uf, t, share, variação %, t do mesmo
+  // período do ano anterior]. A UF é a de destino da mercadoria (não a do porto de chegada).
+  const pb = { grupo: "TOTAL", ano: null, uf: null, sobre: null, foco: null };
+  let quadros = null; // uf -> botão do mapa de quadrados
+  let atualBrasil = null; // linhas do grupo e do ano escolhidos
+
+  function mesesDoAno(ano) {
+    const a = dados?.anual, i = a?.anos?.indexOf(ano) ?? -1;
+    return i >= 0 ? a.n_meses[i] : 12;
+  }
+  function rotuloPeriodo(ano, deslocamento = 0) {
+    const n = mesesDoAno(ano);
+    const a = ano + deslocamento;
+    return n >= 12 ? String(a) : `${n === 1 ? "jan" : `jan–${MESES[n - 1]}`}/${a}`;
+  }
+
+  // O último ano completo (o mesmo do chip) e o ano em curso, se ele for parcial.
+  function anosDoBrasil() {
+    const anos = dados?.anual?.anos ?? [];
+    const lista = [anoCompleto(), anos[anos.length - 1]].filter((a, i, l) => a != null && l.indexOf(a) === i);
+    return lista.filter((a) => dados.estados?.dados?.[String(a)]);
+  }
+
+  function resumoDoBrasil() {
+    const ano = anoCompleto(), i = dados?.anual?.anos?.indexOf(ano) ?? -1;
+    return i >= 0 && dados.anual.TOTAL?.t?.[i] != null ? { nome: "Brasil", t: dados.anual.TOTAL.t[i], ano } : null;
+  }
+
+  function linhasDoBrasil() {
+    const bruto = dados.estados.dados?.[String(pb.ano)]?.[pb.grupo] ?? [];
+    const linhas = bruto.map(([uf, t, share, v, tAnt]) => ({
+      uf, nome: dados.estados.ufs?.[uf] ?? NOMES_UF[uf] ?? uf, t: t ?? 0, share, var: v, tAnt: tAnt ?? 0, delta: (t ?? 0) - (tAnt ?? 0),
+    }));
+    const total = linhas.reduce((soma, x) => soma + x.t, 0);
+    const totalAnt = linhas.reduce((soma, x) => soma + x.tAnt, 0);
+    const corte = POUCO_VOLUME * Math.max(total, totalAnt);
+    for (const x of linhas) x.pequena = Math.max(x.t, x.tAnt) < corte;
+    return { linhas, total, totalAnt, porUf: Object.fromEntries(linhas.map((x) => [x.uf, x])) };
+  }
+
+  const nomeUf = (uf) => dados?.estados?.ufs?.[uf] ?? NOMES_UF[uf] ?? uf;
+  // sem importação nos dois períodos (menos de 1 t arredonda para zero, mas tem variação)
+  const semImportacao = (x) => !x || (x.t <= 0 && x.tAnt <= 0 && x.var == null);
+  // menos de 1 t (o JSON arredonda para zero): "menos de 1 t", e não "0 t", se não parou de importar
+  const toneladasUf = (x) => (x.t < 0.5 && x.var != null && x.var > -100 ? "menos de 1 t" : toneladas(x.t));
+  const deltaT = (d) => `${d > 0.5 ? "+" : d < -0.5 ? "−" : ""}${toneladas(Math.abs(d))}`;
+  // variação curta, para caber no quadrado: inteira, ou "×N" acima de +1.000%
+  function varCurta(x) {
+    if (x.var == null) return x.t > 0 ? "novo" : "–";
+    if (x.var >= 999.5 && x.tAnt > 0) return `×${fmt0.format(x.t / x.tAnt)}`;
+    const r = Math.round(x.var);
+    return `${r > 0 ? "+" : r < 0 ? "−" : ""}${fmt0.format(Math.abs(r))}%`;
+  }
+  function varFalada(x) {
+    if (x.var == null) return x.t > 0 ? "começou a importar" : "sem importação";
+    const r = Math.round(x.var * 10) / 10;
+    return r === 0 ? "sem variação" : `${r > 0 ? "alta" : "queda"} de ${fmt1.format(Math.abs(r))}%`;
+  }
+
+  // Cores da variação: do cinza neutro (variação zero) até o polo de alta (quente) ou de queda
+  // (fria), interpoladas em OKLab com o matiz do polo, para o meio do caminho não virar um tom
+  // sujo. Os quadrados ficam num palco escuro nos dois temas, como o mapa de fluxos.
+  const linear = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const gama = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
+  function oklab(hex) {
+    const n = parseInt(hex.replace("#", ""), 16);
+    const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => linear(c / 255));
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const k = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * k, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * k, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * k];
+  }
+  function rgb([L, a, b]) {
+    const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+    const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+    const k = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+    const canais = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * k, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * k, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * k];
+    return `rgb(${canais.map((c) => Math.round(255 * gama(limitar(c, 0, 1)))).join(", ")})`;
+  }
+  const NEUTRO = [0.37, 0, -0.012];
+  function tomDaVariacao(v, polos) {
+    const forca = Math.min(1, Math.abs(v) / ESCALA_VAR) ** 0.7;
+    const polo = v >= 0 ? polos.alta : polos.queda;
+    const lab = NEUTRO.map((c, i) => c + (polo[i] - c) * forca);
+    return { fundo: rgb(lab), escuro: lab[0] > 0.64 };
+  }
+  // Cor do quadrado; estado com pouco volume nos dois períodos fica neutro, e sem importação, vazado.
+  function corDoEstado(x, polos) {
+    if (semImportacao(x)) return null;
+    if (x.pequena) return { fundo: rgb(NEUTRO), escuro: false };
+    return tomDaVariacao(x.var ?? 100, polos); // começou a importar: alta cheia
+  }
+
+  function textoDoEstado(uf) {
+    const x = atualBrasil?.porUf[uf];
+    const periodo = rotuloPeriodo(pb.ano), anterior = rotuloPeriodo(pb.ano, -1);
+    if (semImportacao(x)) return { nome: nomeUf(uf), visivel: `sem importação em ${periodo} nem em ${anterior}`, falado: `sem importação em ${periodo} nem em ${anterior}` };
+    const partes = [`${toneladasUf(x)} em ${periodo}`];
+    if (x.t > 0) partes.push(`${pct(x.share)} do total`);
+    const mudanca = x.var == null ? `não importou em ${anterior}` : `${variacao(x.var)} sobre ${anterior} (${deltaT(x.delta)})`;
+    const falada = x.var == null ? `não importou em ${anterior}` : `${varFalada(x)} sobre ${anterior}, ${deltaT(x.delta)}`;
+    const nota = x.pequena ? " · pouco volume, cor neutra" : "";
+    return { nome: x.nome, visivel: `${partes.join(" · ")} · ${mudanca}${nota}`, falado: `${partes.join(", ")}; ${falada}` };
+  }
+
+  function mostrarDetalhe() {
+    const alvo = $("pb-detalhe");
+    if (!alvo || !atualBrasil) return;
+    const uf = pb.sobre ?? pb.foco ?? pb.uf;
+    if (!uf) {
+      const maior = atualBrasil.linhas[0];
+      alvo.textContent = maior
+        ? `Passe o mouse, toque ou use as setas num estado. Maior destino: ${maior.nome}, ${toneladas(maior.t)} (${pct(maior.share)} do total).`
+        : "Nenhum estado com importação no período.";
+      return;
+    }
+    const { nome, visivel } = textoDoEstado(uf);
+    const forte = document.createElement("strong");
+    forte.textContent = nome;
+    alvo.replaceChildren(forte, ` · ${visivel}`);
+  }
+
+  // Um botão por UF, na grade; setas andam entre vizinhos (foco itinerante: uma parada de Tab).
+  function montarQuadros() {
+    const caixa = $("pb-mapa");
+    if (quadros || !caixa) return;
+    quadros = {};
+    for (const [uf, [linha, coluna]] of Object.entries(GRADE_UF)) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "pb-uf";
+      b.dataset.uf = uf;
+      b.tabIndex = -1;
+      b.style.gridRow = String(linha + 1);
+      b.style.gridColumn = String(coluna + 1);
+      b.setAttribute("aria-pressed", "false");
+      const valor = Object.assign(document.createElement("span"), { className: "v" });
+      valor.setAttribute("aria-hidden", "true");
+      b.append(Object.assign(document.createElement("b"), { textContent: uf }), valor);
+      b.addEventListener("click", () => selecionarUf(uf));
+      b.addEventListener("pointerenter", (e) => { if (e.pointerType !== "touch") sobreUf(uf); });
+      b.addEventListener("pointerleave", () => sobreUf(null));
+      b.addEventListener("focus", () => { rodarFoco(uf); pb.foco = uf; mostrarDetalhe(); });
+      b.addEventListener("blur", () => { pb.foco = null; mostrarDetalhe(); });
+      caixa.append(b);
+      quadros[uf] = b;
+    }
+    caixa.addEventListener("keydown", (evento) => {
+      const atual = evento.target.closest?.(".pb-uf");
+      if (!atual) return;
+      const passos = { ArrowRight: [0, 1], ArrowLeft: [0, -1], ArrowDown: [1, 0], ArrowUp: [-1, 0] };
+      const ufs = Object.keys(GRADE_UF);
+      let alvo = null;
+      if (passos[evento.key]) alvo = vizinhoUf(atual.dataset.uf, ...passos[evento.key]);
+      else if (evento.key === "Home") alvo = ufs[0];
+      else if (evento.key === "End") alvo = ufs[ufs.length - 1];
+      else return;
+      evento.preventDefault();
+      if (alvo) quadros[alvo].focus();
+    });
+  }
+
+  // O vizinho na direção da seta: o mais perto à frente, preferindo a mesma linha ou coluna.
+  function vizinhoUf(uf, dLinha, dColuna) {
+    const [l0, c0] = GRADE_UF[uf];
+    let melhor = null, nota = Infinity;
+    for (const [outra, [l, c]] of Object.entries(GRADE_UF)) {
+      const frente = dLinha ? (l - l0) * dLinha : (c - c0) * dColuna;
+      if (frente <= 0) continue;
+      const lado = dLinha ? Math.abs(c - c0) : Math.abs(l - l0);
+      const n = frente + lado * 2.5;
+      if (n < nota) { nota = n; melhor = outra; }
+    }
+    return melhor;
+  }
+
+  function rodarFoco(uf) {
+    for (const [u, b] of Object.entries(quadros ?? {})) b.tabIndex = u === uf ? 0 : -1;
+  }
+
+  function selecionarUf(uf, { alternar = true } = {}) {
+    pb.uf = alternar && pb.uf === uf ? null : uf;
+    for (const [u, b] of Object.entries(quadros)) b.setAttribute("aria-pressed", String(u === pb.uf));
+    mostrarDetalhe();
+  }
+
+  function sobreUf(uf) {
+    pb.sobre = uf;
+    for (const [u, b] of Object.entries(quadros)) b.classList.toggle("destacada", u === uf);
+    for (const b of document.querySelectorAll(".pb-lista button")) b.classList.toggle("destacada", b.dataset.uf === uf);
+    mostrarDetalhe();
+  }
+
+  function montarFiltrosBrasil() {
+    const grupos = $("pb-grupos"), anos = $("pb-anos");
+    if (!grupos.childElementCount) {
+      for (const g of ["TOTAL", ...GRUPOS]) {
+        const b = Object.assign(document.createElement("button"), { type: "button", textContent: g === "TOTAL" ? "Todos" : g });
+        b.dataset.grupo = g;
+        b.setAttribute("aria-label", g === "TOTAL" ? "Todos os grupos" : `${NOMES_GRUPO[g]} (${g})`);
+        b.addEventListener("click", () => { if (pb.grupo !== g) { pb.grupo = g; trocarFiltroBrasil(); } });
+        grupos.append(b);
+      }
+    }
+    const lista = anosDoBrasil();
+    if (anos.dataset.anos !== lista.join(",")) {
+      anos.dataset.anos = lista.join(",");
+      anos.replaceChildren(...lista.map((ano) => {
+        const b = Object.assign(document.createElement("button"), { type: "button", textContent: rotuloPeriodo(ano) });
+        b.dataset.ano = String(ano);
+        b.addEventListener("click", () => { if (pb.ano !== ano) { pb.ano = ano; trocarFiltroBrasil(); } });
+        return b;
+      }));
+    }
+    anos.hidden = lista.length < 2;
+    for (const b of grupos.children) b.setAttribute("aria-pressed", String(b.dataset.grupo === pb.grupo));
+    for (const b of anos.children) b.setAttribute("aria-pressed", String(Number(b.dataset.ano) === pb.ano));
+  }
+
+  function trocarFiltroBrasil() {
+    preencherBrasil(true);
+    montarRotas({ animar: true }); // as rotas viram as maiores origens do grupo e do ano
+  }
+
+  function montarLista(id, itens, sobe, cores) {
+    const ol = $(id);
+    if (!itens.length) {
+      ol.replaceChildren(Object.assign(document.createElement("li"), { className: "vazio", textContent: sobe ? "Nenhum estado com alta." : "Nenhum estado com queda." }));
+      return;
+    }
+    ol.replaceChildren(...itens.map((x) => {
+      const b = Object.assign(document.createElement("button"), { type: "button" });
+      b.dataset.uf = x.uf;
+      const marca = Object.assign(document.createElement("i"), { className: "tom" }); // ("marca" é a do site)
+      marca.style.background = tomDaVariacao(sobe ? ESCALA_VAR : -ESCALA_VAR, cores).fundo;
+      const celula = (classe, texto) => Object.assign(document.createElement("span"), { className: classe, textContent: texto });
+      b.append(marca, celula("nome", x.nome), celula("valor", deltaT(x.delta)), celula("var", x.var == null ? "novo" : variacao(x.var)));
+      b.setAttribute("aria-label", `${x.nome}: ${deltaT(x.delta)}, ${varFalada(x)}`);
+      b.addEventListener("click", () => { selecionarUf(x.uf, { alternar: false }); quadros[x.uf]?.focus({ preventScroll: true }); });
+      b.addEventListener("pointerenter", (e) => { if (e.pointerType !== "touch") sobreUf(x.uf); });
+      b.addEventListener("pointerleave", () => sobreUf(null));
+      const li = document.createElement("li");
+      li.append(b);
+      return li;
+    }));
+  }
+
+  function montarTabelaBrasil() {
+    const caixa = $("pb-tabela");
+    if (!caixa) return;
+    const periodo = rotuloPeriodo(pb.ano), anterior = rotuloPeriodo(pb.ano, -1);
+    const celula = (tag, texto, num) => Object.assign(document.createElement(tag), { textContent: texto, className: num ? "num" : "" });
+    const cabeca = document.createElement("tr");
+    cabeca.append(celula("th", "Estado"), celula("th", `t em ${periodo}`, true), celula("th", "Share", true), celula("th", `Sobre ${anterior}`, true), celula("th", "Diferença (t)", true));
+    const corpo = atualBrasil.linhas.map((x) => {
+      const tr = document.createElement("tr");
+      const d = Math.round(x.delta);
+      tr.append(celula("td", `${x.nome} (${x.uf})`), celula("td", fmtInteiro.format(Math.round(x.t)), true), celula("td", pct(x.share), true),
+        celula("td", x.var == null ? (x.t > 0 ? "novo" : "–") : variacao(x.var), true), celula("td", `${d > 0 ? "+" : d < 0 ? "−" : ""}${fmtInteiro.format(Math.abs(d))}`, true));
+      return tr;
+    });
+    const tabela = document.createElement("table");
+    tabela.append(Object.assign(document.createElement("thead"), {}), document.createElement("tbody"));
+    tabela.tHead.append(cabeca);
+    tabela.tBodies[0].append(...corpo);
+    caixa.replaceChildren(tabela);
+  }
+
+  function preencherBrasil(animado, { entrada = false } = {}) {
+    if (!dados?.estados?.dados) return;
+    const anos = anosDoBrasil();
+    if (!anos.includes(pb.ano)) pb.ano = anos[0] ?? anoCompleto();
+    montarQuadros();
+    montarFiltrosBrasil();
+    const atual = (atualBrasil = linhasDoBrasil());
+    const periodo = rotuloPeriodo(pb.ano), anterior = rotuloPeriodo(pb.ano, -1);
+    $("pc-kicker").textContent = `Por estado · ${periodo}`;
+    $("pb-rotulo-t").textContent = mesesDoAno(pb.ano) >= 12 ? `importadas em ${periodo}` : "importadas no período";
+    $("pb-rotulo-var").textContent = `sobre ${anterior}`;
+    const variacaoTotal = atual.totalAnt > 0 ? 100 * (atual.total / atual.totalAnt - 1) : null;
+    contar($("pb-t"), atual.total, toneladas, animado);
+    mostrarVariacao($("pb-var"), variacaoTotal, animado);
+    const ativos = atual.linhas.filter((x) => !semImportacao(x));
+    const altas = ativos.filter((x) => x.delta > 0.5).length;
+    $("pb-altas").textContent = `${altas} de ${ativos.length}`;
+
+    const cores = { alta: oklab(variavel("--pb-alta") || "#ffa94d"), queda: oklab(variavel("--pb-queda") || "#74b9ff") };
+    const tinta = variavel("--pb-tinta") || "#0b1036";
+    const gradiente = hero.querySelector(".pb-gradiente");
+    if (gradiente) gradiente.style.background = `linear-gradient(90deg, ${[-1, -0.5, 0, 0.5, 1].map((f) => tomDaVariacao(f * ESCALA_VAR, cores).fundo).join(", ")})`;
+    for (const [uf, b] of Object.entries(quadros)) {
+      const x = atual.porUf[uf];
+      const c = corDoEstado(x, cores);
+      b.classList.toggle("vazia", !c);
+      b.classList.toggle("pequena", !!x?.pequena);
+      b.style.background = c?.fundo ?? "";
+      b.style.color = c?.escuro ? tinta : "";
+      b.lastElementChild.textContent = semImportacao(x) ? "" : varCurta(x);
+      const { nome, falado } = textoDoEstado(uf);
+      b.setAttribute("aria-label", `${nome}: ${falado}`);
+    }
+    // a parada de Tab do mapa: o estado escolhido ou o maior destino (que tenha quadrado)
+    if (!$("pb-mapa").contains(document.activeElement)) rodarFoco(pb.uf ?? atual.linhas.find((x) => quadros[x.uf])?.uf ?? "PR");
+
+    // as maiores altas e quedas em toneladas (o que mais pesa no total)
+    const sobe = atual.linhas.filter((x) => x.delta > 0.5).sort((a, b) => b.delta - a.delta).slice(0, 3);
+    const desce = atual.linhas.filter((x) => x.delta < -0.5).sort((a, b) => a.delta - b.delta).slice(0, 3);
+    montarLista("pb-sobe", sobe, true, cores);
+    montarLista("pb-desce", desce, false, cores);
+    montarTabelaBrasil();
+    mostrarDetalhe();
+    $("pc-nota").textContent = `Cor: variação em toneladas sobre ${anterior} (satura em ±${ESCALA_VAR}%); cinza com menos de ${fmt1.format(100 * POUCO_VOLUME)}% do total. UF de destino da mercadoria: não é a do porto nem a da sede do importador.`;
+    const falaTotal = variacaoTotal == null ? "" : `, ${varFalada({ var: variacaoTotal, t: atual.total })} sobre ${anterior}`;
+    $("pc-anuncio").textContent = `Brasil por estado, ${NOMES_GRUPO[pb.grupo]}, ${periodo}: ${toneladas(atual.total)}${falaTotal}; ${altas} de ${ativos.length} estados com alta.`
+      + (sobe[0] ? ` Maior alta: ${sobe[0].nome}, ${deltaT(sobe[0].delta)}.` : "") + (desce[0] ? ` Maior queda: ${desce[0].nome}, ${deltaT(desce[0].delta)}.` : "");
+
+    if (!animado || semMovimento()) return;
+    if (entrada) {
+      // os quadrados nascem em diagonal, do noroeste para o sul, como uma varredura
+      const lista = Object.values(quadros);
+      lista.forEach((b) => b.classList.add("entrando"));
+      A.animate(lista, {
+        opacity: [0, 1], scale: [0.35, 1], duration: 560, ease: "outBack(1.7)",
+        delay: (b) => 140 + (GRADE_UF[b.dataset.uf][0] + GRADE_UF[b.dataset.uf][1]) * 34,
+        onComplete: () => lista.forEach((b) => { b.classList.remove("entrando"); b.style.removeProperty("opacity"); b.style.removeProperty("transform"); }),
+      });
+    }
+    const linhas = [...document.querySelectorAll("#pb-sobe li, #pb-desce li")];
+    A.animate(linhas, { opacity: [0, 1], translateX: [-8, 0], duration: 520, delay: A.stagger(55, { start: entrada ? 420 : 40 }), ease: "outExpo",
+      onComplete: () => linhas.forEach((li) => { li.style.removeProperty("opacity"); li.style.removeProperty("transform"); }) });
+  }
+
   // Troca o título do hero pelo painel (e volta), com uma passagem lateral curta.
   // `aoMostrar` roda quando o que entra já está visível (o foco só pode ir para algo visível).
   let troca = null;
@@ -593,7 +996,7 @@
   }
 
   function abrir(cod, origem, { manterFoco = false } = {}) {
-    if (!porCont[cod] || !dados?.mapa?.continentes || !painel || !textoHero) return;
+    if (!disponivel(cod) || !painel || !textoHero) return;
     const jaAberto = !!aberto;
     aberto = cod;
     abertoEm = performance.now();
@@ -608,27 +1011,39 @@
     if (!jaAberto) trocarConteudo(true, focar);
     else focar();
     hero.classList.add("continente-aberto");
+    chipBrasil?.setAttribute("aria-expanded", String(cod === "BR"));
     montarRotas({ animar: true });
     preencherDica();
     pedirQuadro();
   }
 
+  let voltarPara = null; // quem abriu o painel pelo teclado recebe o foco de volta
   function fechar() {
     if (!aberto) return;
     const devolver = painel.contains(document.activeElement);
     aberto = null;
+    pb.sobre = pb.foco = null;
     trocarConteudo(false);
-    hero.classList.remove("continente-aberto");
+    hero.classList.remove("continente-aberto", "painel-brasil");
+    chipBrasil?.setAttribute("aria-expanded", "false");
     montarRotas({ animar: true });
     preencherDica();
     pedirQuadro();
-    if (devolver && botaoExplorar && !botaoExplorar.hidden) botaoExplorar.focus({ preventScroll: true });
+    const alvo = voltarPara && !voltarPara.hidden && !voltarPara.disabled ? voltarPara : botaoExplorar;
+    voltarPara = null;
+    if (devolver && alvo && !alvo.hidden) alvo.focus({ preventScroll: true });
   }
 
   $("pc-fechar")?.addEventListener("click", fechar);
   botaoExplorar?.addEventListener("click", () => {
     if (aberto) $("pc-titulo").focus({ preventScroll: true });
-    else if (ordem().length) abrir(ordem()[0], null);
+    else if (ordem().length) { voltarPara = botaoExplorar; abrir(ordem()[0], null); }
+  });
+  const chipBrasil = $("chip-brasil");
+  chipBrasil?.addEventListener("click", () => {
+    if (aberto === "BR") { fechar(); return; }
+    voltarPara = chipBrasil;
+    abrir("BR", null);
   });
   document.addEventListener("keydown", (evento) => {
     if (evento.key !== "Escape" || !aberto) return;
@@ -656,15 +1071,17 @@
     return e;
   };
 
-  function origensDoHero(cont) {
-    const m = dados?.mapa, ano = anoCompleto();
+  function origensDoHero(regiao) {
+    const m = dados?.mapa, brasil = regiao === "BR";
+    const ano = brasil && pb.ano != null ? pb.ano : anoCompleto();
+    const grupo = brasil ? pb.grupo : "TOTAL";
     if (!m?.paises || !m.dados || ano == null) return null;
-    const itens = (m.dados[String(ano)]?.TOTAL?.origens ?? [])
-      .filter(([co]) => !cont || m.paises[co]?.[4] === cont)
+    const itens = (m.dados[String(ano)]?.[grupo]?.origens ?? [])
+      .filter(([co]) => brasil || !regiao || m.paises[co]?.[4] === regiao)
       .slice(0, largura < 700 ? 4 : 6)
       .map(([co, t]) => ({ nome: m.paises[co]?.[0], lon: m.paises[co]?.[2], lat: m.paises[co]?.[3], t }))
       .filter((x) => x.nome && Number.isFinite(x.lon) && Number.isFinite(x.lat) && x.t > 0);
-    return { ano, itens };
+    return { ano, grupo, itens };
   }
 
   function arco(a, b) {
@@ -745,8 +1162,9 @@
     });
     rotasSvg.replaceChildren(defs, camadas.arcos, camadas.cometas, camadas.chegadas, camadas.pontos, camadas.rotulos);
     if (legendaRotas) {
-      const nome = aberto && dados.mapa.continentes?.[aberto];
-      legendaRotas.lastElementChild.textContent = nome ? `${rotas.length} maiores origens da ${nome} em ${fonte.ano}` : `${rotas.length} maiores origens em ${fonte.ano}`;
+      const nome = aberto && aberto !== "BR" && dados.mapa.continentes?.[aberto];
+      const de = fonte.grupo !== "TOTAL" ? ` de ${NOMES_GRUPO[fonte.grupo]}` : "";
+      legendaRotas.lastElementChild.textContent = nome ? `${rotas.length} maiores origens da ${nome} em ${rotuloPeriodo(fonte.ano)}` : `${rotas.length} maiores origens${de} em ${rotuloPeriodo(fonte.ano)}`;
       legendaRotas.hidden = !rotas.length;
     }
     if (semMovimento() || !A?.svg) { rotasEntraram = true; return; }
@@ -846,10 +1264,16 @@
     // Chip no Brasil: toneladas do último ano completo (12 meses), todos os grupos.
     const ano = anoCompleto();
     const i = d.anual?.anos?.indexOf(ano) ?? -1;
-    if (i >= 0 && d.anual.TOTAL?.t?.[i] != null) {
-      const chip = $("chip-brasil");
-      chip.replaceChildren(document.createElement("strong"), ` · ${toneladas(d.anual.TOTAL.t[i])} importadas em ${ano}`);
-      chip.firstChild.textContent = "Brasil";
+    if (i >= 0 && d.anual.TOTAL?.t?.[i] != null && chipBrasil) {
+      const texto = `${toneladas(d.anual.TOTAL.t[i])} importadas em ${ano}`;
+      const porEstado = !!d.estados?.dados;
+      const nome = document.createElement("strong");
+      nome.textContent = "Brasil";
+      const ir = Object.assign(document.createElement("span"), { className: "ir", textContent: "→" });
+      ir.setAttribute("aria-hidden", "true");
+      chipBrasil.replaceChildren(nome, ` · ${texto}`, ...(porEstado ? [ir] : []));
+      chipBrasil.disabled = !porEstado;
+      chipBrasil.setAttribute("aria-label", porEstado ? `Brasil: ${texto}. Ver por estado` : `Brasil: ${texto}`);
     }
     posicionarChip();
     montarRotas();
@@ -866,9 +1290,19 @@
     hero.style.setProperty("--margem-painel", `${geo.empilhado ? Math.max(0, Math.round(fimDoMapa - topoLinha)) : 0}px`);
   }
 
-  function redesenhar() {
+  let medida = "";
+  function redesenhar({ tudo = false } = {}) {
     if (!mapa) return;
     medir();
+    const chave = `${largura}|${alturaDoMapa()}`;
+    if (!tudo && geo && chave === medida) {
+      // só a altura do hero mudou (o painel abriu ou fechou): o mapa e as rotas ficam onde estão
+      desenharBase();
+      rotasSvg?.setAttribute("viewBox", `0 0 ${largura} ${altura}`);
+      quadro(performance.now());
+      return;
+    }
+    medida = chave;
     projetar();
     margemDoPainel();
     desenharBase();
@@ -900,10 +1334,11 @@
     animar();
   }).observe(hero);
   document.addEventListener("visibilitychange", animar);
-  reduzido.addEventListener?.("change", redesenhar);
+  const refazer = () => redesenhar({ tudo: true });
+  reduzido.addEventListener?.("change", refazer);
   // Troca de tema (botão ou sistema): as cores dos pontos vêm das variáveis do CSS.
-  new MutationObserver(redesenhar).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-  matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", redesenhar);
+  new MutationObserver(refazer).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", refazer);
 
   // Para os testes de navegador: o ponto (na tela) que representa cada continente.
   window.radarMapaHero = {
@@ -914,6 +1349,7 @@
       return { x: r.left + c.x * (r.width / largura), y: r.top + c.y * (r.height / altura) };
     },
     continenteAberto: () => aberto,
+    brasil: () => ({ grupo: pb.grupo, ano: pb.ano, uf: pb.uf }),
   };
 
   carregarMapa();

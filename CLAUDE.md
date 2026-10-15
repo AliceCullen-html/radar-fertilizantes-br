@@ -82,6 +82,16 @@ BCB. **O repositório é PÚBLICO.**
   31054000 ÷ preço FOB da soja no mesmo mês. É "no porto", não o preço ao produtor; dizer
   isso em toda saída pública que a mostrar. É US$/US$ e NÃO muda com o câmbio: nunca criar
   "troca em R$".
+- Custo por nutriente, o "custo por molécula" (`src/nutrientes.py`, `custo_nutriente_mensal.csv`
+  e bloco "nutrientes", com 6 casas): CIF ÷ teor do nutriente no grau comercial usual (tabela
+  `PRODUTOS`: ureia 46% N, sulfato de amônio 21% N, nitrato de amônio 34% N, MAP 11-52, DAP
+  18-46, TSP 46% P2O5, KCl 60% K2O; os NCMs repetidos são os de `src/comparacao.py`). MAP e DAP
+  descontam o N pelo custo do N da ureia no mesmo mês (crédito de N). Amostra pequena (<
+  `CORTE_AMOSTRA_T`) fora do gráfico. É no porto, não o preço ao produtor: dizer isso em toda
+  saída pública que o mostrar. R$ só pela PTAX venda média do mês.
+- Estados (`share_uf_ano.csv` e bloco "estados"): a UF do Comex Stat na importação é a UF de
+  DESTINO da mercadoria, qualquer que seja a sede do importador, e não a do porto. Nunca
+  chamá-la de "UF do importador" nem de "UF do porto".
 - Fase 2: `python -m src.transform` gera em `data/processed/` os CSVs de preço US$/t,
   shares por origem e URF com variação anual, HHI, sazonalidade e o `dashboard.json`.
   As saídas são determinísticas; regenere-as sempre que os dados brutos mudarem.
@@ -198,7 +208,18 @@ BCB. **O repositório é PÚBLICO.**
   grade; no celular o painel começa abaixo do mapa, por `--margem-painel`), com ping de radar,
   varredura e as rotas do continente. Teclado: botão "Explorar por continente", abas e Esc (o
   foco volta ao botão). Sem movimento: sem onda, luz, ping, varredura, cometas nem contagem.
-  `window.radarMapaHero` existe só para os testes de navegador.
+  `window.radarMapaHero` existe só para os testes de navegador. O Brasil é uma região à parte
+  ("BR", primeira aba): o clique nele ou no chip (um botão) abre o painel por estado no lugar
+  do continente: um quadrado por UF (`GRADE_UF`) num palco escuro nos dois temas, na cor da
+  variação interpolada em OKLab do cinza ao polo (alta quente, queda fria, satura em ±50%),
+  cinza para quem tem menos de 0,5% do total nos dois períodos, as 3 maiores altas e quedas em
+  toneladas, filtros de grupo e de ano (último completo e o parcial), rotas do grupo e do ano
+  escolhidos e a tabela de todos os estados. Setas andam entre vizinhos (uma parada de Tab); Esc
+  devolve o foco a quem abriu (chip ou botão). O ponto que representa a América do Sul fica fora
+  do Brasil. Se o painel alonga o hero, o mapa não se move (altura de referência = a da tela).
+- Legendas de FOB e CIF (`dl.termos`) no resumo, no gráfico de preços e no Brasil x mercado
+  internacional, e o glossário (`#glossario`, no Método; o link usa `data-secao` para não trocar
+  o hash dos filtros). Definições iguais às do README.
 - Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):
   N azul, P laranja, K água, NPK amarelo, "Todos" violeta. Não reordenar.
 - Não commitar dados grandes: se `data/raw/` passar de ~20 MB, colocá-lo no `.gitignore`
