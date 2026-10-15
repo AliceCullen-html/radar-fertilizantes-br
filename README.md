@@ -129,8 +129,12 @@ A navegação é animada com o anime.js: os links do menu rolam até a seção c
 suaves (qualquer gesto interrompe), o indicador do menu acompanha a rolagem e desliza de um item
 para o outro, uma linha fina no pé da barra mostra quanto da página já foi lida e cada seção
 entra ao aparecer na tela (o rótulo se "decodifica", o título sobe palavra a palavra e os
-cartões deslizam). Com "reduzir movimento" ligado no sistema, nada disso acontece e nada fica
-escondido.
+cartões deslizam). Outras animações acompanham a própria rolagem (o `onScroll` do anime.js, com
+suavização) e voltam quando se rola para cima: o mapa do topo cresce e esmaece ao sair de cena,
+um fundo de pontos se move devagar atrás das seções, os títulos têm um leve parallax, cada
+gráfico se abre da esquerda para a direita conforme sobe na tela e o palco do mapa de fluxos se
+expande de uma janela recortada até a largura toda. Com "reduzir movimento" ligado no sistema,
+nada disso acontece e nada fica escondido.
 
 Os filtros de grupo e período valem para todos os gráficos e ficam na URL (por exemplo,
 `#grupo=K&de=2021-10&ate=2026-09`), então dá para compartilhar uma visão específica. A página

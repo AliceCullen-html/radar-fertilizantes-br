@@ -8,7 +8,10 @@
  *   animada pelo anime.js até a seção. Os links não mexem no hash da URL, que guarda os filtros
  *   (#grupo=...&de=...).
  * - Entrada das seções ao aparecer na tela (kicker decodificado, título por palavras, cartões).
- * Com prefers-reduced-motion: sem onda de brilho, sem rolagem animada, sem entradas.
+ * - Animações ligadas à rolagem (onScroll do anime.js): hero, fundo de pontos, títulos, gráficos,
+ *   diagrama de rotas e mapa de fluxos acompanham a rolagem nos dois sentidos.
+ * Com prefers-reduced-motion: sem onda de brilho, sem rolagem animada, sem entradas e sem nada
+ *   ligado à rolagem.
  */
 "use strict";
 (() => {
@@ -235,6 +238,42 @@
     }
   }
 
+  // --- Animações ligadas à rolagem -------------------------------------------------------------
+  // Diferente das entradas (que tocam uma vez), estas acompanham a rolagem nos dois sentidos, com
+  // o onScroll do anime.js sincronizado (e uma suavização leve): o hero "mergulha" ao sair, o fundo
+  // de pontos anda devagar, os títulos flutuam, os gráficos e o diagrama de rotas se desenham da
+  // esquerda para a direita enquanto sobem na tela e o mapa de fluxos se abre como uma janela.
+  // O anime.js recalcula as posições sozinho quando a página muda de altura.
+  const ligadas = []; // [animação, observador]
+  function ligarRolagem() {
+    if (semMovimento() || !A.onScroll) return;
+    const aRolagem = (alvo, valores, parametros) => {
+      if (!alvo) return;
+      const observador = A.onScroll({ sync: 0.15, ...parametros });
+      ligadas.push([A.animate(alvo, { ...valores, ease: "linear", autoplay: observador }), observador]);
+    };
+    const saidaDoHero = { target: hero, enter: "start start", leave: "start end" };
+    aRolagem(canvas, { scale: [1, 1.14], opacity: [1, 0.3] }, saidaDoHero);
+    aRolagem(hero.querySelector(".hero-conteudo"), { translateY: [0, -120], opacity: [1, 0] }, saidaDoHero);
+    aRolagem(document.querySelector(".fundo-pontos"), { translateY: [0, -840] }, { target: document.body, enter: "start start", leave: "end end", sync: 0.1 });
+    for (const t of document.querySelectorAll(".titulo-bloco")) {
+      aRolagem(t, { translateY: [26, -26] }, { target: t, enter: "end start", leave: "start end", sync: 0.25 });
+    }
+    // "min+=": no fim da página, o gráfico que não chega a 65% da tela termina de abrir na rolagem máxima
+    for (const g of document.querySelectorAll(".grafico, .sankey")) {
+      aRolagem(g, { clipPath: ["inset(0% 100% 0% 0%)", "inset(0% 0% 0% 0%)"] }, { target: g, enter: "end start", leave: "min+=65% start", sync: 0.2 });
+    }
+    const palcoFluxos = document.getElementById("fluxos-palco");
+    aRolagem(palcoFluxos, { clipPath: ["inset(16% 24% 16% 24% round 28px)", "inset(0% 0% 0% 0% round 8px)"] },
+      { target: palcoFluxos, enter: "end start", leave: "min+=60% start", sync: 0.2 });
+    // ligar "reduzir movimento" no meio desfaz tudo (estado final, sem movimento)
+    reduzido.addEventListener?.("change", () => {
+      if (!reduzido.matches) return;
+      for (const [animacao, observador] of ligadas) { observador.revert(); animacao.revert(); }
+      ligadas.length = 0;
+    });
+  }
+
   // --- Mapa de pontos ----------------------------------------------------------------
   const canvas = document.getElementById("mapa-hero");
   const ctx = canvas.getContext("2d");
@@ -438,4 +477,5 @@
   bordasDaNav();
   espiar(true);
   prepararEntradas();
+  ligarRolagem();
 })();

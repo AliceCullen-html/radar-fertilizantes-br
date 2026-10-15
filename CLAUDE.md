@@ -168,6 +168,11 @@ BCB. **O repositório é PÚBLICO.**
   (`scrambleText` no kicker, `splitText` no título, cartões deslizando). A classe `movimento` no
   `<html>` (script inline no `<head>`) só existe sem "reduzir movimento"; o CSS tem um fallback
   que mostra tudo em 2,5 s se o JS não rodar. Nunca esconder conteúdo sem esse fallback.
+  Animações ligadas à rolagem (`ligarRolagem`, `onScroll` com `sync`): saída do hero, fundo de
+  pontos (`.fundo-pontos`, fixo atrás da `.pagina`, que tem `z-index: 1`), parallax dos títulos,
+  `clip-path` abrindo os gráficos e o palco do mapa. O fim de cada abertura usa `leave: "min+=…"`,
+  para terminar na rolagem máxima mesmo em tela alta (nada fica cortado no fim da página); a
+  impressão (`@media print`) anula os estilos inline; "reduzir movimento" no meio desfaz tudo.
 - Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):
   N azul, P laranja, K água, NPK amarelo, "Todos" violeta. Não reordenar.
 - Não commitar dados grandes: se `data/raw/` passar de ~20 MB, colocá-lo no `.gitignore`

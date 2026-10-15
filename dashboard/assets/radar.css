@@ -559,7 +559,22 @@ body {
 }
 a { color: inherit; text-underline-offset: 2px; }
 :focus-visible { outline: 2px solid var(--foco); outline-offset: 2px; }
-.pagina { max-width: 1240px; margin: 0 auto; padding: 0 24px 16px; }
+.pagina { position: relative; z-index: 1; max-width: 1240px; margin: 0 auto; padding: 0 24px 16px; }
+/* fundo de pontos: textura técnica atrás das seções, com parallax leve ligado à rolagem (hero.js) */
+:root { --ponto-fundo: rgba(43, 52, 209, 0.11); }
+:root[data-theme="dark"] { --ponto-fundo: rgba(166, 173, 255, 0.09); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ponto-fundo: rgba(166, 173, 255, 0.09); } }
+.fundo-pontos {
+  position: fixed; inset: 0 0 auto 0; height: calc(100vh + 840px); z-index: 0; pointer-events: none;
+  background-image: radial-gradient(circle, var(--ponto-fundo) 1px, transparent 1.6px); background-size: 28px 28px;
+  will-change: transform;
+}
+/* na impressão, nada fica preso no meio da animação de rolagem (estilos inline do anime.js) */
+@media print {
+  .fundo-pontos { display: none; }
+  .grafico, .sankey, .fluxos-palco { clip-path: none !important; }
+  .hero-conteudo, .titulo-bloco, #mapa-hero { opacity: 1 !important; transform: none !important; }
+}
 
 
 .filtros { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; margin-bottom: 16px; }

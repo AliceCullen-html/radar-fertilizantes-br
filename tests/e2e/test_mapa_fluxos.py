@@ -52,8 +52,8 @@ def _cdn(rota):
     return rota.abort()
 
 
-def _abrir(navegador, servidor, largura, tema, reduzido=False, hash_=""):
-    ctx = navegador.new_context(viewport={"width": largura, "height": 900}, color_scheme=tema, reduced_motion="reduce" if reduzido else "no-preference")
+def _abrir(navegador, servidor, largura, tema, reduzido=False, hash_="", altura=900):
+    ctx = navegador.new_context(viewport={"width": largura, "height": altura}, color_scheme=tema, reduced_motion="reduce" if reduzido else "no-preference")
     pg = ctx.new_page()
     erros = []
     pg.on("pageerror", lambda e: erros.append(str(e)))
@@ -229,5 +229,45 @@ def test_menu_rola_suave_ate_a_secao_e_revela_o_titulo(navegador, servidor):
     ctx, pg, erros = _abrir(navegador, servidor, 1440, "light", reduzido=True)
     assert not pg.evaluate("document.documentElement.classList.contains('movimento')")
     assert pg.evaluate("document.querySelectorAll('.preparado').length") == 0
+    assert erros == []
+    ctx.close()
+
+
+# corte à direita do clip-path inline ("inset(0%)" = inteiro; sem estilo = sem animação)
+CORTES = """() => [...document.querySelectorAll('.grafico, .sankey, #fluxos-palco')].map((g) => {
+  const m = g.style.clipPath.match(/inset\\(([^)]*)\\)/);
+  if (!m) return null;
+  const partes = m[1].replace(/ round .*/, '').split(' ').map(parseFloat);
+  return partes.length > 1 ? partes[1] : partes[0];
+})"""
+
+
+def test_rolagem_abre_os_graficos_e_nada_fica_cortado_no_fim_da_pagina(navegador, servidor):
+    ctx, pg, erros = _abrir(navegador, servidor, 1440, "light")
+    topo = "document.getElementById('grafico-toneladas').parentElement.getBoundingClientRect().top + scrollY"
+    pg.evaluate(f"window.scrollTo(0, {topo} - innerHeight + 40)")
+    pg.wait_for_timeout(1500)
+    assert pg.evaluate(CORTES)[0] > 80, "o gráfico que mal entrou na tela ainda está quase todo fechado"
+    pg.evaluate(f"window.scrollTo(0, {topo} - innerHeight * 0.3)")
+    pg.wait_for_function(f"({CORTES})()[0] < 0.5", timeout=15_000)
+    # o hero sai de cena com a rolagem: o texto some e o mapa cresce
+    pg.evaluate("window.scrollTo(0, document.querySelector('.hero').offsetHeight * 0.6)")
+    pg.wait_for_function("getComputedStyle(document.querySelector('.hero-conteudo')).opacity < 0.7", timeout=15_000)
+    assert "matrix" in pg.evaluate("getComputedStyle(document.getElementById('mapa-hero')).transform")
+    assert erros == []
+    ctx.close()
+    # numa tela alta, os últimos gráficos não chegam a 65% da altura: abrem inteiros na rolagem máxima
+    ctx, pg, erros = _abrir(navegador, servidor, 1440, "light", altura=1600)
+    pg.evaluate("""async () => { const fim = document.documentElement.scrollHeight;
+      for (let y = 0; y <= fim; y += 200) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 30)); } scrollTo(0, fim); }""")
+    pg.wait_for_function(f"({CORTES})().every((c) => c !== null && c < 0.5)", timeout=20_000)
+    assert erros == []
+    ctx.close()
+    # com reduzir movimento, nenhum corte nem deslocamento ligado à rolagem
+    ctx, pg, erros = _abrir(navegador, servidor, 1440, "light", reduzido=True)
+    pg.evaluate("window.scrollTo(0, 1200)")
+    pg.wait_for_timeout(400)
+    assert pg.evaluate(CORTES) == [None] * len(pg.evaluate(CORTES))
+    assert pg.evaluate("document.querySelector('.fundo-pontos').style.transform") == ""
     assert erros == []
     ctx.close()
