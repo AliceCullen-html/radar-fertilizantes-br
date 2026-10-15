@@ -137,6 +137,20 @@ BCB. **O repositório é PÚBLICO.**
   número já arredondado (nunca "−0,0"). O spread vai sempre com o
   preço do Brasil da sua base, e o do ano anterior entra como valor com posição, nunca como
   variação com sinal.
+- Mapa de fluxos (seção do dashboard): `src/mapa.py` roda só em desenvolvimento e gera a base
+  de pontos `dashboard/assets/mapa-pontos.json` (Natural Earth v5.1.2 1:110m, grade de 1,5°,
+  ISO3; a mesma da hero, não criar outra) e as tabelas de `data/ref/`: `paises_iso.csv` (código
+  do Comex Stat → ISO3 pelo `/tables/countries/{id}` + ponto de rótulo do NE 1:50m) e
+  `urf_coordenadas.csv` (URF → porto pela tabela `URF_LOCAL`, NE 1:10m). O transform monta o
+  bloco "mapa" do dashboard.json só com `data/processed` e `data/ref` (arco só para rota acima
+  do `CORTE_ROTA_T`; origem com menos de 1.000 t vai para "outros"). `dashboard/assets/fluxos.js`
+  usa o anime.js 4.5.0 (UMD do jsDelivr, com SRI; só a API v4: `animate`, `createTimeline`,
+  `stagger`, `svg.createMotionPath`, `utils`): pontos em canvas, arcos, navios, rótulos e foco em
+  SVG. Manter: "reduzir movimento" sem câmera, entrada nem navios; origens e portos focáveis com
+  Enter; painel `aria-live`; tabela alternativa; animação parada fora da tela. País ou URF com
+  volume relevante (≥ 10 mil t num ano e grupo, ou rota acima do corte) sem coordenada reprova
+  o teste: acrescentar em `URF_LOCAL` e rodar `python -m src.mapa urfs` (ou `paises --manter`).
+  O teste de navegador (`tests/e2e/`) é pulado sem Playwright e sem `RADAR_E2E_LIBS`.
 - Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):
   N azul, P laranja, K água, NPK amarelo, "Todos" violeta. Não reordenar.
 - Não commitar dados grandes: se `data/raw/` passar de ~20 MB, colocá-lo no `.gitignore`

@@ -113,6 +113,8 @@ O [dashboard](https://alicecullen-html.github.io/radar-fertilizantes-br/) é uma
 - KPIs do último mês e do acumulado do ano, comparados com o mesmo período do ano anterior;
 - toneladas mensais por grupo (N, P, K e NPK);
 - share por país de origem e ranking de portos (URF), com variação sobre o ano anterior;
+- [mapa de fluxos](#mapa-de-fluxos) animado: de cada país de origem até o porto de chegada,
+  com linha do tempo de 2015 a 2026;
 - [rotas país de origem → porto](#rotas-e-frete-por-rota): diagrama de fluxo (Sankey) por
   grupo e ano e tabela de frete US$/t das rotas com volume relevante;
 - preço implícito US$/t FOB x CIF e frete US$/t;
@@ -136,6 +138,68 @@ cada push na `main` que altere `dashboard/`, o `dashboard.json` ou o `boletins/l
 (publicado como `boletim.json`), ou manualmente, em
 Actions → Pages → Run workflow. Ele não usa nenhum segredo; o único pré-requisito é, em
 **Settings → Pages**, escolher **Source: GitHub Actions**.
+
+### Mapa de fluxos
+
+![Mapa de fluxos: a entrada animada, o clique na Rússia e a linha do tempo do potássio de 2021 a 2023](dashboard/mapa-fluxos.gif)
+
+A seção "Mapa de fluxos" é um mapa-múndi de pontos (o mesmo da abertura da página) que mostra
+de onde vem o adubo e em que porto ele chega, por grupo e por ano:
+
+- **Entrada.** Quando a seção aparece na tela, os pontos saem de um ruído e se assentam numa
+  onda que parte do Brasil, que acende por último com o total importado no ano.
+- **Origens.** Cada país de origem pulsa em proporção às toneladas. O clique (ou Tab e Enter)
+  aproxima a câmera, acende o país numa onda a partir do centro, desenha um arco até cada porto
+  de chegada, com largura proporcional às toneladas e navios percorrendo o caminho, e abre um
+  painel com toneladas, participação no grupo, frete e CIF em US$/t e variação sobre o ano
+  anterior.
+- **Portos.** O clique num porto inverte a visão: os arcos vêm de cada origem até ele.
+- **Linha do tempo.** De 2015 a 2026, com play. Em K, dá para ver Belarus cair de 2,4 milhões de t
+  em 2021 para 1,1 milhão em 2022, enquanto o Canadá cresce e, a partir de 2023, a Rússia também.
+- **Filtro.** O grupo (N, P, K, NPK) é o mesmo filtro do resto da página. O ano e a seleção
+  também vão para a URL (por exemplo, `#grupo=K&de=2021-10&ate=2026-09&ano=2022&origem=676`).
+  O botão "Visão geral" ou a tecla ESC voltam ao mapa inteiro.
+
+Os números vêm só das tabelas de `data/processed/` (share por origem, ranking de portos, rotas
+e preço por origem), reunidos pelo transform no bloco `mapa` do `dashboard.json`. Só as rotas
+com pelo menos 50 mil t no ano ganham arco, o mesmo corte da [tabela de rotas](#rotas-e-frete-por-rota)
+(proporcional em ano parcial); as menores ficam como "outras". Origens com menos de 1.000 t no
+ano e grupo entram em "Outros". A tabela abaixo do mapa traz os mesmos números.
+
+Com "reduzir movimento" ligado no sistema, não há câmera, entrada animada nem navios, só
+transições curtas de opacidade. As origens e os portos recebem foco pelo teclado, o painel é
+lido por leitores de tela (`aria-live`) e a animação para quando a seção sai da tela. No celular,
+o número de navios é menor. A animação usa o [anime.js](https://animejs.com/) 4.5.0 (licença
+MIT), do jsDelivr, com versão fixa e SRI, e o canvas e o SVG são desenhados pela própria página.
+
+#### Base do mapa e tabelas de referência
+
+Tudo é gerado em desenvolvimento por `src/mapa.py` e fica versionado; o deploy não roda nada
+e o navegador não faz cálculo de geografia.
+
+| Arquivo | Conteúdo | Fonte |
+| --- | --- | --- |
+| `dashboard/assets/mapa-pontos.json` | grade de pontos a cada 1,5 grau, em projeção equirretangular e sem a Antártida, cada ponto com o código ISO3 do país (cerca de 6,9 mil pontos, 14 KB) | [Natural Earth](https://www.naturalearthdata.com/) 1:110m, Admin 0 – Countries (v5.1.2) |
+| `data/ref/paises_iso.csv` | código e nome do país no Comex Stat → ISO 3166-1 alfa-3 e ponto central (longitude, latitude) | ISO3: Comex Stat/MDIC, `/tables/countries/{código}`; ponto: Natural Earth 1:50m (ponto de rótulo do país) |
+| `data/ref/urf_coordenadas.csv` | URF → porto no mapa, UF, longitude, latitude e observação | Natural Earth 1:10m, Ports e Populated Places |
+
+A base de pontos é a mesma da abertura da página: em vez de criar um `dashboard/mapa_pontos.json`
+separado, a abertura e o mapa de fluxos usam `dashboard/assets/mapa-pontos.json`. Quando o porto
+não está no Natural Earth, vale o lugar mais próximo que está, com a distância anotada na
+coluna `observacao` (por exemplo, Aratu → Salvador, a 20 km). URFs no mesmo lugar aparecem como
+um porto só. Para refazer:
+
+```bash
+python -m src.mapa pontos            # dashboard/assets/mapa-pontos.json
+python -m src.mapa urfs              # data/ref/urf_coordenadas.csv
+python -m src.mapa paises --manter   # data/ref/paises_iso.csv (só consulta no Comex Stat os países novos)
+python -m src.transform              # refaz o bloco "mapa" do dashboard.json
+```
+
+Os testes conferem que todo país e toda URF com volume relevante (pelo menos 10 mil t num ano e
+grupo, ou alguma rota acima do corte) têm coordenada. Se uma URF nova passar desse volume, o
+teste falha, inclusive na [atualização mensal](#atualização-automática-fase-4), até que ela
+entre na tabela `URF_LOCAL` de `src/mapa.py` e o `python -m src.mapa urfs` seja rodado de novo.
 
 ## Atualização automática (fase 4)
 
@@ -603,6 +667,8 @@ CIF em reais (R$/t)        = CIF Brasil × PTAX venda média do mês
   lá). Os arquivos que trazem a PTAX (`data/raw_cambio/` e as colunas `ptax_brl_usd` e
   `cif_brl_t`) seguem a mesma licença.
 - **Comex Stat:** dados abertos do MDIC.
+- **Natural Earth:** base cartográfica do mapa (fronteiras, pontos de rótulo dos países e
+  portos), em [domínio público](https://www.naturalearthdata.com/about/terms-of-use/).
 
 O repositório não tem arquivo de licença próprio; os dados de terceiros seguem as licenças
 das fontes.
@@ -649,6 +715,10 @@ python -m pytest        # os testes não acessam a rede
 O hook do gitleaks é compilado em Go; o pre-commit usa o Go instalado ou baixa um
 automaticamente.
 
+O teste de navegador do mapa de fluxos (`tests/e2e/`) usa Playwright e Chromium e fica de fora
+do CI: sem o Playwright, ou sem a variável `RADAR_E2E_LIBS` apontando para uma pasta com cópias
+locais do `chart.umd.min.js` e do `anime.umd.min.js` (os testes não acessam a rede), ele é pulado.
+
 O [CI](.github/workflows/ci.yml) roda em todo push e pull request: os testes em Python
 3.10 e 3.13 e o gitleaks em todo o histórico do repositório. A exceção são os commits
 automáticos de dados da fase 4, que não disparam outros workflows; os dados passam pelos testes
@@ -691,3 +761,6 @@ Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX.
 - **Banco Mundial, Pink Sheet** (CC BY 4.0): <https://www.worldbank.org/en/research/commodity-markets>.
 - **Banco Central do Brasil, PTAX** (SGS 3698, ODbL):
   <https://www3.bcb.gov.br/sgspub/>; API: `https://api.bcb.gov.br/dados/serie/bcdata.sgs.3698/dados?formato=json`.
+
+Base cartográfica do mapa: [Natural Earth](https://www.naturalearthdata.com/) v5.1.2 (domínio
+público), ver [Base do mapa e tabelas de referência](#base-do-mapa-e-tabelas-de-referência).
