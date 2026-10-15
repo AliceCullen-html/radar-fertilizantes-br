@@ -149,11 +149,16 @@ BCB. **O repositório é PÚBLICO.**
   variação com sinal.
 - Mapa de fluxos (seção do dashboard): `src/mapa.py` roda só em desenvolvimento e gera a base
   de pontos `dashboard/assets/mapa-pontos.json` (Natural Earth v5.1.2 1:110m, grade de 1,5°,
-  ISO3; a mesma da hero, não criar outra) e as tabelas de `data/ref/`: `paises_iso.csv` (código
-  do Comex Stat → ISO3 pelo `/tables/countries/{id}` + ponto de rótulo do NE 1:50m) e
-  `urf_coordenadas.csv` (URF → porto pela tabela `URF_LOCAL`, NE 1:10m). O transform monta o
-  bloco "mapa" do dashboard.json só com `data/processed` e `data/ref` (origem com menos de
-  1.000 t vai para "outros"). Na visão geral, um arco por país de origem até o Brasil (os
+  ISO3; a mesma da hero, não criar outra; com o continente de cada país) e as tabelas de
+  `data/ref/`: `paises_iso.csv` (código do Comex Stat → ISO3 pelo `/tables/countries/{id}` + ponto
+  de rótulo e continente do NE 1:50m) e `urf_coordenadas.csv` (URF → porto pela tabela
+  `URF_LOCAL`, NE 1:10m). Continentes: o CONTINENT do Natural Earth em códigos (`CONTINENTES`):
+  a Rússia entra na Europa e o México, a América Central e o Caribe na "América do Norte e
+  Central"; dizer isso onde o continente aparecer. O transform monta o bloco "mapa" do
+  dashboard.json só com `data/processed` e `data/ref` (origem com menos de 1.000 t vai para
+  "outros"; o continente de cada país vai no 5º campo de `paises`, e `continentes` de cada ano e
+  grupo soma TODAS as origens do continente, com share e variação sobre os mesmos meses do ano
+  anterior, a mesma base do share_origem_ano). Na visão geral, um arco por país de origem até o Brasil (os
   mesmos do ranking: o que cabe no painel, de 5 a 8; 6 no celular); ao abrir um país ou porto, arco só para rota acima do `CORTE_ROTA_T`.
   `dashboard/assets/fluxos.js` usa o anime.js 4.5.0 (UMD do jsDelivr, com SRI; só a API v4:
   `animate`, `createTimeline`, `stagger`, `svg.createDrawable`, `svg.createMotionPath`, `cubicBezier`): pontos em
@@ -179,13 +184,21 @@ BCB. **O repositório é PÚBLICO.**
   `clip-path` abrindo os gráficos e o palco do mapa. O fim de cada abertura usa `leave: "min+=…"`,
   para terminar na rolagem máxima mesmo em tela alta (nada fica cortado no fim da página); a
   impressão (`@media print`) anula os estilos inline; "reduzir movimento" no meio desfaz tudo.
-  Rotas vetoriais do hero (`#rotas-hero`, SVG sobre o canvas): as 6 maiores origens do último ano
-  completo (4 no celular, rótulos só para as 3 maiores com o mapa ao lado do título), sempre do
-  dashboard.json; o ponto da origem fica dentro do recorte do mapa. Entrada com
-  `svg.createDrawable` e `scrambleText`, depois pulsos em ciclo que param fora da tela; sem
-  movimento, arcos prontos e parados. Ícones dos botões do hero se redesenham no hover/foco
-  (`createDrawable` criado já desenhado: `createDrawable(el, 0, 1)`, porque o padrão `0 0` some
-  com o traço) e o ícone do tema gira com `createSpring`.
+  Ícones dos botões do hero se redesenham no hover/foco (`createDrawable` criado já desenhado:
+  `createDrawable(el, 0, 1)`, porque o padrão `0 0` some com o traço) e o ícone do tema gira com
+  `createSpring`.
+- Mapa do hero (`dashboard/assets/mapa-hero.js`; o `build_site.sh` exige o arquivo): pontos em
+  canvas, rotas em SVG (`#rotas-hero`) e dados por continente, sempre do dashboard.json (último
+  ano completo, o mesmo do chip do Brasil). Rotas: as 6 maiores origens (4 no celular; rótulos
+  só para as 3 maiores com o mapa ao lado do título, sem se sobrepor); entrada com
+  `createDrawable`, ponta de luz por `createMotionPath` e `scrambleText`; depois cometas (cauda,
+  rastro e cabeça, levados por um único `animate` da frente) que param fora da tela. Luz do
+  cursor nos pontos e destaque do continente sob o ponteiro (com dica); o clique abre o painel
+  do continente no lugar do título (`.hero-texto` e `.painel-continente` dividem a célula da
+  grade; no celular o painel começa abaixo do mapa, por `--margem-painel`), com ping de radar,
+  varredura e as rotas do continente. Teclado: botão "Explorar por continente", abas e Esc (o
+  foco volta ao botão). Sem movimento: sem onda, luz, ping, varredura, cometas nem contagem.
+  `window.radarMapaHero` existe só para os testes de navegador.
 - Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):
   N azul, P laranja, K água, NPK amarelo, "Todos" violeta. Não reordenar.
 - Não commitar dados grandes: se `data/raw/` passar de ~20 MB, colocá-lo no `.gitignore`

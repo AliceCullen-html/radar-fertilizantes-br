@@ -23,6 +23,7 @@
 <script>if (!matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("movimento");</script>
 <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js" integrity="sha384-InMmvD3VoYcY7hGjSC80aLb2bNNE4CzpX+Eq6FVDlmB0IKgDvmfPw4UY8L/M++iG" crossorigin="anonymous" defer></script>
 <script src="assets/hero.js" defer></script>
+<script src="assets/mapa-hero.js" defer></script>
 <script src="assets/fluxos.js" defer></script>
 </head>
 <body>
@@ -63,12 +64,42 @@
         <a class="botao-contorno" href="#troca" data-secao="troca"><span class="icone"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5h10M9 2l3 3-3 3M14 11H4M7 8l-3 3 3 3" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></span>Simular a troca</a>
       </div>
     </div>
+    <!-- Dados de um continente (assets/mapa-hero.js): abre no lugar do título ao clicar no mapa -->
+    <section class="painel-continente" id="painel-continente" aria-labelledby="pc-titulo" hidden>
+      <div class="pc-topo">
+        <p class="kicker" id="pc-kicker">Continente</p>
+        <button class="pc-fechar" id="pc-fechar" type="button" aria-label="Fechar os dados do continente"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>
+      </div>
+      <h2 class="pc-titulo" id="pc-titulo" tabindex="-1"></h2>
+      <div class="pc-abas" id="pc-abas" role="group" aria-label="Escolher o continente"></div>
+      <dl class="pc-numeros">
+        <div><dt id="pc-rotulo-t">importadas</dt><dd id="pc-t"></dd></div>
+        <div><dt>do total do Brasil</dt><dd id="pc-share"></dd></div>
+        <div><dt id="pc-rotulo-var">sobre o ano anterior</dt><dd id="pc-var"></dd></div>
+      </dl>
+      <div class="pc-bloco">
+        <p class="pc-rotulo">Por grupo de nutriente</p>
+        <div class="pc-barra" id="pc-barra" aria-hidden="true"></div>
+        <ul class="pc-grupos" id="pc-grupos"></ul>
+      </div>
+      <div class="pc-bloco">
+        <p class="pc-rotulo">Maiores origens</p>
+        <ol class="pc-paises" id="pc-paises"></ol>
+      </div>
+      <p class="pc-nota" id="pc-nota"></p>
+      <p class="pc-rodape"><span>Fonte: Comex Stat/MDIC · continentes do Natural Earth</span><a href="#fluxos" data-secao="fluxos">Ver no mapa de fluxos</a></p>
+      <p class="leitor" id="pc-anuncio" aria-live="polite"></p>
+    </section>
     <div class="hero-rodape">
       <span id="fonte-hero">Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX · Base cartográfica: Natural Earth</span>
-      <span class="legenda-mapa" aria-hidden="true"><span><i class="ponto-outros"></i>Demais países</span><span><i class="ponto-brasil"></i>Brasil</span><span id="legenda-rotas-hero" hidden><i class="linha-rota"></i><span></span></span></span>
+      <div class="hero-rodape-mapa">
+        <button class="botao-continentes" id="explorar-continentes" type="button" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M1.8 8h12.4M8 1.8c2.2 2.2 2.2 10.2 0 12.4M8 1.8c-2.2 2.2-2.2 10.2 0 12.4" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>Explorar por continente</button>
+        <span class="legenda-mapa" aria-hidden="true"><span><i class="ponto-outros"></i>Demais países</span><span><i class="ponto-brasil"></i>Brasil</span><span id="legenda-rotas-hero" hidden><i class="linha-rota"></i><span></span></span></span>
+      </div>
     </div>
   </div>
   <p class="chip-mapa" id="chip-brasil" hidden></p>
+  <p class="dica-continente" id="dica-continente" aria-hidden="true" hidden></p>
 </section>
 
 <div class="pagina">

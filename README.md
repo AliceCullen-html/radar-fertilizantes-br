@@ -134,10 +134,14 @@ suavização) e voltam quando se rola para cima: o mapa do topo cresce e esmaece
 um fundo de pontos se move devagar atrás das seções, os títulos têm um leve parallax, cada
 gráfico se abre da esquerda para a direita conforme sobe na tela e o palco do mapa de fluxos se
 expande de uma janela recortada até a largura toda. No topo, arcos vetoriais ligam as maiores
-origens do último ano completo ao Brasil: cada um se desenha da origem até aqui e, depois, pulsos
-de luz correm por eles. No diagrama de rotas, as fitas "escorrem" das origens para os portos ao
-aparecer na tela e a cada troca de grupo ou ano. Com "reduzir movimento" ligado no sistema, nada
-disso acontece e nada fica escondido.
+origens do último ano completo ao Brasil: cada um se desenha da origem até aqui e, depois,
+cometas de luz correm por eles. Os pontos do mapa acendem sob o cursor e o continente apontado
+se destaca; um clique (ou o botão "Explorar por continente") abre os dados dele no lugar do
+título: toneladas importadas, parte do total do Brasil, variação sobre o ano anterior, divisão
+por grupo de nutriente e maiores origens, com as rotas do continente no mapa. Os continentes são
+os do Natural Earth (a Rússia conta na Europa). No diagrama de rotas, as fitas "escorrem" das
+origens para os portos ao aparecer na tela e a cada troca de grupo ou ano. Com "reduzir
+movimento" ligado no sistema, nada disso se mexe e nada fica escondido.
 
 Os filtros de grupo e período valem para todos os gráficos e ficam na URL (por exemplo,
 `#grupo=K&de=2021-10&ate=2026-09`), então dá para compartilhar uma visão específica. A página
@@ -228,8 +232,8 @@ e o navegador não faz cálculo de geografia.
 
 | Arquivo | Conteúdo | Fonte |
 | --- | --- | --- |
-| `dashboard/assets/mapa-pontos.json` | grade de pontos a cada 1,5 grau, em projeção equirretangular e sem a Antártida, cada ponto com o código ISO3 do país (cerca de 6,9 mil pontos, 14 KB) | [Natural Earth](https://www.naturalearthdata.com/) 1:110m, Admin 0 – Countries (v5.1.2) |
-| `data/ref/paises_iso.csv` | código e nome do país no Comex Stat → ISO 3166-1 alfa-3 e ponto central (longitude, latitude) | ISO3: Comex Stat/MDIC, `/tables/countries/{código}`; ponto: Natural Earth 1:50m (ponto de rótulo do país) |
+| `dashboard/assets/mapa-pontos.json` | grade de pontos a cada 1,5 grau, em projeção equirretangular e sem a Antártida, cada ponto com o código ISO3 e o continente do país (cerca de 6,9 mil pontos, 15 KB) | [Natural Earth](https://www.naturalearthdata.com/) 1:110m, Admin 0 – Countries (v5.1.2) |
+| `data/ref/paises_iso.csv` | código e nome do país no Comex Stat → ISO 3166-1 alfa-3, ponto central (longitude, latitude) e continente | ISO3: Comex Stat/MDIC, `/tables/countries/{código}`; ponto e continente: Natural Earth 1:50m (ponto de rótulo e campo CONTINENT do país) |
 | `data/ref/urf_coordenadas.csv` | URF → porto no mapa, UF, longitude, latitude e observação | Natural Earth 1:10m, Ports e Populated Places |
 
 A base de pontos é a mesma da abertura da página: em vez de criar um `dashboard/mapa_pontos.json`

@@ -291,15 +291,15 @@ MAIORES = """() => { const d = window.radarDados, a = d.anual; let i = a.anos.le
   const ano = a.anos[i];
   return { ano, nomes: d.mapa.dados[String(ano)].TOTAL.origens.slice(0, 6).map((o) => d.mapa.paises[o[0]][0]) }; }"""
 ROTAS = """() => ({ rotas: [...document.querySelectorAll('#rotas-hero .rota')].map((r) => [r.getAttribute('stroke-dasharray'), r.getAttribute('stroke-dashoffset')]),
-  pulsos: [...document.querySelectorAll('#rotas-hero .pulso')].map((p) => p.getAttribute('stroke-dasharray') && getComputedStyle(p).strokeDashoffset),
+  pulsos: [...document.querySelectorAll('#rotas-hero .rastro')].map((p) => p.getAttribute('stroke-dasharray') && p.getAttribute('stroke-dashoffset')),
   rotulos: [...document.querySelectorAll('#rotas-hero .rotulo-rota .n')].map((t) => t.textContent),
   legenda: document.getElementById('legenda-rotas-hero').textContent })"""
 
 
-def test_rotas_do_hero_se_desenham_das_maiores_origens_e_pulsam(navegador, servidor):
+def test_rotas_do_hero_se_desenham_das_maiores_origens_e_tem_cometas(navegador, servidor):
     ctx, pg, erros = _pagina(navegador, servidor)
     maiores = pg.evaluate(MAIORES)
-    pg.wait_for_function("document.querySelectorAll('#rotas-hero .pulso[stroke-dasharray]').length > 0", timeout=15_000)
+    pg.wait_for_function("document.querySelectorAll('#rotas-hero .rastro[stroke-dashoffset]').length > 0", timeout=15_000)
     r = pg.evaluate(ROTAS)
     assert len(r["rotas"]) == 6
     assert all(d in (None, "1000 0") and o in (None, "0") for d, o in r["rotas"]), "todos os arcos terminam inteiros"
@@ -307,8 +307,8 @@ def test_rotas_do_hero_se_desenham_das_maiores_origens_e_pulsam(navegador, servi
     assert r["legenda"] == f"6 maiores origens em {maiores['ano']}"
     antes = pg.evaluate(ROTAS)["pulsos"]
     pg.wait_for_timeout(500)
-    assert pg.evaluate(ROTAS)["pulsos"] != antes, "os pulsos correm pelos arcos"
-    # fora da tela, os pulsos param
+    assert pg.evaluate(ROTAS)["pulsos"] != antes, "os cometas correm pelos arcos"
+    # fora da tela, os cometas param
     pg.evaluate("window.scrollTo(0, document.querySelector('.hero').offsetHeight + 400)")
     pg.wait_for_timeout(500)
     parado = pg.evaluate(ROTAS)["pulsos"]
@@ -316,7 +316,7 @@ def test_rotas_do_hero_se_desenham_das_maiores_origens_e_pulsam(navegador, servi
     assert pg.evaluate(ROTAS)["pulsos"] == parado
     assert erros == []
     ctx.close()
-    # celular: menos arcos e sem rótulos; reduzir movimento: arcos prontos, sem pulsos
+    # celular: menos arcos e sem rótulos; reduzir movimento: arcos prontos, sem cometas
     ctx, pg, erros = _pagina(navegador, servidor, largura=390, reduzido=True)
     pg.wait_for_function("document.querySelectorAll('#rotas-hero .rota').length > 0", timeout=15_000)
     pg.wait_for_timeout(600)
@@ -362,5 +362,108 @@ def test_rotulos_do_mapa_na_fonte_do_site_e_sem_contorno(navegador, servidor):
     for e in estilos:
         assert e["stroke"] == "none" and "fluxos-halo" in e["filtro"]
         assert e["nome"].startswith('"Inter Tight"') and e["valor"].startswith('"Inter Tight"')
+    assert erros == []
+    ctx.close()
+
+
+# o que o painel do continente deve mostrar, pelos dados (último ano completo, bloco "mapa")
+ESPERADO = """(cod) => { const d = window.radarDados, a = d.anual, m = d.mapa; let i = a.anos.length - 1;
+  while (a.n_meses[i] !== 12) i--;
+  const ano = a.anos[i], dados = m.dados[String(ano)], linha = dados.TOTAL.continentes.find((c) => c[0] === cod);
+  const compacto = new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 });
+  const um = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return { ano, nome: m.continentes[cod], t: compacto.format(linha[1]) + ' t', share: um.format(linha[2]) + '%',
+    paises: dados.TOTAL.origens.filter((o) => m.paises[o[0]][4] === cod).slice(0, 5).map((o) => m.paises[o[0]][0]),
+    ordem: dados.TOTAL.continentes.map((c) => c[0]) }; }"""
+PAINEL = """() => ({ aberto: window.radarMapaHero.continenteAberto(), visivel: !document.getElementById('painel-continente').hidden,
+  titulo: document.getElementById('pc-titulo').textContent, t: document.getElementById('pc-t').textContent,
+  share: document.getElementById('pc-share').textContent, var: document.getElementById('pc-var').textContent,
+  grupos: [...document.querySelectorAll('#pc-grupos li b')].map((b) => parseFloat(b.textContent.replace(',', '.'))),
+  paises: [...document.querySelectorAll('#pc-paises .nome')].map((n) => n.textContent),
+  rotas: [...document.querySelectorAll('#rotas-hero .rotulo-rota .n')].map((n) => n.textContent),
+  legenda: document.getElementById('legenda-rotas-hero').textContent, textoOculto: document.querySelector('.hero-texto').hidden,
+  foco: document.activeElement.id })"""
+
+
+def _ponto(pg, cod):
+    pg.wait_for_function(f"!!window.radarMapaHero?.pontoDoContinente('{cod}')", timeout=15_000)
+    return pg.evaluate(f"window.radarMapaHero.pontoDoContinente('{cod}')")
+
+
+def test_continente_acende_no_cursor_e_o_clique_abre_os_dados_dele(navegador, servidor):
+    ctx, pg, erros = _pagina(navegador, servidor)
+    eu, esperado = _ponto(pg, "EU"), pg.evaluate(f"({ESPERADO})('EU')")
+    pg.mouse.move(eu["x"] - 40, eu["y"] + 20)
+    pg.mouse.move(eu["x"], eu["y"], steps=6)
+    pg.wait_for_function("!document.getElementById('dica-continente').hidden", timeout=5_000)
+    assert pg.evaluate("document.getElementById('dica-continente').textContent").startswith(f"{esperado['nome']} · {esperado['t']} em {esperado['ano']}")
+    assert pg.evaluate("document.getElementById('inicio').classList.contains('sobre-continente')")
+    pg.mouse.click(eu["x"], eu["y"])
+    pg.wait_for_function(f"document.getElementById('pc-titulo').textContent === {esperado['nome']!r} && document.getElementById('pc-t').textContent === {esperado['t']!r}"
+                         f" && document.getElementById('pc-share').textContent === {esperado['share']!r}", timeout=10_000)  # a contagem termina
+    r = pg.evaluate(PAINEL)
+    assert r["aberto"] == "EU" and r["visivel"] and r["textoOculto"]
+    assert r["share"] == esperado["share"] and r["paises"] == esperado["paises"]
+    assert len(r["grupos"]) == 4 and abs(sum(r["grupos"]) - 100) < 0.5
+    assert set(r["rotas"]) <= set(esperado["paises"]) and "da Europa" in r["legenda"], "as rotas viram as do continente"
+    # abas trocam o continente; clicar no continente aberto fecha
+    pg.click("#pc-abas button[data-cont=AS]")
+    asia = pg.evaluate(f"({ESPERADO})('AS')")
+    pg.wait_for_function(f"document.getElementById('pc-titulo').textContent === {asia['nome']!r} && document.getElementById('pc-t').textContent === {asia['t']!r}", timeout=10_000)
+    assert pg.evaluate("document.querySelector('#pc-abas [aria-pressed=true]').dataset.cont") == "AS"
+    assert [b for b in pg.evaluate("[...document.querySelectorAll('#pc-abas button')].map((b) => b.dataset.cont)")] == asia["ordem"]
+    # trocas seguidas: a contagem nova cancela a anterior (o número final não volta atrás)
+    pg.click("#pc-abas button[data-cont=AF]")
+    pg.click("#pc-abas button[data-cont=EU]")
+    pg.wait_for_timeout(1600)
+    assert pg.evaluate(PAINEL)["t"] == esperado["t"] and pg.evaluate(PAINEL)["share"] == esperado["share"]
+    pg.click("#pc-abas button[data-cont=AS]")
+    pg.wait_for_function(f"document.getElementById('pc-t').textContent === {asia['t']!r}", timeout=10_000)
+    pg.mouse.click(**{k: v for k, v in _ponto(pg, "AS").items()})
+    pg.wait_for_function("document.getElementById('painel-continente').hidden && !document.querySelector('.hero-texto').hidden", timeout=5_000)
+    assert pg.evaluate("window.radarMapaHero.continenteAberto()") is None
+    assert erros == []
+    ctx.close()
+
+
+def test_continente_pelo_teclado_esc_fecha_e_devolve_o_foco(navegador, servidor):
+    for reduzido in (False, True):
+        ctx, pg, erros = _pagina(navegador, servidor, reduzido=reduzido)
+        pg.wait_for_function("!document.getElementById('explorar-continentes').hidden", timeout=15_000)
+        maior = pg.evaluate(f"({ESPERADO})('AS').ordem[0]")
+        esperado = pg.evaluate(f"({ESPERADO})({maior!r})")
+        pg.focus("#explorar-continentes")
+        pg.keyboard.press("Enter")
+        if reduzido:  # sem movimento: tudo na hora, sem contagem
+            assert pg.evaluate(PAINEL)["t"] == esperado["t"]
+        pg.wait_for_function("document.activeElement.id === 'pc-titulo'", timeout=5_000)
+        r = pg.evaluate(PAINEL)
+        assert r["aberto"] == maior and r["visivel"]
+        pg.wait_for_function(f"document.getElementById('pc-t').textContent === {esperado['t']!r}", timeout=5_000)
+        assert pg.evaluate("getComputedStyle(document.querySelector('#pc-var .seta')).display") != "none"
+        pg.keyboard.press("Escape")
+        pg.wait_for_function("document.getElementById('painel-continente').hidden", timeout=5_000)
+        assert pg.evaluate("document.activeElement.id") == "explorar-continentes"
+        assert not pg.evaluate("document.querySelector('.hero-texto').hidden")
+        assert erros == []
+        ctx.close()
+
+
+def test_continente_no_celular_abre_abaixo_do_mapa(navegador, servidor):
+    ctx = navegador.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+    pg = ctx.new_page()
+    erros = []
+    pg.on("pageerror", lambda e: erros.append(str(e)))
+    pg.route("https://cdn.jsdelivr.net/**", _cdn)
+    pg.goto(servidor)
+    pg.wait_for_function("window.anime && window.radarDados", timeout=20_000)
+    eu = _ponto(pg, "EU")
+    pg.tap("body", position={"x": int(eu["x"]), "y": int(eu["y"])})
+    pg.wait_for_function("window.radarMapaHero.continenteAberto() === 'EU'", timeout=5_000)
+    pg.wait_for_timeout(1200)
+    caixas = pg.evaluate("""() => ({ painel: document.getElementById('painel-continente').getBoundingClientRect().top,
+      chip: document.getElementById('chip-brasil').getBoundingClientRect().bottom, rolagem: document.documentElement.scrollWidth - innerWidth })""")
+    assert caixas["painel"] >= caixas["chip"], "o painel não cobre o mapa"
+    assert caixas["rolagem"] <= 0, "sem rolagem lateral"
     assert erros == []
     ctx.close()

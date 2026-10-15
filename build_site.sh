@@ -45,7 +45,7 @@ else
 fi
 
 # --- Verificações finais -------------------------------------------------------------------
-for arquivo in index.html dashboard.json boletim.json assets/mapa-pontos.json assets/fluxos.js assets/hero.js assets/radar.css; do
+for arquivo in index.html dashboard.json boletim.json assets/mapa-pontos.json assets/fluxos.js assets/hero.js assets/mapa-hero.js assets/radar.css; do
   [[ -s "$saida/$arquivo" ]] || falhar "falta $arquivo em $saida"
 done
 # a página busca "dashboard.json" e "boletim.json" ao lado do index.html

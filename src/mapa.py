@@ -8,9 +8,10 @@ nada deste módulo e o navegador não faz nenhum cálculo de geografia.
     python -m src.mapa paises   # data/ref/paises_iso.csv (consulta o Comex Stat; --manter reaproveita)
 
 Fontes, todas abertas:
-- Natural Earth 1:110m, Admin 0 – Countries: pontos do mapa (domínio público).
-- Natural Earth 1:50m, Admin 0 – Countries: ponto de rótulo (LABEL_X, LABEL_Y) de cada país,
-  usado como centróide das origens; a escala 1:50m inclui países pequenos que a 1:110m omite.
+- Natural Earth 1:110m, Admin 0 – Countries: pontos do mapa e o continente de cada ponto
+  (domínio público).
+- Natural Earth 1:50m, Admin 0 – Countries: ponto de rótulo (LABEL_X, LABEL_Y) e continente de
+  cada país, usados nas origens; a escala 1:50m inclui países pequenos que a 1:110m omite.
 - Natural Earth 1:10m, Ports e Populated Places: coordenadas dos portos (URFs).
 - Comex Stat/MDIC, /tables/countries/{código}: código ISO 3166-1 alfa-3 de cada país.
 
@@ -18,6 +19,10 @@ Pontos: projeção equirretangular; cada ponto é o centro de uma célula de PAS
 se cai dentro de algum país (regra par-ímpar, que respeita os buracos dos polígonos). Cada
 linha da grade vira uma lista plana de trincas [coluna inicial, quantidade, índice do país]:
 o ponto (x, y) é (coluna, linha) e o país é paises[índice], em ISO3. Fica de fora a Antártida.
+
+Continentes: o campo CONTINENT do Natural Earth, em códigos de duas letras (CONTINENTES). É a
+classificação do Natural Earth: a Rússia entra inteira na Europa; o México, a América Central e
+o Caribe, na América do Norte; a Turquia, na Ásia. Ilhas em "Seven seas" ficam sem continente.
 """
 
 from __future__ import annotations
@@ -49,6 +54,10 @@ PAISES_CSV = REF_DIR / "paises_iso.csv"
 URFS_CSV = REF_DIR / "urf_coordenadas.csv"
 
 PASSO = 1.5  # graus por célula (o mesmo espaçamento da hero)
+
+# CONTINENT do Natural Earth -> código (duas letras) e nome em português
+CONTINENTES = {"Africa": "AF", "Asia": "AS", "Europe": "EU", "North America": "NA", "Oceania": "OC", "South America": "SA"}
+NOMES_CONTINENTES = {"AF": "África", "AS": "Ásia", "EU": "Europa", "NA": "América do Norte e Central", "OC": "Oceania", "SA": "América do Sul"}
 OESTE, NORTE, SUL = -180.0, 84.0, -57.0  # sem a Antártida
 
 # Cada URF com volume relevante -> onde ela fica no Natural Earth: camada "porto" (nome em
@@ -124,6 +133,11 @@ def _iso3(props: dict) -> str:
     return "-" + str(props.get("NAME") or "?")
 
 
+def _continente(props: dict) -> str | None:
+    """Código do continente do Natural Earth (None para Antártida e "Seven seas")."""
+    return CONTINENTES.get(str(props.get("CONTINENT") or ""))
+
+
 def _aneis(geometria: dict) -> list[list[np.ndarray]]:
     """Polígonos da geometria, cada um como lista de anéis (o primeiro é o exterior)."""
     if geometria["type"] == "Polygon":
@@ -158,6 +172,7 @@ def rasterizar(geojson: dict, passo: float = PASSO, oeste: float = OESTE, norte:
     lat_c = norte - (np.arange(linhas) + 0.5) * passo
     grade = np.full((linhas, colunas), -1, dtype=int)
     paises: list[str] = []
+    continentes: list[str | None] = []
     rotulos: dict[str, list[float]] = {}
     for feicao in geojson["features"]:
         props = feicao.get("properties") or {}
@@ -178,6 +193,7 @@ def rasterizar(geojson: dict, passo: float = PASSO, oeste: float = OESTE, norte:
             if indice is None:
                 if codigo not in paises:
                     paises.append(codigo)
+                    continentes.append(_continente(props))
                 indice = paises.index(codigo)
             sub = grade[np.ix_(lins, cols)]
             sub[dentro] = indice
@@ -207,6 +223,7 @@ def rasterizar(geojson: dict, passo: float = PASSO, oeste: float = OESTE, norte:
         "linhas": linhas,
         "pontos": int((grade >= 0).sum()),
         "paises": paises,
+        "continentes": continentes,
         "rotulos": rotulos,
         "grade": rle,
     }
@@ -303,6 +320,21 @@ def centroides(ne50: dict) -> dict[str, tuple[float, float]]:
     return pontos
 
 
+def continentes_por_iso(ne: dict) -> dict[str, str]:
+    """ISO3 -> código do continente (CONTINENT do Natural Earth)."""
+    saida = {}
+    for f in ne["features"]:
+        p = f["properties"]
+        cont = _continente(p)
+        if cont is None:
+            continue
+        for campo in ("ISO_A3_EH", "ISO_A3", "ADM0_A3"):
+            codigo = str(p.get(campo) or "")
+            if len(codigo) == 3 and codigo.isalpha():
+                saida.setdefault(codigo.upper(), cont)
+    return saida
+
+
 def gerar_paises(saida: Path = PAISES_CSV, manter: bool = False) -> pd.DataFrame:
     """Todos os países da tabela do Comex Stat com o ISO3 (detalhe de cada um) e o centróide."""
     from .ingest import ClienteComexStat, _lista
@@ -314,6 +346,7 @@ def gerar_paises(saida: Path = PAISES_CSV, manter: bool = False) -> pd.DataFrame
         anteriores = pd.read_csv(saida, dtype=str, keep_default_na=False).set_index("co_pais")["iso3"].to_dict()
     ne50, _, _ = baixar_ne(NE_PAISES_50)
     pontos = centroides(ne50)
+    continentes = continentes_por_iso(ne50)
     linhas = []
     for i, item in enumerate(lista, 1):
         codigo, nome = str(item["id"]), str(item["text"])
@@ -323,8 +356,8 @@ def gerar_paises(saida: Path = PAISES_CSV, manter: bool = False) -> pd.DataFrame
             iso3 = str((detalhe or {}).get("coPaisIsoa3") or "").strip().upper()
             log.info("%d/%d %s %s -> %s", i, len(lista), codigo, nome, iso3 or "(sem ISO3)")
         lon, lat = pontos.get(iso3, (None, None))
-        linhas.append({"co_pais": codigo, "no_pais": nome, "iso3": iso3, "lon": lon, "lat": lat,
-                       "fonte": "Comex Stat/MDIC (ISO3); Natural Earth 1:50m (ponto de rótulo)" if lon is not None else "Comex Stat/MDIC (ISO3)"})
+        linhas.append({"co_pais": codigo, "no_pais": nome, "iso3": iso3, "lon": lon, "lat": lat, "continente": continentes.get(iso3, ""),
+                       "fonte": "Comex Stat/MDIC (ISO3); Natural Earth 1:50m (ponto de rótulo e continente)" if lon is not None else "Comex Stat/MDIC (ISO3)"})
     df = pd.DataFrame(linhas).sort_values("co_pais").reset_index(drop=True)
     saida.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(saida, index=False, encoding="utf-8", lineterminator="\n")
@@ -333,7 +366,10 @@ def gerar_paises(saida: Path = PAISES_CSV, manter: bool = False) -> pd.DataFrame
 
 
 def ler_paises(caminho: Path | None = None) -> pd.DataFrame:
-    return pd.read_csv(caminho or PAISES_CSV, dtype={"co_pais": str, "iso3": str}, keep_default_na=False, na_values={"lon": [""], "lat": [""]})
+    df = pd.read_csv(caminho or PAISES_CSV, dtype={"co_pais": str, "iso3": str, "continente": str}, keep_default_na=False, na_values={"lon": [""], "lat": [""]})
+    if "continente" not in df.columns:
+        df["continente"] = ""
+    return df
 
 
 def ler_urfs(caminho: Path | None = None) -> pd.DataFrame:
@@ -353,6 +389,10 @@ def bloco_dashboard(tabelas: dict[str, pd.DataFrame], paises: pd.DataFrame, urfs
     precos_mes_grupo_origem) e as tabelas de referência de data/ref. Origem sem coordenada,
     ou abaixo de MINIMO_ORIGEM_T, vai para "outros_t"; rota abaixo do corte (ou para porto
     sem coordenada) não ganha arco e fica na diferença entre o total e as rotas.
+
+    Continentes: soma de todas as origens de cada continente (inclusive as pequenas), com o
+    share do total e a variação sobre os mesmos meses do ano anterior (a mesma base do
+    share_origem_ano, que traz com zero quem deixou de exportar). País sem continente fica fora.
     `num(valor, casas)` é o formatador do transform.
     """
     share = tabelas["share_origem_ano"]
@@ -361,6 +401,8 @@ def bloco_dashboard(tabelas: dict[str, pd.DataFrame], paises: pd.DataFrame, urfs
     precos = tabelas["precos_mes_grupo_origem"]
 
     coord_pais = paises.dropna(subset=["lon", "lat"]).drop_duplicates("co_pais").set_index("co_pais")
+    cont_pais = paises.drop_duplicates("co_pais").set_index("co_pais")["continente"] if "continente" in paises else pd.Series(dtype=str)
+    cont_pais = cont_pais[cont_pais.isin(list(NOMES_CONTINENTES))]
     coord_urf = urfs.set_index("co_urf")
     portos = {}
     for co_urf, u in coord_urf.iterrows():
@@ -401,12 +443,23 @@ def bloco_dashboard(tabelas: dict[str, pd.DataFrame], paises: pd.DataFrame, urfs
         usados.update(r["co_pais"])
         u = urf_ano[(urf_ano["ano"] == ano) & (urf_ano["grupo"] == grupo) & urf_ano["co_urf"].isin(porto_da_urf)]
         u = u.assign(porto=u["co_urf"].map(porto_da_urf)).groupby("porto", as_index=False)["toneladas"].sum()
+        total_t = float(g["toneladas"].sum())
+        continentes = []
+        for cont, c in g.assign(cont=g["co_pais"].map(cont_pais)).dropna(subset=["cont"]).groupby("cont"):
+            t = float(c["toneladas"].sum())
+            ant = c["toneladas_ano_anterior"]
+            ant = float(ant.fillna(0).sum()) if ant.notna().any() else None  # sem os mesmos meses no ano anterior: sem variação
+            var = 100 * (t / ant - 1) if ant else None
+            if t > 0 or ant:
+                continentes.append([cont, num(t, 0), num(100 * t / total_t if total_t else None, 1), num(var, 1)])
+        continentes.sort(key=lambda x: (-x[1], x[0]))
         dados.setdefault(str(ano), {})[grupo] = {
-            "t": num(g["toneladas"].sum(), 0),
+            "t": num(total_t, 0),
             "origens": origens,
             "outros_t": num(outros, 0),
             "rotas": lista_rotas,
             "portos": [[indice_porto[x["porto"]], num(x["toneladas"], 0)] for _, x in u.sort_values("toneladas", ascending=False).iterrows()],
+            "continentes": continentes,
         }
     nomes = share.drop_duplicates("co_pais", keep="last").set_index("co_pais")["no_pais"]
     return {
@@ -414,12 +467,16 @@ def bloco_dashboard(tabelas: dict[str, pd.DataFrame], paises: pd.DataFrame, urfs
         "n_meses": [int(n_meses[a]) for a in anos],
         "corte_rota_t": [num(c, 0) for c in rotas.drop_duplicates("ano").set_index("ano").reindex(anos)["corte_t"]],
         "minimo_origem_t": MINIMO_ORIGEM_T,
-        "paises": {c: [str(nomes.get(c, coord_pais.loc[c, "no_pais"])), coord_pais.loc[c, "iso3"], float(coord_pais.loc[c, "lon"]), float(coord_pais.loc[c, "lat"])] for c in sorted(usados)},
+        "paises": {c: [str(nomes.get(c, coord_pais.loc[c, "no_pais"])), coord_pais.loc[c, "iso3"], float(coord_pais.loc[c, "lon"]), float(coord_pais.loc[c, "lat"]),
+                       cont_pais.get(c)] for c in sorted(usados)},
+        "continentes": NOMES_CONTINENTES,
         "colunas": {
             "origens": ["co_pais", "t", "share_pct", "var_t_pct", "frete_usd_t", "cif_usd_t"],
             "rotas": ["co_pais", "porto", "t", "frete_usd_t"],
             "portos": ["porto", "t"],
             "lista_portos": ["nome", "uf", "lon", "lat", "urfs"],
+            "paises": ["nome", "iso3", "lon", "lat", "continente"],
+            "continentes": ["continente", "t", "share_pct", "var_t_pct"],
         },
         "portos": [[portos[n]["nome"], portos[n]["uf"], portos[n]["lon"], portos[n]["lat"], portos[n]["urfs"]] for n in nomes_portos],
         "dados": dados,
@@ -428,6 +485,7 @@ def bloco_dashboard(tabelas: dict[str, pd.DataFrame], paises: pd.DataFrame, urfs
             "Ao abrir um país ou porto, arco só para rotas com pelo menos 50 mil t no ano (proporcional aos meses num ano parcial); o resto fica em 'outras'.",
             f"Origens com menos de {MINIMO_ORIGEM_T:,} t no ano e grupo entram em 'outros'.".replace(",", "."),
             "Coordenadas: Natural Earth (domínio público); URFs no mesmo lugar aparecem como um só porto.",
+            "Continentes: classificação do Natural Earth (a Rússia entra na Europa; o México, a América Central e o Caribe, na América do Norte e Central).",
         ],
     }
 
