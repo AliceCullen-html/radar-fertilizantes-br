@@ -1036,6 +1036,7 @@ td .barra { display: inline-block; height: 8px; border-radius: 2px; vertical-ali
 
 footer.rodape { color: var(--texto-2); font-size: 12px; padding: 8px 0 24px; display: grid; gap: 4px; }
 footer.rodape .fonte { color: var(--texto); font-weight: 600; font-size: 13px; }
+footer.rodape a { white-space: nowrap; } /* o endereço do repositório não quebra no hífen */
 
 .dica {
   position: fixed; z-index: 10; pointer-events: none; max-width: min(320px, calc(100vw - 16px));
