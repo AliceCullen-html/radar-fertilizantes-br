@@ -1,4 +1,4 @@
-/* Navegação e movimento da página do radar de fertilizantes (o mapa do hero, com as rotas e os
+/* Navegação e movimento da página do Graaos · Fertilizantes (o mapa do hero, com as rotas e os
  * dados por continente, fica em assets/mapa-hero.js).
  *
  * - Nav em pílula com indicador "líquido" que segue a rolagem, barra de progresso e rolagem
