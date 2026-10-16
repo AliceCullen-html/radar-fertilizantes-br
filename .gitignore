@@ -17,6 +17,10 @@ venv/
 # --- Gravação atômica do Parquet (arquivo temporário) ---------------------------
 *.tmp
 
+# --- Supabase CLI: arquivos locais (projeto ligado e branches) -----------------
+supabase/.temp/
+supabase/.branches/
+
 # --- Site montado pelo build_site.sh e arquivos locais do wrangler -------------
 site/
 _site/

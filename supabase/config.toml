@@ -1,0 +1,10 @@
+# Supabase CLI: configuração das Edge Functions deste repositório. O deploy é feito por fora
+# (supabase functions deploy lista-espera --project-ref <ref do projeto>); nada aqui é segredo.
+# project_id só identifica o projeto local do CLI; não é o ref do projeto no Supabase.
+project_id = "graaos"
+
+# A lista de espera é chamada pelo formulário público do dashboard, sem JWT nem chave. A proteção
+# fica no próprio código: CORS restrito, Turnstile, isca e limite por IP
+# (supabase/functions/lista-espera).
+[functions.lista-espera]
+verify_jwt = false

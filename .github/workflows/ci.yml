@@ -31,6 +31,37 @@ jobs:
       - name: Rodar os testes
         run: python -m pytest -q
 
+  deno:
+    name: Deno (Edge Function da lista de espera)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Deno numa versão fixa, baixado direto e conferido pelo sha256 do .sha256sum publicado
+      # (sem action de terceiros). Para trocar: pegar o sha256 em
+      # https://dl.deno.land/release/<versão>/deno-x86_64-unknown-linux-gnu.zip.sha256sum
+      DENO_VERSION: v2.9.6
+      DENO_SHA256: 394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2
+      DENO_NO_UPDATE_CHECK: "1"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Instalar o Deno
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/deno.zip" "https://dl.deno.land/release/${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip"
+          echo "${DENO_SHA256}  $RUNNER_TEMP/deno.zip" | sha256sum -c -
+          unzip -q -o "$RUNNER_TEMP/deno.zip" -d "$RUNNER_TEMP/deno"
+          echo "$RUNNER_TEMP/deno" >> "$GITHUB_PATH"
+      - name: Formatação, lint e tipos
+        run: |
+          deno --version
+          deno fmt --check --line-width=120 supabase/functions
+          deno lint supabase/functions
+          deno check supabase/functions/lista-espera/index.ts
+      - name: Testes (sem rede, sem variáveis de ambiente e sem disco)
+        # sem nenhuma flag --allow: o Supabase e o Turnstile são falsos e nada sai do processo
+        run: deno test supabase/functions
+
   gitleaks:
     name: gitleaks (todo o histórico)
     runs-on: ubuntu-latest
