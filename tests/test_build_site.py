@@ -28,7 +28,7 @@ def test_monta_o_site_com_os_dados_na_raiz(tmp_path):
     assert (saida / "dashboard.json").read_bytes() == original
     assert "mapa" in json.loads(original)
     json.loads((saida / "boletim.json").read_text(encoding="utf-8"))
-    for arquivo in ("assets/mapa-pontos.json", "assets/fluxos.js", "assets/hero.js", "assets/mapa-hero.js", "assets/radar.css"):
+    for arquivo in ("assets/mapa-pontos.json", "assets/fluxos.js", "assets/hero.js", "assets/mapa-hero.js", "assets/lista-espera.js", "assets/radar.css"):
         assert (saida / arquivo).stat().st_size > 0, arquivo
     boletim = RAIZ / "boletins" / "latest.json"
     if boletim.exists():
@@ -51,7 +51,7 @@ def _repo_falso(tmp_path: Path, dashboard: str | None, index: bool = True) -> Pa
         (raiz / "dashboard" / "index.html").write_text(
             '<meta name="atualizado" content=""><script>fetch("dashboard.json"); fetch("boletim.json")</script>', encoding="utf-8")
     (raiz / "dashboard" / "assets" / "mapa-pontos.json").write_text('{"grade": [], "paises": []}', encoding="utf-8")
-    for nome in ("fluxos.js", "hero.js", "mapa-hero.js", "radar.css"):
+    for nome in ("fluxos.js", "hero.js", "mapa-hero.js", "lista-espera.js", "radar.css"):
         (raiz / "dashboard" / "assets" / nome).write_text("/* */", encoding="utf-8")
     if dashboard is not None:
         (raiz / "data" / "processed").mkdir(parents=True)

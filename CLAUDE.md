@@ -68,8 +68,10 @@ Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
 - Python 3.10+. Dependências em `requirements.txt` (requests, pandas, pyarrow, openpyxl); as
   de desenvolvimento em `requirements-dev.txt`.
 - Testes: `python -m pytest`. Eles não acessam a rede (as APIs são simuladas).
-- CI (`.github/workflows/ci.yml`): pytest em Python 3.10 (pandas 2) e 3.13 (pandas 3) e
-  gitleaks em todo o histórico, em push e PR. Só leitura e sem nenhum segredo.
+- CI (`.github/workflows/ci.yml`): pytest em Python 3.10 (pandas 2) e 3.13 (pandas 3), Deno
+  (fmt, lint, check e testes da Edge Function da lista de espera) e gitleaks em todo o histórico,
+  em push e PR. Só leitura e sem nenhum segredo. O Deno vem numa versão fixa, baixado de
+  dl.deno.land e conferido pelo sha256 (sem action de terceiros).
 - Actions sempre em versões que rodam em Node 24 (`checkout@v6`, `setup-python@v6`,
   `setup-go@v6`, `configure-pages@v6`, `upload-pages-artifact@v5`, `deploy-pages@v5`).
   Antes de trocar uma versão, conferir `runs.using` no `action.yml` da tag.
@@ -249,6 +251,38 @@ Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
 - Legendas de FOB e CIF (`dl.termos`) no resumo, no gráfico de preços e no Brasil x mercado
   internacional, e o glossário (`#glossario`, no Método; o link usa `data-secao` para não trocar
   o hash dos filtros). Definições iguais às do README.
+- Lista de espera (seção "Receba alertas do seu mercado", logo depois do card do boletim):
+  `dashboard/assets/lista-espera.js` envia para a Edge Function `supabase/functions/lista-espera`
+  (lógica em `inscricao.ts`; testes em `supabase/functions/tests/`, `deno test supabase/functions`,
+  sem nenhuma permissão). Só o código fica aqui: o deploy é feito por fora, sem verificação de JWT
+  (`supabase/config.toml`). Secrets SÓ no Supabase: `TURNSTILE_SECRET_KEY` e `IP_HASH_SALT` (32 ou
+  mais caracteres, aparado); sem eles ou sem o banco, 503. A chave de serviço vem do ambiente
+  (`SUPABASE_SECRET_KEYS.default`, senão a legada `SUPABASE_SERVICE_ROLE_KEY`). A tabela
+  `public.lista_espera` (RLS sem policies, só a chave de serviço grava) já existe: a validação da
+  função e a do formulário espelham as constraints dela; se uma mudar, mudar as três juntas (o
+  `test_formulario_espelha_as_regras_da_funcao` compara as regras e as mensagens do JS e do TS).
+  Regras a mais, iguais nos dois lados: invisíveis (Cc, Cf, Cs, Co, Cn, Default_Ignorable, U+2800),
+  4 ou mais acentos sobre uma letra (no NFD), links e < > também nas formas NFKC e sem acentos,
+  começo de fórmula (= + - @), nome com 2 letras e empresa/cargo com letra ou número; origem só
+  `utm_source=…&utm_campaign=…` (fora disso, null). Nas regras, só escapes (`\u200b`), nunca o
+  caractere invisível em si (há teste). CORS só para https://radar.graaos.cloud,
+  https://graaos.cloud e https://mvsantos-dev.github.io (o siteverify confere também hostname
+  e action, e vai sem remoteip: quem alterna IPv4 e IPv6 seria recusado). Ordem:
+  origem → configuração → corpo (10 s de prazo) → isca → campos → Turnstile → limite → insert (o
+  banco só depois do Turnstile). IP do `CF-Connecting-IP`, senão do `X-Real-IP`; o
+  `X-Forwarded-For` não conta (o cliente o escreve). Limite: 3 por ip_hash por hora, contado antes e
+  de novo depois do insert (a linha que passou do limite é apagada pelo id, e a resposta é 429);
+  ip_hash = SHA-256(IP + IP_HASH_SALT), com o IPv6 pelo prefixo /64. E-mail repetido responde igual
+  a um novo. Logs só com o evento e códigos: nunca e-mail, nome, IP, ip_hash, token, segredo nem
+  mensagem do Postgres (ela traz os valores da linha). A URL da função e a site key do Turnstile
+  são públicas e ficam no HTML; o script do Turnstile vem da Cloudflare sem SRI (ela não permite
+  fixar a versão) e só carrega quando alguém usa o formulário (foco, toque ou envio), não quando a
+  seção aparece. O formulário é `method="post"` e o botão vem `disabled` no HTML, ligado pelo
+  script: sem JavaScript nada sai. Um único botão de ação na seção e nada de doação no site: o
+  apoio é pelo GitHub Sponsors (`.github/FUNDING.yml`), citado só no README. O
+  `.github/workflows/keepalive.yml` chama `public.ping()` uma vez por dia com
+  `vars.SUPABASE_PUBLISHABLE_KEY` (variável, não secret; nunca no código), só com permissão de
+  leitura.
 - Cores fixas dos grupos no dashboard (paleta validada para daltonismo nos dois temas):
   N azul, P laranja, K água, NPK amarelo, "Todos" violeta. Não reordenar.
 - Não commitar dados grandes: se `data/raw/` passar de ~20 MB, colocá-lo no `.gitignore`

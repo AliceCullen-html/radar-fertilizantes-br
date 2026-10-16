@@ -123,6 +123,8 @@ O [dashboard](https://radar.graaos.cloud/) é uma página estática (`dashboard/
 `data/processed/dashboard.json`. Mostra:
 
 - o [boletim do mês](#boletim-mensal-com-ia-fase-5), num card no topo, com link para o histórico;
+- logo abaixo, a [lista de espera](#lista-de-espera-e-privacidade) dos alertas por recorte (produto,
+  origem e porto);
 - KPIs do último mês e do acumulado do ano, comparados com o mesmo período do ano anterior;
 - toneladas mensais por grupo (N, P, K e NPK);
 - share por país de origem e ranking de portos (URF), com variação sobre o ano anterior;
@@ -851,6 +853,68 @@ A verificação TLS fica sempre ligada, com o bundle padrão do `certifi`.
   acontece depois de uma falha de verificação e só para `api-comexstat.mdic.gov.br`,
   sempre com aviso no log.
 
+## Lista de espera e privacidade
+
+O formulário "Receba alertas do seu mercado", no dashboard, envia para uma Edge Function do
+Supabase: [`supabase/functions/lista-espera/index.ts`](supabase/functions/lista-espera/index.ts),
+com a lógica em `inscricao.ts`. Ela é a única porta de escrita: a tabela `lista_espera` tem RLS
+ligado e nenhuma policy, e só a função grava, com a chave de serviço do projeto.
+
+- **O que fica guardado:** nome, e-mail, empresa e cargo (opcionais), segmento, interesses, a
+  origem da visita (`utm_source` e `utm_campaign` do link, para saber qual post trouxe a
+  inscrição) e o consentimento, com data. O IP não é guardado, só um hash SHA-256 do IP com um sal
+  secreto (no IPv6, do prefixo /64), que limita as inscrições a 3 por hora.
+- **Para que serve:** só para avisar sobre o produto. Os dados não são vendidos nem compartilhados,
+  e a exclusão pode ser pedida a qualquer momento por contato@graaos.cloud; a confirmação vai para
+  o e-mail inscrito, para ninguém apagar nem consultar a inscrição de outra pessoa. Os dados ficam
+  no Supabase, e a verificação anti-robô é da Cloudflare.
+- **Contra robôs e abuso:** [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)
+  (o widget, no navegador, fala direto com a Cloudflare, que vê o IP e sinais do navegador; o
+  script só carrega quando alguém usa o formulário, e a função não repassa o IP), um campo isca, o
+  limite por IP (conferido de novo depois de gravar, para envios simultâneos não passarem dele) e
+  CORS só para radar.graaos.cloud, graaos.cloud e o espelho no GitHub Pages
+  (mvsantos-dev.github.io). Um e-mail que já está na lista recebe a mesma resposta de um novo, e
+  os logs da função não têm e-mail, IP nem segredos. Sem JavaScript, o botão fica desligado e nada
+  é enviado.
+- **Validação:** a mesma no formulário e na função, espelhando as constraints da tabela. Além do
+  tamanho, recusa caracteres invisíveis, acentos empilhados, links e os sinais < e > (também nas
+  formas largas ou decompostas), começo de fórmula de planilha (= + - @) e texto sem letras. Mesmo
+  assim, quem exibir ou exportar a lista trata os campos como texto de terceiros: escape no HTML e
+  célula como texto na planilha.
+- **Deploy** (feito fora deste repositório): sem verificação de JWT, porque o formulário é público
+  ([`supabase/config.toml`](supabase/config.toml)), e com dois secrets, cujos nomes estão no
+  [`.env.example`](.env.example): `TURNSTILE_SECRET_KEY` e `IP_HASH_SALT` (32 ou mais
+  caracteres). A URL e a chave de serviço do projeto já vêm no ambiente da função. No painel do
+  Turnstile, o widget precisa ter os hostnames radar.graaos.cloud, graaos.cloud e
+  mvsantos-dev.github.io. Os secrets entram pelo painel do Supabase (Edge Functions → Secrets) ou
+  por um arquivo local, escrito num editor e apagado depois (o `.gitignore` já cobre `.env.*`), para
+  não ficarem no histórico do terminal:
+
+  ```bash
+  # supabase/.env.lista-espera, com TURNSTILE_SECRET_KEY=<secret key do widget>
+  # e IP_HASH_SALT=<a saída de: openssl rand -hex 32>
+  supabase secrets set --env-file supabase/.env.lista-espera && rm supabase/.env.lista-espera
+  supabase functions deploy lista-espera --no-verify-jwt
+  ```
+
+- **Limites conhecidos:**
+  - não há confirmação por e-mail (double opt-in): dá para inscrever o e-mail de outra pessoa. O
+    Turnstile e o limite por IP freiam o volume, e a exclusão é por pedido;
+  - redes que saem por um IP só (empresas, cooperativas, operadoras com NAT) dividem as 3
+    inscrições por hora; a mensagem de limite indica o contato@graaos.cloud;
+  - o limite conta as inscrições gravadas, não as tentativas: um e-mail repetido não conta. Um
+    limite por tentativas, atômico, precisa de uma tabela e de uma função no banco;
+  - num e-mail repetido, o log do Postgres no Supabase registra o valor da chave única (quem escreve
+    é o Postgres, não a função), e os logs da API guardam o ip_hash da consulta do limite;
+  - o ip_hash fica na tabela sem prazo; vale limpar os antigos de tempos em tempos.
+- **Testes:** `deno test supabase/functions`, sem rede (o Supabase e o Turnstile são simulados);
+  também rodam no CI. O teste estático `test_formulario_espelha_as_regras_da_funcao` confere que o
+  formulário usa as mesmas regras e mensagens da função.
+- **Keepalive:** o [`keepalive.yml`](.github/workflows/keepalive.yml) chama `public.ping()` uma
+  vez por dia, para o plano gratuito não pausar o projeto, com a chave publishable lida da
+  variável de repositório `SUPABASE_PUBLISHABLE_KEY` (Settings → Secrets and variables → Actions →
+  Variables).
+
 ## Desenvolvimento
 
 ```bash
@@ -867,7 +931,8 @@ do CI: sem o Playwright, ou sem a variável `RADAR_E2E_LIBS` apontando para uma 
 locais do `chart.umd.min.js` e do `anime.umd.min.js` (os testes não acessam a rede), ele é pulado.
 
 O [CI](.github/workflows/ci.yml) roda em todo push e pull request: os testes em Python
-3.10 e 3.13 e o gitleaks em todo o histórico do repositório. A exceção são os commits
+3.10 e 3.13, os testes da Edge Function da lista de espera em Deno e o gitleaks em todo o histórico
+do repositório. A exceção são os commits
 automáticos de dados da fase 4, que não disparam outros workflows; os dados passam pelos testes
 (Python 3.13) dentro do próprio workflow de atualização, e o gitleaks do push seguinte
 varre o histórico inteiro, inclusive eles. O workflow só tem permissão
@@ -897,6 +962,14 @@ job. Os nomes estão em [`.env.example`](.env.example). Nenhum teste depende de 
 - [ ] **Fase 8:** demanda e cobertura (CONAB).
 - [ ] **Fase 9:** projeção de curto prazo.
 - [ ] **Fase 10:** servidor MCP para consultar o Graaos no Claude Desktop.
+
+## Como apoiar
+
+- Use, compartilhe e abra uma [issue](https://github.com/mvsantos-dev/graaos/issues)
+  com erros nos dados ou ideias.
+- Se o Graaos ajuda o seu trabalho, dá para apoiar pelo
+  [GitHub Sponsors](https://github.com/sponsors/mvsantos-dev): é o botão **Sponsor** no topo do
+  repositório, configurado em [`.github/FUNDING.yml`](.github/FUNDING.yml). O site não pede doação.
 
 ## Fonte dos dados
 

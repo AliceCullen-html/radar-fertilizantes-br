@@ -2,6 +2,7 @@
 referências externas da página. O mapa de pontos é testado em test_mapa.py."""
 
 import re
+import unicodedata
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -18,15 +19,106 @@ def test_fontes_self_hosted_com_licenca():
         assert "SIL Open Font License" in (fontes / licenca).read_text(encoding="utf-8")
 
 
-def test_nenhuma_chamada_a_terceiros_alem_do_jsdelivr():
+FUNCAO_LISTA = "https://recqdysmwfltkrhrhdjx.supabase.co/functions/v1/lista-espera"
+TURNSTILE = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=radarTurnstilePronto"
+
+
+def test_terceiros_so_jsdelivr_turnstile_e_a_funcao_da_lista_de_espera():
     html = (DASH / "index.html").read_text(encoding="utf-8")
-    # carregamentos (src/href de script, link e @import/url no CSS): só o próprio site e o jsDelivr
+    # carregamentos do HTML (src/href de script e link) e @import/url no CSS: só o próprio site e o jsDelivr
     carregados = re.findall(r'<(?:script|link)[^>]+(?:src|href)="(https?://[^"]+)"', html)
     assert carregados and all(u.startswith("https://cdn.jsdelivr.net/npm/") for u in carregados), carregados
     for arquivo in (DASH / "assets").glob("*.css"):
         assert not re.search(r"(?:url\(|@import)\s*[\"']?https?://", arquivo.read_text(encoding="utf-8")), arquivo
+    # nos scripts, os únicos endereços externos: o Turnstile (só no lista-espera.js) e o namespace do SVG
     for arquivo in (DASH / "assets").glob("*.js"):
-        assert not re.search(r"fetch\(\s*[\"'`]https?://", arquivo.read_text(encoding="utf-8")), arquivo
+        texto = arquivo.read_text(encoding="utf-8")
+        assert not re.search(r"fetch\(\s*[\"'`]https?://", texto), arquivo
+        enderecos = set(re.findall(r"https?://[^\s\"'`)]+", texto))
+        permitidos = {"http://www.w3.org/2000/svg"} | ({TURNSTILE} if arquivo.name == "lista-espera.js" else set())
+        assert enderecos <= permitidos, (arquivo.name, enderecos - permitidos)
+    # o formulário da lista de espera só fala com a Edge Function do projeto, por HTTPS
+    assert re.findall(r'data-funcao="([^"]+)"', html) == [FUNCAO_LISTA]
+
+
+def test_lista_de_espera_textos_turnstile_isca_e_um_botao_so():
+    html = (DASH / "index.html").read_text(encoding="utf-8")
+    secao = re.search(r'<section class="cartao grade lista-espera".*?</section>', html, re.S).group(0)
+    assert ">Receba alertas do seu mercado</h3>" in secao
+    assert ("Alerta no dia em que o dado sai, já interpretado para o seu recorte: o produto, a origem e o porto que "
+            "importam para você. Entre na lista para ser avisado quando abrir.") in secao
+    assert "Pronto! Você está na lista." in secao
+    # aviso LGPD curto: para que servem os dados, nada de venda ou compartilhamento, exclusão por e-mail
+    lgpd = re.search(r'<p class="le-lgpd" id="le-lgpd">(.*?)</p>', secao, re.S).group(1)
+    for trecho in ("só para avisar sobre o produto", "Não são vendidos nem compartilhados", "contato@graaos.cloud",
+                   "Supabase", "Cloudflare", "#lista-de-espera-e-privacidade"):
+        assert trecho in lgpd, trecho
+    # site key pública do Turnstile como constante no HTML; o segredo nunca aparece no site
+    assert 'data-sitekey="0x4AAAAAAFYdiHT5aqpj-sA2"' in secao
+    # campos espelhando a tabela; isca fora do teclado e dos leitores de tela
+    for nome in ("nome", "email", "empresa", "cargo", "segmento", "interesses", "consentimento_lgpd", "website"):
+        assert f'name="{nome}"' in secao, nome
+    assert re.search(r'<div class="le-isca" aria-hidden="true" inert>', secao)
+    assert re.search(r'<input id="le-website"[^>]+tabindex="-1"', secao)
+    valores = re.findall(r'<option value="([a-z]+)"', secao)
+    assert valores == ["revenda", "cooperativa", "trading", "industria", "logistica", "consultoria", "produtor", "outro"]
+    assert re.findall(r'name="interesses" value="([a-z]+)"', secao) == ["alertas", "watchlist", "api", "relatorios", "mcp"]
+    # sem JavaScript nada sai: POST (nunca os dados na URL), botão desligado até o script assumir e um aviso
+    assert re.search(r'<form class="le-form" id="le-form" method="post" novalidate', secao)
+    assert re.search(r'<button class="le-botao" id="le-enviar" type="submit" disabled>', secao)
+    assert "<noscript>" in secao
+    assert "botao.disabled = false;" in (DASH / "assets" / "lista-espera.js").read_text(encoding="utf-8")
+    # um único botão de ação na seção e nada de doação no site
+    assert len(re.findall(r"<button\b", secao)) == 1
+    assert not re.search(r"\b(?:doa[çc][ãa]o|doar|sponsors?|patroc[ií]nio|apoie|pix)\b", html, re.I)
+
+
+def _regexes(texto):
+    """Os `const NOME = /.../flags;` de um arquivo JS ou TS."""
+    literal = r"/(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\\\n\[])+/[a-z]*"
+    return dict(re.findall(rf"const (\w+) = ({literal});", texto))
+
+
+def _textos(bloco):
+    return dict(re.findall(r'(\w+): "([^"]*)"', bloco))
+
+
+def test_formulario_espelha_as_regras_da_funcao():
+    js = (DASH / "assets" / "lista-espera.js").read_text(encoding="utf-8")
+    ts = (RAIZ / "supabase" / "functions" / "lista-espera" / "inscricao.ts").read_text(encoding="utf-8")
+    regras_js, regras_ts = _regexes(js), _regexes(ts)
+    for nome in ("INVISIVEIS", "MARCAS_EMPILHADAS", "ESPACOS", "MARCACAO", "FORMULA", "EMAIL", "ASCII_VISIVEL",
+                 "DUAS_LETRAS", "LETRA_OU_NUMERO"):
+        assert nome in regras_js and regras_js[nome] == regras_ts.get(nome), nome
+    # as mesmas mensagens (o formulário usa um subconjunto das da função)
+    mensagens_js = _textos(re.search(r"const MENSAGENS = \{(.*?)\};", js, re.S).group(1))
+    mensagens_ts = _textos(re.search(r"export const MENSAGENS = \{(.*?)\} as const;", ts, re.S).group(1))
+    assert mensagens_js and all(mensagens_ts.get(chave) == texto for chave, texto in mensagens_js.items()), mensagens_js
+    # as mesmas listas de segmento e interesse, e os mesmos caracteres na origem (utm)
+    for nome in ("SEGMENTOS", "INTERESSES"):
+        lista_js = re.findall(r'"([a-z]+)"', re.search(rf"const {nome} = \[(.*?)\]", js, re.S).group(1))
+        lista_ts = re.findall(r'"([a-z]+)"', re.search(rf"const {nome} = \[(.*?)\]", ts, re.S).group(1))
+        assert lista_js == lista_ts, nome
+    utm_ts = re.search(r"const VALOR_UTM = /\^\[([^\]]+)\]", ts).group(1)
+    utm_js = re.search(r"const limpar = .*?replace\(/\[\^([^\]]+)\]/gu", js).group(1)
+    assert utm_js == utm_ts
+
+
+def test_sem_caracteres_invisiveis_literais_no_codigo():
+    # as regras de texto usam escapes (\u200b), nunca o caractere invisível em si, que some na revisão
+    arquivos = [DASH / "index.html", *sorted((DASH / "assets").glob("*.js")), *sorted((DASH / "assets").glob("*.css")),
+                *sorted((RAIZ / "supabase").rglob("*.ts"))]
+    for arquivo in arquivos:
+        texto = arquivo.read_text(encoding="utf-8")
+        ruins = {f"U+{ord(c):04X}" for c in texto if unicodedata.category(c) in {"Cc", "Cf", "Co", "Cs", "Cn"} and c not in "\n\r\t"}
+        assert not ruins, (arquivo.name, sorted(ruins))
+
+
+def test_site_sem_segredos():
+    # o site é público: nada de chave secreta do Supabase, JWT, service_role ou segredo do Turnstile
+    proibidos = re.compile(r"sb_secret_|service_role|eyJhbGciOi|SUPABASE_SERVICE_ROLE_KEY|TURNSTILE_SECRET|IP_HASH_SALT", re.I)
+    for arquivo in [DASH / "index.html", *(DASH / "assets").glob("*.js"), *(DASH / "assets").glob("*.css")]:
+        assert not proibidos.search(arquivo.read_text(encoding="utf-8")), arquivo
 
 
 def test_pagina_cita_as_fontes_e_a_base_cartografica():
