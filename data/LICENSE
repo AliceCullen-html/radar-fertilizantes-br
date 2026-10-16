@@ -1,0 +1,23 @@
+Dados tratados do Graaos: CC BY 4.0
+
+Os dados tratados neste diretório (data/) estão sob a licença Creative Commons Atribuição 4.0
+Internacional (CC BY 4.0). Você pode copiar, redistribuir e adaptar os dados, para qualquer fim,
+inclusive comercial, desde que dê o crédito, indique a licença e diga se fez alterações.
+
+Atribuição obrigatória: Graaos (github.com/mvsantos-dev/graaos)
+
+Resumo da licença: https://creativecommons.org/licenses/by/4.0/deed.pt-br
+Texto legal:       https://creativecommons.org/licenses/by/4.0/legalcode.pt
+
+Os dados de origem continuam com as licenças das fontes, inclusive quando aparecem dentro dos
+arquivos tratados:
+
+- Comex Stat/MDIC: dados abertos do MDIC.
+- Banco Mundial (Pink Sheet): CC BY 4.0.
+- BCB/PTAX: ODbL. A PTAX e os valores em reais calculados com ela seguem essa licença.
+- Natural Earth (coordenadas em data/ref/): domínio público.
+
+Detalhes na seção "Licenças das fontes" do README:
+https://github.com/mvsantos-dev/graaos#licenças-das-fontes
+
+O código do repositório está sob a licença MIT (arquivo LICENSE, na raiz).

@@ -3,6 +3,7 @@
 **Graaos — hub de inteligência de mercado do agro e da logística, com dados públicos.**
 
 [![CI](https://github.com/mvsantos-dev/graaos/actions/workflows/ci.yml/badge.svg)](https://github.com/mvsantos-dev/graaos/actions/workflows/ci.yml)
+[![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)](LICENSE)
 
 **Fertilizantes, o primeiro módulo, está no ar: [radar.graaos.cloud](https://radar.graaos.cloud/)**
 
@@ -28,6 +29,16 @@ pela PTAX do Banco Central. Os dados e o dashboard se atualizam sozinhos todo m�
 em que todos os números são inseridos e conferidos pelo programa.
 
 **Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX.**
+
+## O que é aberto e o que será pago
+
+- **Aberto e gratuito, para sempre:** o pipeline de dados, os dados tratados, o site
+  [radar.graaos.cloud](https://radar.graaos.cloud/), o método e o boletim mensal.
+- **Em construção, como serviço à parte:** alertas personalizados, watchlist de produtos,
+  origens e portos, API e acesso via MCP
+  ([lista de espera no site](https://radar.graaos.cloud/#lista-espera)).
+
+Nada do que hoje é aberto vai migrar para a parte paga.
 
 ## O que é
 
@@ -813,14 +824,17 @@ CIF em reais (R$/t)        = CIF Brasil × PTAX venda média do mês
 - **PTAX:** série 3698 do SGS, do Banco Central do Brasil. O Portal de Dados Abertos do BCB
   publica as séries de câmbio do dólar com licença
   [ODbL](https://opendatacommons.org/licenses/odbl/) (a série 3698 não tem página própria
-  lá). Os arquivos que trazem a PTAX (`data/raw_cambio/` e as colunas `ptax_brl_usd` e
-  `cif_brl_t`) seguem a mesma licença.
+  lá). A PTAX e os valores em reais calculados com ela (`data/raw_cambio/`, as colunas
+  `ptax_brl_usd`, `cif_brl_t` e `custo_nutriente_brl_t` e os campos equivalentes do
+  `dashboard.json`) seguem a mesma licença.
 - **Comex Stat:** dados abertos do MDIC.
 - **Natural Earth:** base cartográfica do mapa (fronteiras, pontos de rótulo dos países e
   portos), em [domínio público](https://www.naturalearthdata.com/about/terms-of-use/).
 
-O repositório não tem arquivo de licença próprio; os dados de terceiros seguem as licenças
-das fontes.
+Código: [MIT](LICENSE) · Dados tratados: [CC BY 4.0](data/LICENSE)
+
+O crédito dos dados tratados é "Graaos (github.com/mvsantos-dev/graaos)". Os dados de origem
+seguem as licenças das fontes, acima, mesmo quando aparecem nos arquivos tratados.
 
 ## Observações sobre os dados e a API
 

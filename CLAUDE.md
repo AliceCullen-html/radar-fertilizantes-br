@@ -16,6 +16,15 @@ Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
 - O Graaos cobre granéis sólidos, grãos e logística. NÃO cobre granéis líquidos (óleos vegetais,
   químicos, combustíveis): nada de módulo, série, gráfico ou texto sobre eles.
 
+### Licenças e open core
+
+- Código sob MIT (`LICENSE`); dados tratados de `data/` sob CC BY 4.0 (`data/LICENSE`), com o
+  crédito "Graaos (github.com/mvsantos-dev/graaos)". Os dados de origem seguem as licenças das
+  fontes (README, "Licenças das fontes"). O rodapé do site diz "Código aberto (MIT) · dados
+  CC BY 4.0", com o link do repositório.
+- Pipeline, dados tratados, site, método e boletim mensal são abertos e gratuitos. Nada do que hoje
+  é aberto migra para a parte paga (README, "O que é aberto e o que será pago").
+
 ### Segurança (repositório público)
 
 - NUNCA escrever chaves, tokens, senhas, URLs privadas ou credenciais em código, config,
