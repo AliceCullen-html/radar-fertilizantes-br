@@ -4,7 +4,8 @@
 # Usado pelo deploy na Cloudflare (wrangler.jsonc: "assets.directory": "./site") e pelo
 # GitHub Pages (.github/workflows/pages.yml, em _site). O index.html busca tudo por caminho
 # relativo à própria página, então os dados ficam na raiz do site:
-#   index.html, assets/   <- dashboard/ (assets/mapa-pontos.json é a base do mapa)
+#   index.html, assets/   <- dashboard/ (assets/mapa-pontos.json é a base do mapa; assets/lista-espera.js, o
+#                            formulário da lista de espera, que só fala com a Edge Function do Supabase)
 #   dashboard.json        <- data/processed/dashboard.json (todos os gráficos e o mapa de fluxos)
 #   boletim.json          <- boletins/latest.json ({} enquanto não houver boletim)
 # Sem segredos e sem rede. Termina com erro (exit 1) se faltar o index.html ou algum dado, ou
@@ -45,7 +46,7 @@ else
 fi
 
 # --- Verificações finais -------------------------------------------------------------------
-for arquivo in index.html dashboard.json boletim.json assets/mapa-pontos.json assets/fluxos.js assets/hero.js assets/mapa-hero.js assets/radar.css; do
+for arquivo in index.html dashboard.json boletim.json assets/mapa-pontos.json assets/fluxos.js assets/hero.js assets/mapa-hero.js assets/lista-espera.js assets/radar.css; do
   [[ -s "$saida/$arquivo" ]] || falhar "falta $arquivo em $saida"
 done
 # a página busca "dashboard.json" e "boletim.json" ao lado do index.html

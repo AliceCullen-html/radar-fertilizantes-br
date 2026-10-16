@@ -741,3 +741,228 @@ def test_numeros_do_resumo_contam_ao_trocar_o_grupo(navegador, servidor):
         assert erros == []
         ctx.close()
 
+
+
+# --- Lista de espera -------------------------------------------------------------------------
+# O Turnstile e a Edge Function são simulados: nenhuma chamada sai do navegador.
+TURNSTILE_FALSO = """(() => {
+  const widgets = [];
+  window.__turnstile = { renders: [], resets: 0, removes: 0 };
+  const emitir = (w) => setTimeout(() => { w.n += 1; w.opcoes.callback(`tok-${w.n}`); }, 30);
+  window.turnstile = {
+    render(el, opcoes) {
+      window.__turnstile.renders.push({ sitekey: opcoes.sitekey, action: opcoes.action, theme: opcoes.theme,
+        size: opcoes.size, language: opcoes.language, campo: opcoes["response-field"] });
+      const w = { id: `w${widgets.length}`, opcoes, n: 0 };
+      widgets.push(w);
+      el.textContent = "verificação simulada";
+      emitir(w);
+      return w.id;
+    },
+    reset(id) { window.__turnstile.resets += 1; emitir(widgets.find((w) => w.id === id)); },
+    remove() { window.__turnstile.removes += 1; },
+  };
+  setTimeout(() => window.radarTurnstilePronto && window.radarTurnstilePronto(), 0);
+})();"""
+FUNCAO_LISTA = "https://recqdysmwfltkrhrhdjx.supabase.co/functions/v1/lista-espera"
+CORS_FALSO = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "content-type", "Access-Control-Allow-Methods": "POST, OPTIONS"}
+
+
+def _lista(navegador, servidor, respostas=(), largura=1440, tema="light", busca=""):
+    """Página com o Turnstile e a função falsos. `respostas`: (status, corpo), "rede" ou "segurar"."""
+    ctx = navegador.new_context(viewport={"width": largura, "height": 900}, color_scheme=tema, reduced_motion="reduce")
+    pg = ctx.new_page()
+    erros, envios, cargas, segurados = [], [], [], []
+    fila = list(respostas)
+    pg.on("pageerror", lambda e: erros.append(str(e)))
+    # respostas 4xx simuladas e a falha de rede aparecem como "Failed to load resource": não são erros do script
+    pg.on("console", lambda m: erros.append(m.text) if m.type == "error" and not m.text.startswith("Failed to load resource") else None)
+    pg.route("https://cdn.jsdelivr.net/**", _cdn)
+
+    def turnstile(rota):
+        cargas.append(rota.request.url)
+        rota.fulfill(status=200, content_type="application/javascript", body=TURNSTILE_FALSO)
+
+    def funcao(rota):
+        if rota.request.method == "OPTIONS":
+            return rota.fulfill(status=204, headers=CORS_FALSO)
+        envios.append(json.loads(rota.request.post_data))
+        resposta = fila.pop(0) if fila else (200, {"ok": True})
+        if resposta == "rede":
+            return rota.abort()
+        if resposta == "segurar":
+            return segurados.append(rota)
+        rota.fulfill(status=resposta[0], headers={**CORS_FALSO, "Content-Type": "application/json"}, body=json.dumps(resposta[1]))
+
+    pg.route("https://challenges.cloudflare.com/**", turnstile)
+    pg.route(FUNCAO_LISTA, funcao)
+    pg.goto(servidor + busca)
+    pg.wait_for_function("window.radarDados", timeout=20_000)
+    return ctx, pg, {"erros": erros, "envios": envios, "cargas": cargas, "segurados": segurados}
+
+
+def _ir_para_a_lista(pg):
+    """Rola até a seção e põe o foco no primeiro campo: é aí que o Turnstile carrega."""
+    pg.evaluate("window.scrollTo(0, document.getElementById('lista-espera').getBoundingClientRect().top + scrollY - 80)")
+    pg.focus("#le-nome")
+    pg.wait_for_function("window.__turnstile && window.__turnstile.renders.length === 1", timeout=10_000)
+
+
+def _preencher(pg, email="maria@cooperativa.com.br"):
+    pg.fill("#le-nome", "  Maria   da Silva ")
+    pg.fill("#le-email", email)
+    pg.fill("#le-empresa", "Cooperativa Agro")
+    pg.select_option("#le-segmento", "cooperativa")
+    pg.check("#le-form input[value=mcp]")
+    pg.check("#le-form input[value=alertas]")
+    pg.check("#le-consentimento")
+
+
+def test_lista_de_espera_envia_com_a_origem_da_visita_e_mostra_o_sucesso(navegador, servidor):
+    ctx, pg, r = _lista(navegador, servidor, respostas=["segurar"], busca="?utm_source=linkedin&utm_campaign=post-alertas")
+    # o script assumiu o formulário: o botão, desligado no HTML, liga
+    assert pg.evaluate("document.getElementById('le-enviar').disabled") is False
+    # só ver a seção não chama a Cloudflare; o Turnstile carrega quando alguém usa o formulário
+    pg.evaluate("window.scrollTo(0, document.getElementById('lista-espera').getBoundingClientRect().top + scrollY - 80)")
+    pg.wait_for_timeout(600)
+    assert r["cargas"] == [], "o Turnstile só carrega quando alguém usa o formulário"
+    _ir_para_a_lista(pg)
+    assert r["cargas"][0].startswith("https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit")
+    assert pg.evaluate("window.__turnstile.renders[0]") == {
+        "sitekey": "0x4AAAAAAFYdiHT5aqpj-sA2", "action": "lista-espera", "theme": "light",
+        "size": "flexible", "language": "pt-br", "campo": False,
+    }
+    assert pg.evaluate("document.getElementById('titulo-lista-espera').textContent") == "Receba alertas do seu mercado"
+    _preencher(pg)
+    pg.click("#le-enviar")
+    # enviando: botão ocupado (mas com foco), status anunciado, nada de segundo envio
+    pg.wait_for_function("document.getElementById('le-form').getAttribute('aria-busy') === 'true'")
+    assert pg.evaluate("document.getElementById('le-enviar').getAttribute('aria-disabled')") == "true"
+    assert pg.evaluate("document.getElementById('le-status').textContent") == "Enviando a sua inscrição…"
+    pg.evaluate("document.getElementById('le-enviar').click()")
+    assert len(r["envios"]) == 1
+    r["segurados"].pop().fulfill(status=200, headers={**CORS_FALSO, "Content-Type": "application/json"}, body='{"ok":true}')
+    pg.wait_for_selector("#le-sucesso:not([hidden])")
+    assert r["envios"] == [{
+        "nome": "Maria da Silva", "email": "maria@cooperativa.com.br", "empresa": "Cooperativa Agro", "cargo": None,
+        "segmento": "cooperativa", "interesses": ["alertas", "mcp"], "consentimento_lgpd": True,
+        "origem": "utm_source=linkedin&utm_campaign=post-alertas", "turnstile": "tok-1", "website": "",
+    }]
+    assert pg.evaluate("document.getElementById('le-form').hidden") is True
+    assert pg.evaluate("document.activeElement.id") == "le-sucesso"
+    assert "Pronto! Você está na lista." in pg.evaluate("document.getElementById('le-sucesso').textContent")
+    assert r["erros"] == []
+    ctx.close()
+
+
+def test_lista_de_espera_valida_antes_de_enviar_e_mostra_os_erros_da_funcao(navegador, servidor):
+    respostas = [
+        (422, {"ok": False, "erro": "campos", "campos": {"email": "Confira o e-mail: ele precisa ter o formato nome@empresa.com.br."}}),
+        (429, {"ok": False, "erro": "limite"}),
+        "rede",
+        (200, {"ok": True}),
+    ]
+    ctx, pg, r = _lista(navegador, servidor, respostas=respostas)
+    _ir_para_a_lista(pg)
+    pg.click("#le-enviar")
+    erro = lambda campo: pg.evaluate(f"(() => {{ const e = document.getElementById('{campo}-erro'); return e.hidden ? null : e.textContent; }})()")
+    assert erro("le-nome") == "Informe o seu nome."
+    assert erro("le-email") == "Informe o seu e-mail."
+    assert erro("le-segmento") == "Escolha o seu segmento."
+    assert erro("le-consentimento") == "Para entrar na lista, aceite o uso dos dados para este aviso."
+    assert erro("le-empresa") is None and erro("le-cargo") is None
+    assert pg.evaluate("document.getElementById('le-nome').getAttribute('aria-invalid')") == "true"
+    assert pg.evaluate("document.activeElement.id") == "le-nome"
+    assert r["envios"] == []
+    # o erro some quando a pessoa corrige o campo; regras iguais às da função
+    pg.fill("#le-nome", "M")
+    assert erro("le-nome") is None
+    _preencher(pg, email="maria@empresa")
+    pg.fill("#le-nome", "<b>Maria</b>")
+    pg.click("#le-enviar")
+    assert erro("le-nome") == "Não use links nem os sinais < e >."
+    assert erro("le-email") == "Confira o e-mail: ele precisa ter o formato nome@empresa.com.br."
+    for nome, mensagem in [
+        ("\uff1cscript\uff1e", "Não use links nem os sinais < e >."),  # < > largos
+        ('=HYPERLINK("golpe.exemplo")', "Não comece com =, +, - ou @."),
+        ("12", "Escreva com letras."),
+        ("Ma\u200bria", "Há caracteres invisíveis ou de controle no texto."),
+    ]:
+        pg.fill("#le-nome", nome)
+        pg.click("#le-enviar")
+        assert erro("le-nome") == mensagem, nome
+    assert r["envios"] == []
+    _preencher(pg)
+    # 422: o erro do campo vem da função e o token não é trocado (ela recusa antes do Turnstile)
+    pg.click("#le-enviar")
+    pg.wait_for_function("!document.getElementById('le-email-erro').hidden")
+    assert pg.evaluate("window.__turnstile.resets") == 0
+    # 429: aviso geral (role=alert) e um token novo para a próxima tentativa
+    pg.click("#le-enviar")
+    pg.wait_for_function("!document.getElementById('le-erro').hidden")
+    assert pg.evaluate("document.getElementById('le-erro').textContent") == (
+        "Já saíram muitas inscrições desta rede na última hora. Tente de novo mais tarde ou escreva para contato@graaos.cloud.")
+    assert pg.evaluate("document.getElementById('le-erro').getAttribute('role')") == "alert"
+    assert pg.evaluate("window.__turnstile.resets") == 1
+    assert pg.evaluate("document.getElementById('le-enviar').getAttribute('aria-disabled')") == "false"
+    # sem conexão: outra mensagem, outro token
+    pg.wait_for_timeout(100)
+    pg.click("#le-enviar")
+    pg.wait_for_function("document.getElementById('le-erro').textContent.startsWith('Não foi possível falar')")
+    assert pg.evaluate("window.__turnstile.resets") == 2
+    pg.wait_for_timeout(100)
+    pg.click("#le-enviar")
+    pg.wait_for_selector("#le-sucesso:not([hidden])")
+    assert [e["turnstile"] for e in r["envios"]] == ["tok-1", "tok-1", "tok-2", "tok-3"]
+    assert r["erros"] == []
+    ctx.close()
+
+
+def test_lista_de_espera_no_celular_no_teclado_e_no_tema_escuro(navegador, servidor):
+    ctx, pg, r = _lista(navegador, servidor, largura=390, tema="dark")
+    _ir_para_a_lista(pg)
+    assert pg.evaluate("window.__turnstile.renders[0].theme") == "dark"
+    # nada da seção passa da largura da tela
+    fora = pg.evaluate("""() => { const W = document.documentElement.clientWidth;
+      return [...document.querySelectorAll('#lista-espera *')].filter((e) => { const b = e.getBoundingClientRect();
+        return b.width > 0 && b.right > W + 0.5 && !e.closest('.le-isca'); }).map((e) => e.id || e.className); }""")
+    assert fora == []
+    # todo controle tem rótulo; a isca fica fora do teclado e dos leitores de tela
+    sem_rotulo = pg.evaluate("""() => [...document.querySelectorAll('#le-form input, #le-form select')]
+      .filter((c) => !c.closest('.le-isca') && c.labels.length === 0).map((c) => c.id || c.name)""")
+    assert sem_rotulo == []
+    assert pg.evaluate("document.querySelector('.le-isca').inert") is True
+    assert pg.evaluate("document.querySelector('.le-isca').getAttribute('aria-hidden')") == "true"
+    pg.focus("#le-nome")
+    ordem = []
+    for _ in range(14):
+        ordem.append(pg.evaluate("document.activeElement.id || document.activeElement.value"))
+        pg.keyboard.press("Tab")
+    assert "le-website" not in ordem
+    assert ordem[:6] == ["le-nome", "le-email", "le-empresa", "le-cargo", "le-segmento", "alertas"]
+    assert "le-consentimento" in ordem and "le-enviar" in ordem
+    # Enter no campo envia o formulário (com os erros dos campos que faltam)
+    pg.focus("#le-nome")
+    pg.keyboard.press("Enter")
+    assert pg.evaluate("document.getElementById('le-nome-erro').hidden") is False
+    assert r["envios"] == [] and r["erros"] == []
+    ctx.close()
+
+
+def test_lista_de_espera_sem_javascript_nao_envia_nada(navegador, servidor):
+    ctx = navegador.new_context(viewport={"width": 1280, "height": 900}, java_script_enabled=False)
+    pg = ctx.new_page()
+    pg.route("https://cdn.jsdelivr.net/**", _cdn)
+    pedidos = []
+    pg.on("request", lambda req: pedidos.append(req.url) if "challenges.cloudflare.com" in req.url or "supabase.co" in req.url else None)
+    pg.goto(servidor)
+    # o botão fica desligado (nem o Enter envia), o aviso aparece e nada vai para a Cloudflare nem para a função
+    assert pg.locator("#le-enviar").is_disabled()
+    # (o aviso fica num <noscript>; o Chromium do teste só desliga a execução, então não o desenha)
+    assert "Para entrar na lista, ative o JavaScript" in pg.content()
+    pg.fill("#le-email", "maria@cooperativa.com.br")
+    pg.press("#le-email", "Enter")
+    pg.wait_for_timeout(300)
+    assert "maria" not in pg.url and pedidos == []
+    assert pg.get_attribute("#le-form", "method") == "post"
+    ctx.close()

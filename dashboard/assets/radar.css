@@ -40,6 +40,7 @@
   --borda: rgba(43, 52, 209, 0.14);
   --lavagem: rgba(43, 52, 209, 0.06);
   --foco: #2b34d1;
+  --erro: #b42318;
 
   /* rampa sequencial (medida única) e par divergente (perda / ganho) */
   --seq-1: #9aa1f2; --seq-2: #7881eb; --seq-3: #4f59e0; --seq-4: #2b34d1; --seq-5: #1f27a0; --seq-6: #161b70;
@@ -88,6 +89,7 @@
     --borda: rgba(166, 173, 255, 0.14);
     --lavagem: rgba(166, 173, 255, 0.07);
     --foco: #a6adff;
+    --erro: #ff9b8f;
     --seq-1: #3b47c9; --seq-2: #5864e6; --seq-3: #7c87f2; --seq-4: #a2aaf8; --seq-5: #c8cdfc; --seq-6: #eaecff;
     --perda: #d86e3e;
     --ganho: #6c78ee;
@@ -129,6 +131,7 @@
   --borda: rgba(166, 173, 255, 0.14);
   --lavagem: rgba(166, 173, 255, 0.07);
   --foco: #a6adff;
+  --erro: #ff9b8f;
   --seq-1: #3b47c9; --seq-2: #5864e6; --seq-3: #7c87f2; --seq-4: #a2aaf8; --seq-5: #c8cdfc; --seq-6: #eaecff;
   --perda: #d86e3e;
   --ganho: #6c78ee;
@@ -888,6 +891,102 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .boletim .rodape-boletim { margin: 12px 0 0; color: var(--texto-2); font-size: 12px; max-width: 78ch; }
 .boletim .links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; font-size: 13px; }
 .boletim .selo { display: inline-block; margin-left: 6px; padding: 0 6px; border: 1px solid var(--borda); border-radius: 999px; font-weight: 600; }
+
+/* --- Lista de espera (assets/lista-espera.js) ----------------------------------------------
+ * Um cartão em duas colunas: texto e aviso de privacidade à esquerda, formulário à direita (uma
+ * coluna só abaixo de 900px). Um único botão de ação; erros em --erro (estado do formulário, não
+ * uma cor de dado), sempre com texto. */
+.lista-espera { position: relative; overflow: hidden; scroll-margin-top: 84px; }
+.lista-espera::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 3px;
+  background: linear-gradient(180deg, var(--cobalto), #7c87f2 55%, #4fc3f7);
+}
+.le-grade { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 24px 56px; align-items: start; padding: 6px 4px 4px 8px; }
+.le-texto .kicker { color: var(--texto-2); }
+.le-titulo { margin: 14px 0 0; color: var(--titulo); font: 300 clamp(28px, 3.1vw, 40px)/1.05 var(--fonte); letter-spacing: -0.03em; text-wrap: balance; }
+.le-lead { margin: 14px 0 0; max-width: 46ch; font-size: 15px; line-height: 1.55; }
+.le-lgpd {
+  display: flex; gap: 10px; align-items: flex-start; margin: 18px 0 0; max-width: 52ch; padding: 10px 12px;
+  border: 1px dashed var(--borda); border-radius: 6px; background: var(--lavagem); color: var(--texto-2); font-size: 12.5px; line-height: 1.5;
+}
+.le-lgpd svg { flex: none; width: 15px; height: 15px; margin-top: 1px; color: var(--titulo); }
+.le-lgpd a, .le-sucesso a { color: var(--titulo); }
+.le-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; margin: 0; }
+.le-form[hidden] { display: none; }
+.le-form .largo { grid-column: 1 / -1; }
+.le-campo { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.le-campo > label:not(.le-opcao), .le-interesses legend { font: 400 12px/1.35 var(--mono); letter-spacing: 0.01em; color: var(--texto-2); }
+.le-opcional { color: var(--texto-3); }
+.le-campo input:not([type="checkbox"]), .le-campo select {
+  box-sizing: border-box; width: 100%; min-height: 44px; margin: 0; padding: 0 12px;
+  border: 1px solid var(--eixo); border-radius: 4px; background: var(--superficie); color: var(--texto);
+  font: 400 15px/1.2 var(--fonte); transition: border-color 0.2s, box-shadow 0.2s;
+}
+.le-campo input:not([type="checkbox"]):hover, .le-campo select:hover { border-color: var(--texto-3); }
+.le-campo input:not([type="checkbox"]):focus-visible, .le-campo select:focus-visible { outline: 2px solid var(--foco); outline-offset: 1px; border-color: var(--foco); }
+.le-form input:not([type="checkbox"])[aria-invalid="true"], .le-form select[aria-invalid="true"] { border-color: var(--erro); box-shadow: inset 0 0 0 1px var(--erro); }
+.le-erro-campo { margin: 0; color: var(--erro); font-size: 12.5px; line-height: 1.4; }
+.le-interesses { min-width: 0; margin: 0; padding: 0; border: 0; }
+.le-interesses legend { padding: 0; }
+.le-opcoes { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); gap: 8px; margin: 8px 0 0; }
+.le-interesses .le-erro-campo { margin-top: 6px; }
+.le-opcao {
+  display: flex; align-items: flex-start; gap: 10px; box-sizing: border-box; min-height: 44px; padding: 11px 12px;
+  border: 1px solid var(--borda); border-radius: 4px; background: var(--superficie); color: var(--texto);
+  font-size: 13.5px; line-height: 1.35; cursor: pointer; transition: border-color 0.2s, background-color 0.2s;
+}
+.le-opcao:hover { border-color: var(--texto-3); }
+.le-opcao:has(input:checked) { border-color: var(--titulo); background: var(--lavagem); }
+.le-opcao:has(input:focus-visible) { outline: 2px solid var(--foco); outline-offset: 2px; }
+.le-opcao input { flex: none; width: 16px; height: 16px; margin: 1px 0 0; accent-color: var(--titulo); cursor: pointer; }
+.le-opcao input:focus-visible { outline: none; }
+.le-aceite { border-style: dashed; }
+.le-aceite:has([aria-invalid="true"]) { border: 1px solid var(--erro); box-shadow: inset 0 0 0 1px var(--erro); }
+/* isca para robôs: fora da tela (inert e aria-hidden no HTML) */
+.le-isca { position: absolute; left: -10000px; top: 0; width: 1px; height: 1px; overflow: hidden; }
+.le-turnstile { min-height: 65px; }
+.le-nota { margin: 6px 0 0; color: var(--texto-3); font-size: 12px; line-height: 1.45; }
+.le-nota.alerta { color: var(--erro); }
+.le-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.le-botao {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 46px; padding: 0 22px;
+  border: 1px solid var(--cobalto); border-radius: 2px; background: var(--cobalto); color: #ffffff;
+  font: 500 13px/1 var(--mono); letter-spacing: 0.01em; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(43, 52, 209, 0.22); transition: background-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+.le-botao:hover:not(:disabled) { background: var(--cobalto-escuro); border-color: var(--cobalto-escuro); }
+.le-botao:active:not(:disabled) { transform: translateY(1px); }
+.le-botao[aria-disabled="true"] { cursor: progress; background: var(--cobalto-escuro); box-shadow: none; }
+.le-botao:disabled { cursor: not-allowed; opacity: 0.55; box-shadow: none; transform: none; }
+.le-giro { display: none; width: 13px; height: 13px; border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #ffffff; border-radius: 50%; }
+.le-botao.enviando .le-giro { display: inline-block; animation: le-girar 0.8s linear infinite; }
+@keyframes le-girar { to { transform: rotate(360deg); } }
+.le-status { margin: 0; color: var(--texto-2); font-size: 13px; }
+.le-erro {
+  margin: 0; padding: 10px 12px; border-left: 3px solid var(--erro); border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--erro) 9%, transparent); color: var(--texto); font-size: 13.5px; line-height: 1.45;
+}
+.le-erro[hidden], .le-erro-campo[hidden] { display: none; }
+.le-sucesso {
+  display: grid; justify-items: start; align-content: center; gap: 10px; min-height: 260px; padding: 28px;
+  border: 1px solid var(--borda); border-radius: 6px; background: var(--lavagem);
+}
+.le-sucesso[hidden] { display: none; }
+.le-sucesso:focus { outline: none; }
+.le-sucesso:focus-visible { outline: 2px solid var(--foco); outline-offset: 2px; }
+.le-sucesso svg { width: 40px; height: 40px; color: var(--titulo); }
+.le-sucesso-titulo { margin: 0; color: var(--titulo); font: 300 clamp(26px, 2.8vw, 34px)/1.1 var(--fonte); letter-spacing: -0.025em; }
+.le-sucesso .le-nota { max-width: 48ch; font-size: 13px; color: var(--texto-2); }
+@media (max-width: 899px) { .le-grade { grid-template-columns: 1fr; gap: 22px; } }
+@media (max-width: 560px) {
+  .lista-espera { padding: 16px 14px; }
+  .le-grade { padding: 4px 0 0 4px; }
+  .le-form { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .le-botao, .le-opcao, .le-campo input, .le-campo select { transition: none; }
+  .le-botao.enviando .le-giro { animation: none; }
+}
 
 .ressalva {
   margin: 10px 0 0; padding: 8px 12px; border-left: 3px solid var(--texto-3); border-radius: 0 8px 8px 0;
