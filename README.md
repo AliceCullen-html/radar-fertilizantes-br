@@ -123,8 +123,6 @@ O [dashboard](https://radar.graaos.cloud/) é uma página estática (`dashboard/
 `data/processed/dashboard.json`. Mostra:
 
 - o [boletim do mês](#boletim-mensal-com-ia-fase-5), num card no topo, com link para o histórico;
-- logo abaixo, a [lista de espera](#lista-de-espera-e-privacidade) dos alertas por recorte (produto,
-  origem e porto);
 - KPIs do último mês e do acumulado do ano, comparados com o mesmo período do ano anterior;
 - toneladas mensais por grupo (N, P, K e NPK);
 - share por país de origem e ranking de portos (URF), com variação sobre o ano anterior;
@@ -141,6 +139,8 @@ O [dashboard](https://radar.graaos.cloud/) é uma página estática (`dashboard/
   Brasil contra a Pink Sheet do Banco Mundial, spread na base comparável e CIF em reais, para
   KCl, ureia, MAP, DAP e TSP;
 - concentração de fornecedores (HHI) por ano;
+- depois dos dados, a [lista de espera](#lista-de-espera-e-privacidade) dos alertas por recorte
+  (produto, origem e porto); o item "Receber alertas" do menu leva até ela;
 - um glossário (FOB, CIF, CFR, custo por nutriente, crédito de N, URF, UF de destino, PTAX,
   spread e outros termos), no fim da página.
 
@@ -870,7 +870,8 @@ ligado e nenhuma policy, e só a função grava, com a chave de serviço do proj
   no Supabase, e a verificação anti-robô é da Cloudflare.
 - **Contra robôs e abuso:** [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)
   (o widget, no navegador, fala direto com a Cloudflare, que vê o IP e sinais do navegador; o
-  script só carrega quando alguém usa o formulário, e a função não repassa o IP), um campo isca, o
+  script só carrega quando alguém usa o formulário, e até lá um aviso ocupa o lugar do widget; a
+  função não repassa o IP), um campo isca, o
   limite por IP (conferido de novo depois de gravar, para envios simultâneos não passarem dele) e
   CORS só para radar.graaos.cloud, graaos.cloud e o espelho no GitHub Pages
   (mvsantos-dev.github.io). Um e-mail que já está na lista recebe a mesma resposta de um novo, e

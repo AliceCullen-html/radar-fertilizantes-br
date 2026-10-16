@@ -224,6 +224,16 @@
   --nav-texto: var(--hero-texto-2); box-shadow: none;
 }
 .barra-topo.sobre-hero .nav-pilula a:hover { color: var(--hero-texto); }
+/* "Receber alertas": um convite, não uma seção dos dados. Contorno fino na cor dos títulos (por box-shadow,
+   para ter o tamanho dos outros itens), um respiro antes e nunca o indicador (hero.js). No celular é o último
+   item da pílula, que rola de lado. */
+.nav-pilula a.nav-alertas {
+  margin-left: 6px; color: var(--titulo);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 55%, transparent); transition: color 0.3s var(--facil), background-color 0.2s;
+}
+.nav-pilula a.nav-alertas:hover { color: var(--titulo); background: var(--lavagem); box-shadow: inset 0 0 0 1px currentColor; }
+.barra-topo.sobre-hero .nav-pilula a.nav-alertas { color: var(--hero-texto); }
+.barra-topo.sobre-hero .nav-pilula a.nav-alertas:hover { background: rgba(255, 255, 255, 0.12); }
 
 .botao-tema {
   justify-self: end; display: inline-flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 12px;
@@ -496,7 +506,7 @@
   .hero-rodape { font-size: 10.5px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .nav-indicador, .nav-pilula a, .marca, .botao-tema, .botao-contorno { transition: none; }
+  .nav-indicador, .nav-pilula a, .nav-pilula a.nav-alertas, .marca, .botao-tema, .botao-contorno { transition: none; }
 }
 
 /* --- Acessibilidade e peças pequenas --------------------------------------------------- */
@@ -896,7 +906,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
  * Um cartão em duas colunas: texto e aviso de privacidade à esquerda, formulário à direita (uma
  * coluna só abaixo de 900px). Um único botão de ação; erros em --erro (estado do formulário, não
  * uma cor de dado), sempre com texto. */
-.lista-espera { position: relative; overflow: hidden; scroll-margin-top: 84px; }
+/* no fim da página, entre a Troca e o Método, fora dos blocos numerados: o respiro de cima é dele */
+.lista-espera { position: relative; overflow: hidden; scroll-margin-top: 84px; margin-top: 56px; }
 .lista-espera::before {
   content: ""; position: absolute; inset: 0 auto 0 0; width: 3px;
   background: linear-gradient(180deg, var(--cobalto), #7c87f2 55%, #4fc3f7);
@@ -904,6 +915,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .le-grade { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 24px 56px; align-items: start; padding: 6px 4px 4px 8px; }
 .le-texto .kicker { color: var(--texto-2); }
 .le-titulo { margin: 14px 0 0; color: var(--titulo); font: 300 clamp(28px, 3.1vw, 40px)/1.05 var(--fonte); letter-spacing: -0.03em; text-wrap: balance; }
+.le-titulo:focus { outline: none; }
 .le-lead { margin: 14px 0 0; max-width: 46ch; font-size: 15px; line-height: 1.55; }
 .le-lgpd {
   display: flex; gap: 10px; align-items: flex-start; margin: 18px 0 0; max-width: 52ch; padding: 10px 12px;
@@ -945,6 +957,13 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* isca para robôs: fora da tela (inert e aria-hidden no HTML) */
 .le-isca { position: absolute; left: -10000px; top: 0; width: 1px; height: 1px; overflow: hidden; }
 .le-turnstile { min-height: 65px; }
+/* o widget do Turnstile só carrega quando alguém usa o formulário: até lá, um aviso no lugar dele e do
+   mesmo tamanho (nada de caixa vazia, e nada pula quando o widget chega) */
+.le-turnstile-espera {
+  display: flex; align-items: center; gap: 10px; box-sizing: border-box; min-height: 65px; margin: 0; padding: 10px 14px;
+  border: 1px dashed var(--borda); border-radius: 4px; background: var(--lavagem); color: var(--texto-2); font-size: 13px; line-height: 1.4;
+}
+.le-turnstile-espera svg { flex: none; width: 18px; height: 18px; color: var(--titulo); }
 .le-nota { margin: 6px 0 0; color: var(--texto-3); font-size: 12px; line-height: 1.45; }
 .le-nota.alerta { color: var(--erro); }
 .le-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
@@ -979,7 +998,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .le-sucesso .le-nota { max-width: 48ch; font-size: 13px; color: var(--texto-2); }
 @media (max-width: 899px) { .le-grade { grid-template-columns: 1fr; gap: 22px; } }
 @media (max-width: 560px) {
-  .lista-espera { padding: 16px 14px; }
+  .lista-espera { padding: 16px 14px; margin-top: 40px; }
   .le-grade { padding: 4px 0 0 4px; }
   .le-form { grid-template-columns: 1fr; }
 }

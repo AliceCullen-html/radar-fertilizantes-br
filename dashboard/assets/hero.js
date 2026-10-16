@@ -24,7 +24,9 @@
   const nav = document.getElementById("nav-secoes");
   const indicador = nav.querySelector(".nav-indicador");
   const progresso = barra.querySelector(".barra-progresso");
-  const links = [...nav.querySelectorAll("a[data-secao]")];
+  // o "Receber alertas" é um convite, não uma seção dos dados: fica fora do indicador (que segue a ordem
+  // do menu; a lista de espera vem antes do Método na página) e só usa a rolagem do clique, lá embaixo
+  const links = [...nav.querySelectorAll("a[data-secao]:not(.nav-alertas)")];
   const hero = document.getElementById("inicio");
   let ativa = null;
 

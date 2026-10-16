@@ -251,7 +251,10 @@ Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
 - Legendas de FOB e CIF (`dl.termos`) no resumo, no gráfico de preços e no Brasil x mercado
   internacional, e o glossário (`#glossario`, no Método; o link usa `data-secao` para não trocar
   o hash dos filtros). Definições iguais às do README.
-- Lista de espera (seção "Receba alertas do seu mercado", logo depois do card do boletim):
+- Lista de espera (seção "Receba alertas do seu mercado", no fim da página: depois da Troca e antes
+  do Método e do rodapé, fora dos blocos numerados, porque os dados vêm primeiro). O item "Receber
+  alertas", último do menu, com contorno e fora do indicador (que segue a ordem das seções), rola
+  até ela e põe o foco no título (`#t-lista-espera`); no celular, cabe na pílula que rola de lado.
   `dashboard/assets/lista-espera.js` envia para a Edge Function `supabase/functions/lista-espera`
   (lógica em `inscricao.ts`; testes em `supabase/functions/tests/`, `deno test supabase/functions`,
   sem nenhuma permissão). Só o código fica aqui: o deploy é feito por fora, sem verificação de JWT
@@ -277,7 +280,9 @@ Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
   mensagem do Postgres (ela traz os valores da linha). A URL da função e a site key do Turnstile
   são públicas e ficam no HTML; o script do Turnstile vem da Cloudflare sem SRI (ela não permite
   fixar a versão) e só carrega quando alguém usa o formulário (foco, toque ou envio), não quando a
-  seção aparece. O formulário é `method="post"` e o botão vem `disabled` no HTML, ligado pelo
+  seção aparece nem pelo clique no "Receber alertas". Até lá, o aviso `#le-turnstile-espera`, da
+  altura do widget, ocupa o lugar dele (nunca uma caixa vazia; "Carregando…" e "não carregou" nos
+  outros estados). O formulário é `method="post"` e o botão vem `disabled` no HTML, ligado pelo
   script: sem JavaScript nada sai. Um único botão de ação na seção e nada de doação no site: o
   apoio é pelo GitHub Sponsors (`.github/FUNDING.yml`), citado só no README. O
   `.github/workflows/keepalive.yml` chama `public.ping()` uma vez por dia com

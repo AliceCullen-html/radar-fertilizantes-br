@@ -5,7 +5,8 @@
  * função (data-funcao do formulário) e a site key do Turnstile (data-sitekey) ficam no HTML e são
  * públicas: nenhum segredo passa pela página. O script do Turnstile vem da Cloudflare sem SRI (a
  * Cloudflare atualiza o arquivo e não permite fixar nem copiar a versão) e só carrega quando alguém
- * usa o formulário (foco, toque ou envio): quem só passa pela página não fala com a Cloudflare. A
+ * usa o formulário (foco, toque ou envio): quem só passa pela página não fala com a Cloudflare, e um
+ * aviso ocupa o lugar do widget até ele aparecer (nunca uma caixa vazia). A
  * origem da visita (utm_source e utm_campaign da URL) vai junto, para medir qual post trouxe cada
  * inscrição. Sem JavaScript, o botão fica desligado (nada sai pela URL).
  */
@@ -77,6 +78,8 @@
   const erroGeral = $("le-erro");
   const notaTurnstile = $("le-turnstile-nota");
   const notaPadrao = notaTurnstile.textContent;
+  // aviso no lugar do widget até ele aparecer (o script só carrega quando alguém usa o formulário)
+  const esperaTurnstile = $("le-turnstile-espera")?.querySelector("span");
   const FUNCAO = form.dataset.funcao;
 
   // --- Origem da visita: utm_source e utm_campaign, limpos e curtos -------------------------
@@ -179,6 +182,9 @@
     notaTurnstile.textContent = mensagem || notaPadrao;
     notaTurnstile.classList.toggle("alerta", Boolean(mensagem));
   }
+  function aviso(texto) {
+    if (esperaTurnstile?.isConnected) esperaTurnstile.textContent = texto;
+  }
   function receberToken(novo) {
     token = novo;
     nota("");
@@ -191,6 +197,7 @@
   }
   function renderizar() {
     if (!window.turnstile || widget !== null) return;
+    caixaTurnstile.replaceChildren(); // sai o aviso, entra o widget
     widget = window.turnstile.render(caixaTurnstile, {
       sitekey: caixaTurnstile.dataset.sitekey,
       action: ACAO,
@@ -208,11 +215,12 @@
   function carregarTurnstile() {
     if (carregado) return;
     carregado = true;
+    aviso("Carregando a verificação…");
     window.radarTurnstilePronto = renderizar;
     const script = document.createElement("script");
     script.src = SCRIPT_TURNSTILE;
     script.async = true;
-    script.onerror = () => { nota(ERROS.turnstile); falharEsperas(); };
+    script.onerror = () => { aviso("A verificação não carregou."); nota(ERROS.turnstile); falharEsperas(); };
     document.head.append(script);
   }
   // o token vale uma vez: depois de cada envio que chegou a ser conferido, um novo desafio
