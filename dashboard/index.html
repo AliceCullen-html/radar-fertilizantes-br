@@ -52,6 +52,7 @@
       <a href="#precos" data-secao="precos">Preços</a>
       <a href="#troca" data-secao="troca">Troca</a>
       <a href="#metodo" data-secao="metodo">Método</a>
+      <a class="nav-alertas" href="#lista-espera" data-secao="lista-espera">Receber alertas</a>
   </nav>
   <button class="botao-tema" id="botao-tema" type="button" aria-label="Alternar tema claro ou escuro">
     <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1.5v11a5.5 5.5 0 0 1 0-11Z"/></svg>
@@ -181,91 +182,6 @@
         </details>
         <p class="rodape-boletim" id="rodape-boletim"></p>
         <div class="links" id="links-boletim"></div>
-      </div>
-    </section>
-
-    <!-- Lista de espera (assets/lista-espera.js): envia para a Edge Function supabase/functions/lista-espera,
-         que confere o Turnstile e grava no Supabase. A URL da função e a site key do Turnstile são públicas. -->
-    <section class="cartao grade lista-espera" aria-labelledby="titulo-lista-espera" id="lista-espera">
-      <div class="le-grade">
-        <div class="le-texto">
-          <p class="kicker">Lista de espera</p>
-          <h3 class="le-titulo" id="titulo-lista-espera">Receba alertas do seu mercado</h3>
-          <p class="le-lead">Alerta no dia em que o dado sai, já interpretado para o seu recorte: o produto, a origem e o porto que importam para você. Entre na lista para ser avisado quando abrir.</p>
-          <p class="le-lgpd" id="le-lgpd"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg><span>Seus dados servem só para avisar sobre o produto. Não são vendidos nem compartilhados, e a exclusão pode ser pedida a qualquer momento por <a href="mailto:contato@graaos.cloud">contato@graaos.cloud</a>. Eles ficam guardados no Supabase, e a verificação anti-robô é da Cloudflare (<a href="https://github.com/mvsantos-dev/graaos#lista-de-espera-e-privacidade">detalhes</a>).</span></p>
-        </div>
-        <form class="le-form" id="le-form" method="post" novalidate data-funcao="https://recqdysmwfltkrhrhdjx.supabase.co/functions/v1/lista-espera">
-          <div class="le-campo">
-            <label for="le-nome">Nome</label>
-            <input id="le-nome" name="nome" type="text" autocomplete="name" maxlength="120" required aria-required="true" aria-describedby="le-nome-erro">
-            <p class="le-erro-campo" id="le-nome-erro" hidden></p>
-          </div>
-          <div class="le-campo">
-            <label for="le-email">E-mail</label>
-            <input id="le-email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" maxlength="254" required aria-required="true" aria-describedby="le-email-erro">
-            <p class="le-erro-campo" id="le-email-erro" hidden></p>
-          </div>
-          <div class="le-campo">
-            <label for="le-empresa">Empresa <span class="le-opcional">(opcional)</span></label>
-            <input id="le-empresa" name="empresa" type="text" autocomplete="organization" maxlength="160" aria-describedby="le-empresa-erro">
-            <p class="le-erro-campo" id="le-empresa-erro" hidden></p>
-          </div>
-          <div class="le-campo">
-            <label for="le-cargo">Cargo <span class="le-opcional">(opcional)</span></label>
-            <input id="le-cargo" name="cargo" type="text" autocomplete="organization-title" maxlength="120" aria-describedby="le-cargo-erro">
-            <p class="le-erro-campo" id="le-cargo-erro" hidden></p>
-          </div>
-          <div class="le-campo largo">
-            <label for="le-segmento">Segmento</label>
-            <select id="le-segmento" name="segmento" required aria-required="true" aria-describedby="le-segmento-erro">
-              <option value="" selected disabled>Escolha o seu segmento</option>
-              <option value="revenda">Revenda</option>
-              <option value="cooperativa">Cooperativa</option>
-              <option value="trading">Trading</option>
-              <option value="industria">Indústria</option>
-              <option value="logistica">Logística</option>
-              <option value="consultoria">Consultoria</option>
-              <option value="produtor">Produtor rural</option>
-              <option value="outro">Outro</option>
-            </select>
-            <p class="le-erro-campo" id="le-segmento-erro" hidden></p>
-          </div>
-          <fieldset class="le-interesses largo" id="le-interesses" aria-describedby="le-interesses-erro">
-            <legend>O que você quer receber <span class="le-opcional">(marque quantos quiser)</span></legend>
-            <div class="le-opcoes">
-              <label class="le-opcao"><input type="checkbox" name="interesses" value="alertas"><span>Alertas personalizados</span></label>
-              <label class="le-opcao"><input type="checkbox" name="interesses" value="watchlist"><span>Watchlist de produtos, origens e portos</span></label>
-              <label class="le-opcao"><input type="checkbox" name="interesses" value="api"><span>API</span></label>
-              <label class="le-opcao"><input type="checkbox" name="interesses" value="relatorios"><span>Relatórios</span></label>
-              <label class="le-opcao"><input type="checkbox" name="interesses" value="mcp"><span>Perguntar ao Claude via MCP</span></label>
-            </div>
-            <p class="le-erro-campo" id="le-interesses-erro" hidden></p>
-          </fieldset>
-          <div class="le-campo largo">
-            <label class="le-opcao le-aceite"><input id="le-consentimento" name="consentimento_lgpd" type="checkbox" required aria-required="true" aria-describedby="le-lgpd le-consentimento-erro"><span>Aceito que meus dados sejam usados só para me avisar sobre o produto.</span></label>
-            <p class="le-erro-campo" id="le-consentimento-erro" hidden></p>
-          </div>
-          <!-- isca para robôs: fora da tela, do teclado e dos leitores de tela; preenchida, o envio é descartado -->
-          <div class="le-isca" aria-hidden="true" inert>
-            <label for="le-website">Site</label>
-            <input id="le-website" name="website" type="text" tabindex="-1" autocomplete="off">
-          </div>
-          <div class="le-verificacao largo">
-            <div class="le-turnstile" id="le-turnstile" data-sitekey="0x4AAAAAAFYdiHT5aqpj-sA2"></div>
-            <p class="le-nota" id="le-turnstile-nota">Verificação anti-robô da Cloudflare (Turnstile).</p>
-          </div>
-          <div class="le-acoes largo">
-            <button class="le-botao" id="le-enviar" type="submit" disabled><span class="le-giro" aria-hidden="true"></span><span id="le-enviar-rotulo">Entrar na lista</span></button>
-            <p class="le-status" id="le-status" role="status" aria-live="polite"></p>
-            <noscript><p class="le-nota">Para entrar na lista, ative o JavaScript: o envio e a verificação anti-robô dependem dele.</p></noscript>
-          </div>
-          <p class="le-erro largo" id="le-erro" role="alert" hidden></p>
-        </form>
-        <div class="le-sucesso" id="le-sucesso" tabindex="-1" hidden>
-          <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12.5 20.5l5 5 10-11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <p class="le-sucesso-titulo">Pronto! Você está na lista.</p>
-          <p class="le-nota">Quando abrir, o aviso chega no e-mail que você informou. Para sair da lista, escreva para <a href="mailto:contato@graaos.cloud">contato@graaos.cloud</a>.</p>
-        </div>
       </div>
     </section>
 
@@ -519,6 +435,95 @@
         <details class="tabela"><summary>Ver tabela</summary><div class="rolagem" id="tabela-troca"></div></details>
       </div>
     </section>
+    </section>
+
+    <!-- Lista de espera (assets/lista-espera.js), no fim da página: os dados vêm primeiro, e o item "Receber
+         alertas" do menu traz até aqui. Envia para a Edge Function supabase/functions/lista-espera, que confere o
+         Turnstile e grava no Supabase. A URL da função e a site key do Turnstile são públicas. -->
+    <section class="cartao grade lista-espera" aria-labelledby="t-lista-espera" id="lista-espera">
+      <div class="le-grade">
+        <div class="le-texto">
+          <p class="kicker">Lista de espera</p>
+          <h2 class="le-titulo" id="t-lista-espera" tabindex="-1">Receba alertas do seu mercado</h2>
+          <p class="le-lead">Alerta no dia em que o dado sai, já interpretado para o seu recorte: o produto, a origem e o porto que importam para você. Entre na lista para ser avisado quando abrir.</p>
+          <p class="le-lgpd" id="le-lgpd"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg><span>Seus dados servem só para avisar sobre o produto. Não são vendidos nem compartilhados, e a exclusão pode ser pedida a qualquer momento por <a href="mailto:contato@graaos.cloud">contato@graaos.cloud</a>. Eles ficam guardados no Supabase, e a verificação anti-robô é da Cloudflare (<a href="https://github.com/mvsantos-dev/graaos#lista-de-espera-e-privacidade">detalhes</a>).</span></p>
+        </div>
+        <form class="le-form" id="le-form" method="post" novalidate data-funcao="https://recqdysmwfltkrhrhdjx.supabase.co/functions/v1/lista-espera">
+          <div class="le-campo">
+            <label for="le-nome">Nome</label>
+            <input id="le-nome" name="nome" type="text" autocomplete="name" maxlength="120" required aria-required="true" aria-describedby="le-nome-erro">
+            <p class="le-erro-campo" id="le-nome-erro" hidden></p>
+          </div>
+          <div class="le-campo">
+            <label for="le-email">E-mail</label>
+            <input id="le-email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" maxlength="254" required aria-required="true" aria-describedby="le-email-erro">
+            <p class="le-erro-campo" id="le-email-erro" hidden></p>
+          </div>
+          <div class="le-campo">
+            <label for="le-empresa">Empresa <span class="le-opcional">(opcional)</span></label>
+            <input id="le-empresa" name="empresa" type="text" autocomplete="organization" maxlength="160" aria-describedby="le-empresa-erro">
+            <p class="le-erro-campo" id="le-empresa-erro" hidden></p>
+          </div>
+          <div class="le-campo">
+            <label for="le-cargo">Cargo <span class="le-opcional">(opcional)</span></label>
+            <input id="le-cargo" name="cargo" type="text" autocomplete="organization-title" maxlength="120" aria-describedby="le-cargo-erro">
+            <p class="le-erro-campo" id="le-cargo-erro" hidden></p>
+          </div>
+          <div class="le-campo largo">
+            <label for="le-segmento">Segmento</label>
+            <select id="le-segmento" name="segmento" required aria-required="true" aria-describedby="le-segmento-erro">
+              <option value="" selected disabled>Escolha o seu segmento</option>
+              <option value="revenda">Revenda</option>
+              <option value="cooperativa">Cooperativa</option>
+              <option value="trading">Trading</option>
+              <option value="industria">Indústria</option>
+              <option value="logistica">Logística</option>
+              <option value="consultoria">Consultoria</option>
+              <option value="produtor">Produtor rural</option>
+              <option value="outro">Outro</option>
+            </select>
+            <p class="le-erro-campo" id="le-segmento-erro" hidden></p>
+          </div>
+          <fieldset class="le-interesses largo" id="le-interesses" aria-describedby="le-interesses-erro">
+            <legend>O que você quer receber <span class="le-opcional">(marque quantos quiser)</span></legend>
+            <div class="le-opcoes">
+              <label class="le-opcao"><input type="checkbox" name="interesses" value="alertas"><span>Alertas personalizados</span></label>
+              <label class="le-opcao"><input type="checkbox" name="interesses" value="watchlist"><span>Watchlist de produtos, origens e portos</span></label>
+              <label class="le-opcao"><input type="checkbox" name="interesses" value="api"><span>API</span></label>
+              <label class="le-opcao"><input type="checkbox" name="interesses" value="relatorios"><span>Relatórios</span></label>
+              <label class="le-opcao"><input type="checkbox" name="interesses" value="mcp"><span>Perguntar ao Claude via MCP</span></label>
+            </div>
+            <p class="le-erro-campo" id="le-interesses-erro" hidden></p>
+          </fieldset>
+          <div class="le-campo largo">
+            <label class="le-opcao le-aceite"><input id="le-consentimento" name="consentimento_lgpd" type="checkbox" required aria-required="true" aria-describedby="le-lgpd le-consentimento-erro"><span>Aceito que meus dados sejam usados só para me avisar sobre o produto.</span></label>
+            <p class="le-erro-campo" id="le-consentimento-erro" hidden></p>
+          </div>
+          <!-- isca para robôs: fora da tela, do teclado e dos leitores de tela; preenchida, o envio é descartado -->
+          <div class="le-isca" aria-hidden="true" inert>
+            <label for="le-website">Site</label>
+            <input id="le-website" name="website" type="text" tabindex="-1" autocomplete="off">
+          </div>
+          <div class="le-verificacao largo">
+            <!-- o widget só carrega quando alguém usa o formulário; até lá, este aviso ocupa o lugar dele -->
+            <div class="le-turnstile" id="le-turnstile" data-sitekey="0x4AAAAAAFYdiHT5aqpj-sA2">
+              <p class="le-turnstile-espera" id="le-turnstile-espera"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 2.5 3.6v3.9c0 3.2 2.3 5.9 5.5 7 3.2-1.1 5.5-3.8 5.5-7V3.6L8 1.5Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="m5.6 8 1.7 1.7 3.2-3.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>A verificação aparece aqui quando você começar a preencher.</span></p>
+            </div>
+            <p class="le-nota" id="le-turnstile-nota">Verificação anti-robô da Cloudflare (Turnstile).</p>
+          </div>
+          <div class="le-acoes largo">
+            <button class="le-botao" id="le-enviar" type="submit" disabled><span class="le-giro" aria-hidden="true"></span><span id="le-enviar-rotulo">Entrar na lista</span></button>
+            <p class="le-status" id="le-status" role="status" aria-live="polite"></p>
+            <noscript><p class="le-nota">Para entrar na lista, ative o JavaScript: o envio e a verificação anti-robô dependem dele.</p></noscript>
+          </div>
+          <p class="le-erro largo" id="le-erro" role="alert" hidden></p>
+        </form>
+        <div class="le-sucesso" id="le-sucesso" tabindex="-1" hidden>
+          <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12.5 20.5l5 5 10-11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <p class="le-sucesso-titulo">Pronto! Você está na lista.</p>
+          <p class="le-nota">Quando abrir, o aviso chega no e-mail que você informou. Para sair da lista, escreva para <a href="mailto:contato@graaos.cloud">contato@graaos.cloud</a>.</p>
+        </div>
+      </div>
     </section>
 
     <section class="bloco" id="metodo" aria-labelledby="t-metodo">

@@ -3,6 +3,7 @@ referências externas da página. O mapa de pontos é testado em test_mapa.py.""
 
 import re
 import unicodedata
+from html.parser import HTMLParser
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -44,7 +45,7 @@ def test_terceiros_so_jsdelivr_turnstile_e_a_funcao_da_lista_de_espera():
 def test_lista_de_espera_textos_turnstile_isca_e_um_botao_so():
     html = (DASH / "index.html").read_text(encoding="utf-8")
     secao = re.search(r'<section class="cartao grade lista-espera".*?</section>', html, re.S).group(0)
-    assert ">Receba alertas do seu mercado</h3>" in secao
+    assert ">Receba alertas do seu mercado</h2>" in secao
     assert ("Alerta no dia em que o dado sai, já interpretado para o seu recorte: o produto, a origem e o porto que "
             "importam para você. Entre na lista para ser avisado quando abrir.") in secao
     assert "Pronto! Você está na lista." in secao
@@ -71,6 +72,62 @@ def test_lista_de_espera_textos_turnstile_isca_e_um_botao_so():
     # um único botão de ação na seção e nada de doação no site
     assert len(re.findall(r"<button\b", secao)) == 1
     assert not re.search(r"\b(?:doa[çc][ãa]o|doar|sponsors?|patroc[ií]nio|apoie|pix)\b", html, re.I)
+
+
+class _Secoes(HTMLParser):
+    """Ids das <section> filhas diretas do <main>, na ordem da página."""
+
+    def __init__(self):
+        super().__init__()
+        self.no_main, self.profundidade, self.ids = False, 0, []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "main":
+            self.no_main = True
+        elif tag == "section" and self.no_main:
+            if self.profundidade == 0:
+                self.ids.append(dict(attrs).get("id"))
+            self.profundidade += 1
+
+    def handle_endtag(self, tag):
+        if tag == "main":
+            self.no_main = False
+        elif tag == "section" and self.no_main:
+            self.profundidade -= 1
+
+
+def test_lista_de_espera_no_fim_da_pagina_com_o_item_receber_alertas_no_menu():
+    html = (DASH / "index.html").read_text(encoding="utf-8")
+    # os dados vêm primeiro: a lista fica depois da Troca e antes do Método (e do rodapé), fora dos blocos numerados
+    secoes = _Secoes()
+    secoes.feed(html)
+    dados = ["boletim", "volumes", "origens", "fluxos", "portos", "precos", "troca"]
+    assert secoes.ids == [*dados, "lista-espera", "metodo"]
+    # menu: as seções na ordem da página e, no fim, o convite, que rola até a lista (sem mexer no hash dos filtros)
+    menu = re.search(r'<nav class="nav-pilula" id="nav-secoes".*?</nav>', html, re.S).group(0)
+    assert re.findall(r'<a href="#(\w+)" data-secao="\1">', menu) == [*dados, "metodo"]
+    assert menu.rstrip().endswith('<a class="nav-alertas" href="#lista-espera" data-secao="lista-espera">Receber alertas</a>\n  </nav>')
+    # o título é o alvo do foco do clique (t-<seção>, como nos blocos) e dá nome à seção
+    assert '<section class="cartao grade lista-espera" aria-labelledby="t-lista-espera" id="lista-espera">' in html
+    assert '<h2 class="le-titulo" id="t-lista-espera" tabindex="-1">Receba alertas do seu mercado</h2>' in html
+    # o convite fica fora do indicador do menu (que segue a ordem das seções) e tem contorno próprio
+    assert 'nav.querySelectorAll("a[data-secao]:not(.nav-alertas)")' in (DASH / "assets" / "hero.js").read_text(encoding="utf-8")
+    css = (DASH / "assets" / "radar.css").read_text(encoding="utf-8")
+    assert re.search(r"\.nav-pilula a\.nav-alertas \{[^}]*box-shadow: inset 0 0 0 1px", css)
+
+
+def test_turnstile_tem_aviso_no_lugar_ate_carregar():
+    # o script só carrega quando alguém usa o formulário; até lá, um aviso ocupa o lugar do widget (nada de caixa
+    # vazia), e ele sai da caixa logo antes de o Turnstile desenhar o widget
+    html = (DASH / "index.html").read_text(encoding="utf-8")
+    caixa = re.search(r'<div class="le-turnstile" id="le-turnstile" data-sitekey="[^"]+">(.*?)</div>', html, re.S).group(1)
+    assert 'id="le-turnstile-espera"' in caixa
+    assert "<span>A verificação aparece aqui quando você começar a preencher.</span>" in caixa
+    js = (DASH / "assets" / "lista-espera.js").read_text(encoding="utf-8")
+    renderizar = re.search(r"function renderizar\(\) \{(.*?)\n  \}", js, re.S).group(1)
+    assert renderizar.index("caixaTurnstile.replaceChildren()") < renderizar.index("window.turnstile.render(")
+    assert 'aviso("Carregando a verificação…")' in js and 'aviso("A verificação não carregou.")' in js
+    assert re.search(r"\.le-turnstile-espera \{[^}]*min-height: 65px", (DASH / "assets" / "radar.css").read_text(encoding="utf-8"))
 
 
 def _regexes(texto):

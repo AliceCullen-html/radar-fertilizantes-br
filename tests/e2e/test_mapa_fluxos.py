@@ -768,8 +768,9 @@ FUNCAO_LISTA = "https://recqdysmwfltkrhrhdjx.supabase.co/functions/v1/lista-espe
 CORS_FALSO = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "content-type", "Access-Control-Allow-Methods": "POST, OPTIONS"}
 
 
-def _lista(navegador, servidor, respostas=(), largura=1440, tema="light", busca=""):
-    """Página com o Turnstile e a função falsos. `respostas`: (status, corpo), "rede" ou "segurar"."""
+def _lista(navegador, servidor, respostas=(), largura=1440, tema="light", busca="", turnstile_falha=False):
+    """Página com o Turnstile e a função falsos. `respostas`: (status, corpo), "rede" ou "segurar".
+    Com `turnstile_falha`, o script do Turnstile não carrega (como com um bloqueador)."""
     ctx = navegador.new_context(viewport={"width": largura, "height": 900}, color_scheme=tema, reduced_motion="reduce")
     pg = ctx.new_page()
     erros, envios, cargas, segurados = [], [], [], []
@@ -781,6 +782,8 @@ def _lista(navegador, servidor, respostas=(), largura=1440, tema="light", busca=
 
     def turnstile(rota):
         cargas.append(rota.request.url)
+        if turnstile_falha:
+            return rota.abort()
         rota.fulfill(status=200, content_type="application/javascript", body=TURNSTILE_FALSO)
 
     def funcao(rota):
@@ -832,7 +835,7 @@ def test_lista_de_espera_envia_com_a_origem_da_visita_e_mostra_o_sucesso(navegad
         "sitekey": "0x4AAAAAAFYdiHT5aqpj-sA2", "action": "lista-espera", "theme": "light",
         "size": "flexible", "language": "pt-br", "campo": False,
     }
-    assert pg.evaluate("document.getElementById('titulo-lista-espera').textContent") == "Receba alertas do seu mercado"
+    assert pg.evaluate("document.getElementById('t-lista-espera').textContent") == "Receba alertas do seu mercado"
     _preencher(pg)
     pg.click("#le-enviar")
     # enviando: botão ocupado (mas com foco), status anunciado, nada de segundo envio
@@ -946,6 +949,87 @@ def test_lista_de_espera_no_celular_no_teclado_e_no_tema_escuro(navegador, servi
     pg.keyboard.press("Enter")
     assert pg.evaluate("document.getElementById('le-nome-erro').hidden") is False
     assert r["envios"] == [] and r["erros"] == []
+    ctx.close()
+
+
+CONVITE = "document.querySelector('#nav-secoes .nav-alertas')"
+
+
+def test_lista_de_espera_no_fim_e_o_convite_do_menu_rola_ate_ela(navegador, servidor):
+    ctx, pg, r = _lista(navegador, servidor)
+    # os dados vêm primeiro: a lista fica entre a Troca e o Método, na ordem do HTML e na tela
+    assert pg.evaluate("[...document.querySelectorAll('main > section')].map((s) => s.id)") == [
+        "boletim", "volumes", "origens", "fluxos", "portos", "precos", "troca", "lista-espera", "metodo"]
+    faixas = pg.evaluate("""() => ['secao-troca', 'lista-espera', 'metodo'].map((id) => {
+      const b = document.getElementById(id).getBoundingClientRect(); return [b.top + scrollY, b.bottom + scrollY]; })""")
+    assert faixas[0][1] < faixas[1][0] and faixas[1][1] < faixas[2][0]
+    # o convite: último item do menu, o único com contorno, em cima do hero e fora dele
+    assert pg.evaluate(f"{CONVITE}.textContent") == "Receber alertas"
+    assert pg.evaluate(f"{CONVITE} === document.getElementById('nav-secoes').lastElementChild")
+    sombras = "[...document.querySelectorAll('#nav-secoes a')].map((a) => getComputedStyle(a).boxShadow)"
+    for _ in range(2):
+        s = pg.evaluate(sombras)
+        assert s[-1] != "none" and all(x == "none" for x in s[:-1]), s
+        pg.evaluate("window.scrollTo(0, document.getElementById('volumes').offsetTop)")
+        pg.wait_for_timeout(200)
+    # o clique rola até a lista (abaixo da barra), põe o foco no título e não mexe no hash dos filtros
+    pg.click("#nav-secoes .nav-alertas")
+    pg.wait_for_timeout(400)
+    assert 40 <= pg.evaluate("document.getElementById('lista-espera').getBoundingClientRect().top") <= 90
+    assert pg.evaluate("document.activeElement.id") == "t-lista-espera"
+    assert "lista-espera" not in pg.evaluate("location.hash")
+    # o indicador do menu fica nas seções dos dados: nunca no convite
+    assert pg.evaluate(f"{CONVITE}.hasAttribute('aria-current')") is False
+    assert pg.evaluate("document.querySelector('#nav-secoes a[aria-current]').dataset.secao") == "troca"
+    # chegar à seção não carrega o Turnstile; até alguém usar o formulário, um aviso ocupa o lugar do widget
+    assert r["cargas"] == []
+    assert pg.evaluate("document.getElementById('le-turnstile-espera').textContent") == (
+        "A verificação aparece aqui quando você começar a preencher.")
+    assert pg.evaluate("document.getElementById('le-turnstile').getBoundingClientRect().height") == 65
+    pg.focus("#le-nome")
+    pg.wait_for_function("window.__turnstile && window.__turnstile.renders.length === 1", timeout=10_000)
+    # o widget entra no lugar do aviso, na mesma altura, acima da nota e do botão
+    assert pg.evaluate("document.getElementById('le-turnstile-espera')") is None
+    assert pg.evaluate("document.getElementById('le-turnstile').textContent") == "verificação simulada"
+    lugar = pg.evaluate("""() => { const c = document.getElementById('le-turnstile').getBoundingClientRect();
+      const n = document.getElementById('le-turnstile-nota').getBoundingClientRect(), b = document.getElementById('le-enviar').getBoundingClientRect();
+      return [c.height, c.bottom <= n.top + 1, n.bottom <= b.top + 1]; }""")
+    assert lugar == [65, True, True]
+    assert r["erros"] == []
+    ctx.close()
+
+
+def test_convite_do_menu_cabe_no_celular(navegador, servidor):
+    ctx, pg, r = _lista(navegador, servidor, largura=390, tema="dark")
+    nav = "document.getElementById('nav-secoes')"
+    # uma linha só, na altura dos outros itens, e nada passa da largura da tela
+    medidas = pg.evaluate(f"""() => {{ const n = {nav}, a = n.querySelector('.nav-alertas'), b = n.querySelector('a[data-secao=boletim]');
+      return [a.offsetTop === b.offsetTop, a.offsetHeight === b.offsetHeight, n.offsetHeight,
+              document.documentElement.scrollWidth - document.documentElement.clientWidth]; }}""")
+    assert medidas[:2] == [True, True] and medidas[2] <= 44 and medidas[3] == 0, medidas
+    # a pílula rola de lado: no fim dela, o convite aparece inteiro dentro da barra
+    pg.evaluate(f"{nav}.scrollLeft = {nav}.scrollWidth")
+    pg.wait_for_timeout(200)
+    assert pg.evaluate(f"""() => {{ const n = {nav}.getBoundingClientRect(), a = {CONVITE}.getBoundingClientRect();
+      return a.left >= n.left - 0.5 && a.right <= n.right + 0.5 && a.right <= document.documentElement.clientWidth; }}""")
+    pg.click("#nav-secoes .nav-alertas")
+    pg.wait_for_timeout(400)
+    assert 40 <= pg.evaluate("document.getElementById('lista-espera').getBoundingClientRect().top") <= 90
+    assert pg.evaluate("document.activeElement.id") == "t-lista-espera"
+    assert r["cargas"] == [] and r["erros"] == []
+    ctx.close()
+
+
+def test_aviso_do_turnstile_quando_o_script_nao_carrega(navegador, servidor):
+    ctx, pg, r = _lista(navegador, servidor, turnstile_falha=True)
+    pg.evaluate("window.scrollTo(0, document.getElementById('lista-espera').getBoundingClientRect().top + scrollY - 80)")
+    pg.focus("#le-nome")
+    pg.wait_for_function("document.getElementById('le-turnstile-nota').classList.contains('alerta')", timeout=10_000)
+    # nada de caixa vazia nem de "carregando" sem fim: o aviso diz que não carregou e a nota explica
+    assert pg.evaluate("document.getElementById('le-turnstile-espera').textContent") == "A verificação não carregou."
+    assert pg.evaluate("document.getElementById('le-turnstile-nota').textContent").startswith(
+        "A verificação anti-robô da Cloudflare não carregou.")
+    assert len(r["cargas"]) == 1 and r["erros"] == []
     ctx.close()
 
 
