@@ -1,7 +1,7 @@
 # CLAUDE.md: Graaos
 
 Graaos — hub de inteligência de mercado do agro e da logística, com dados públicos. Repositório:
-https://github.com/AliceCullen-html/graaos (antes radar-fertilizantes-br; a pasta local e o
+https://github.com/mvsantos-dev/graaos (antes radar-fertilizantes-br; a pasta local e o
 pacote `src/` mantêm os nomes). **O repositório é PÚBLICO.**
 
 Módulos: **Fertilizantes**, o que existe hoje (no ar em https://radar.graaos.cloud/, e se
@@ -38,7 +38,9 @@ Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
 ### Autoria dos commits
 
 - Commits saem SOMENTE com a identidade git do mantenedor:
-  `Marcus Santos <77951123+AliceCullen-html@users.noreply.github.com>`.
+  `Marcus Santos <77951123+mvsantos-dev@users.noreply.github.com>`. Os commits antigos, com o
+  e-mail noreply do nome de usuário anterior (o mesmo ID 77951123), continuam ligados à conta:
+  nunca reescrever o histórico para trocá-los.
 - Única exceção, autorizada pelo mantenedor: os commits automáticos da fase 4
   (`.github/workflows/atualizacao.yml`) saem como
   `github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>`, sempre com a
@@ -52,7 +54,7 @@ Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
 
   ```bash
   git config user.name "Marcus Santos"
-  git config user.email "77951123+AliceCullen-html@users.noreply.github.com"
+  git config user.email "77951123+mvsantos-dev@users.noreply.github.com"
   git config commit.gpgsign false
   ```
 
@@ -109,7 +111,9 @@ Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
   lê `dashboard.json`. Para ver localmente: `python -m http.server` na raiz e abrir
   `/dashboard/`. O deploy é feito pelo `.github/workflows/pages.yml` (push na main que mude
   `dashboard/`, o `dashboard.json` ou o `boletins/latest.json`, ou manual), sem segredos. Pré-requisito: Settings →
-  Pages → Source: "GitHub Actions".
+  Pages → Source: "GitHub Actions". O espelho do Pages fica em https://mvsantos-dev.github.io/Graaos/:
+  o endereço segue o nome do usuário e o do repositório, que se chama `Graaos`, e o caminho
+  diferencia maiúsculas (`/graaos/` dá 404); o endereço antigo não redireciona.
   O site é montado SÓ pelo `build_site.sh` (Pages em `_site`; Cloudflare em `site/`, publicado pelo
   `wrangler.jsonc` com `"assets": {"directory": "./site"}`): `dashboard/` mais `dashboard.json` e
   `boletim.json` na raiz, que é onde o `index.html` os busca. O script termina com exit 1 se faltar

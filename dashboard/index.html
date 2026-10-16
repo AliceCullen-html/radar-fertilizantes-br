@@ -486,7 +486,7 @@
     <span id="rodape-datas"></span>
     <span>Base cartográfica: Natural Earth (domínio público). Fontes tipográficas Inter Tight e JetBrains Mono (SIL OFL 1.1).</span>
     <span><strong>Graaos</strong> — hub de inteligência de mercado do agro e da logística, com dados públicos. Este é o módulo Fertilizantes.</span>
-    <span>Código e dados: <a href="https://github.com/AliceCullen-html/graaos">github.com/AliceCullen-html/graaos</a></span>
+    <span>Código e dados: <a href="https://github.com/mvsantos-dev/graaos">github.com/mvsantos-dev/graaos</a></span>
   </footer>
 </div>
 <div class="dica" id="dica" hidden></div>
@@ -2067,7 +2067,7 @@ function alternarTema() {
 const REPOSITORIO = (() => {
   const dono = location.hostname.match(/^([a-z0-9-]+)\.github\.io$/i);
   const repo = location.pathname.split("/")[1];
-  return dono && /^[\w.-]+$/.test(repo ?? "") ? `https://github.com/${dono[1]}/${repo}` : "https://github.com/AliceCullen-html/graaos";
+  return dono && /^[\w.-]+$/.test(repo ?? "") ? `https://github.com/${dono[1]}/${repo}` : "https://github.com/mvsantos-dev/graaos";
 })();
 async function carregarBoletim() {
   for (const url of ["boletim.json", "../boletins/latest.json"]) {
