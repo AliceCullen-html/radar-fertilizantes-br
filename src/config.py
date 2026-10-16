@@ -1,4 +1,4 @@
-"""Configurações do radar-fertilizantes-br.
+"""Configurações do Graaos (módulo Fertilizantes).
 
 Tudo aqui é público. Segredos, se um dia existirem, vêm SOMENTE de variáveis de
 ambiente (veja .env.example) e nunca são escritos em código.
@@ -28,7 +28,7 @@ BOLETINS_DIR = RAIZ / "boletins"
 API_BASE_URL = "https://api-comexstat.mdic.gov.br"
 API_HOST = urlsplit(API_BASE_URL).hostname
 IDIOMA = "pt"
-USER_AGENT = "radar-fertilizantes-br (+https://github.com/AliceCullen-html/radar-fertilizantes-br)"
+USER_AGENT = "graaos (+https://github.com/AliceCullen-html/graaos)"
 
 ENDPOINT_CONSULTA = "/general"
 ENDPOINT_ULTIMA_ATUALIZACAO = "/general/dates/updated"

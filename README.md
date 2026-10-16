@@ -1,14 +1,27 @@
-# radar-fertilizantes-br
+# Graaos
 
-[![CI](https://github.com/AliceCullen-html/radar-fertilizantes-br/actions/workflows/ci.yml/badge.svg)](https://github.com/AliceCullen-html/radar-fertilizantes-br/actions/workflows/ci.yml)
+**Graaos — hub de inteligência de mercado do agro e da logística, com dados públicos.**
 
-**Dashboard: [alicecullen-html.github.io/radar-fertilizantes-br](https://alicecullen-html.github.io/radar-fertilizantes-br/)**
+[![CI](https://github.com/AliceCullen-html/graaos/actions/workflows/ci.yml/badge.svg)](https://github.com/AliceCullen-html/graaos/actions/workflows/ci.yml)
 
-[![Dashboard com os KPIs de setembro de 2026 e as toneladas importadas por mês, por grupo de fertilizante](dashboard/print.png)](https://alicecullen-html.github.io/radar-fertilizantes-br/)
+**Fertilizantes, o primeiro módulo, está no ar: [radar.graaos.cloud](https://radar.graaos.cloud/)**
 
-Radar das importações brasileiras de fertilizantes, feito apenas com dados públicos do
-[Comex Stat](https://comexstat.mdic.gov.br/), do Ministério do Desenvolvimento, Indústria,
-Comércio e Serviços (MDIC), comparados com os preços internacionais da
+[![Graaos · Fertilizantes: KPIs de setembro de 2026 e toneladas importadas por mês, por grupo de fertilizante](dashboard/print.png)](https://radar.graaos.cloud/)
+
+## Módulos
+
+| Módulo | Situação |
+| --- | --- |
+| **Fertilizantes**: importações brasileiras de adubos (N, P, K e NPK), com volumes, origens, portos, rotas e frete, preços, mercado internacional e relação de troca com a soja | no ar em [radar.graaos.cloud](https://radar.graaos.cloud/) |
+| **Logística portuária**: fila, espera e terminais nos portos | planejado |
+| **Grãos** | planejado |
+
+O hub cobre granéis sólidos, grãos e logística. Granéis líquidos (óleos vegetais, químicos e
+combustíveis) ficam de fora.
+
+O módulo **Fertilizantes** acompanha as importações brasileiras de fertilizantes só com dados
+públicos do [Comex Stat](https://comexstat.mdic.gov.br/), do Ministério do Desenvolvimento,
+Indústria, Comércio e Serviços (MDIC), comparados com os preços internacionais da
 [Pink Sheet do Banco Mundial](#brasil-x-mercado-internacional-fase-6) e convertidos para reais
 pela PTAX do Banco Central. Os dados e o dashboard se atualizam sozinhos todo mês
 ([fase 4](#atualização-automática-fase-4)), com um [boletim escrito por IA](#boletim-mensal-com-ia-fase-5)
@@ -18,7 +31,7 @@ em que todos os números são inseridos e conferidos pelo programa.
 
 ## O que é
 
-O Brasil importa a maior parte dos fertilizantes que usa. Este projeto baixa, mês a mês,
+O Brasil importa a maior parte dos fertilizantes que usa. O módulo Fertilizantes baixa, mês a mês,
 as importações de adubos minerais e químicos e organiza os dados para responder perguntas
 como: de onde vem o potássio? Por quais portos entra a ureia? Quanto se paga, em média,
 pela tonelada de MAP? Quanto custa o frete de cada rota, do país de origem ao porto?
@@ -106,7 +119,7 @@ Resumo PTAX venda, média mensal (BCB, SGS 3698) 2015-01 a 2026-09
 
 ## Dashboard (fase 3)
 
-O [dashboard](https://alicecullen-html.github.io/radar-fertilizantes-br/) é uma página estática (`dashboard/index.html`) que lê o
+O [dashboard](https://radar.graaos.cloud/) é uma página estática (`dashboard/index.html`) que lê o
 `data/processed/dashboard.json`. Mostra:
 
 - o [boletim do mês](#boletim-mensal-com-ia-fase-5), num card no topo, com link para o histórico;
@@ -476,7 +489,7 @@ todo), e um mês antigo não tira o mais recente do `latest.json`.
 ### Use com a sua IA
 
 1. **Só ler o dashboard.** Nada a configurar: o boletim do mês fica no topo do
-   [dashboard](https://alicecullen-html.github.io/radar-fertilizantes-br/) e o histórico em
+   [dashboard](https://radar.graaos.cloud/) e o histórico em
    [`boletins/`](boletins/).
 2. **Fork com o seu próprio secret.** Faça um fork. No fork, abra a aba **Actions** e ative
    os workflows (o GitHub os deixa desligados em forks). Em **Settings → Environments**,
@@ -510,7 +523,7 @@ todo), e um mês antigo não tira o mais recente do `latest.json`.
    esquema (80 ou 443). Modelos locais pequenos
    tendem a reprovar mais na validação, mas a regra é a mesma: número inventado não passa.
 4. **MCP com o Claude Desktop** (fase 10, ainda não implementada): um servidor MCP local
-   para consultar os dados do radar direto do Claude Desktop.
+   para consultar os dados do Graaos direto do Claude Desktop.
 
 ## Dados brutos
 
@@ -597,7 +610,7 @@ Como os números são calculados:
 
 ### Rotas e frete por rota
 
-[![Diagrama de fluxo das importações de 2026 (jan-set), das maiores origens para as maiores URFs, e a tabela de frete por rota](dashboard/print-rotas.png)](https://alicecullen-html.github.io/radar-fertilizantes-br/)
+[![Diagrama de fluxo das importações de 2026 (jan-set), das maiores origens para as maiores URFs, e a tabela de frete por rota](dashboard/print-rotas.png)](https://radar.graaos.cloud/)
 
 Uma rota é o par país de origem → URF de desembaraço, somado no ano (`rotas_ano.csv`). O
 frete US$/t da rota é o frete total ÷ toneladas, isto é, a média ponderada pelo peso.
@@ -618,7 +631,7 @@ frete US$/t da rota é o frete total ÷ toneladas, isto é, a média ponderada p
 
 ### Relação de troca no porto
 
-[![Relação de troca no porto entre soja e KCl, ureia e MAP, de 2015 a 2026, com a média histórica de cada produto](dashboard/print-troca.png)](https://alicecullen-html.github.io/radar-fertilizantes-br/)
+[![Relação de troca no porto entre soja e KCl, ureia e MAP, de 2015 a 2026, com a média histórica de cada produto](dashboard/print-troca.png)](https://radar.graaos.cloud/)
 
 Quantas toneladas de soja exportada pagam 1 t de fertilizante importado, mês a mês
 (`src/troca.py`):
@@ -648,7 +661,7 @@ A relação é US$/US$ e não muda com o câmbio: a soja e o fertilizante estão
 
 ### Custo por nutriente (custo por molécula)
 
-[![Custo por tonelada de nutriente no porto, de 2015 a 2026: ureia (N), MAP (P₂O₅) e KCl (K₂O)](dashboard/print-nutrientes.png)](https://alicecullen-html.github.io/radar-fertilizantes-br/)
+[![Custo por tonelada de nutriente no porto, de 2015 a 2026: ureia (N), MAP (P₂O₅) e KCl (K₂O)](dashboard/print-nutrientes.png)](https://radar.graaos.cloud/)
 
 O que se compra no adubo é o nutriente. Uma tonelada de ureia traz 460 kg de N; uma de KCl,
 600 kg de K₂O. Para comparar produtos diferentes, `src/nutrientes.py` divide o preço CIF pelo
@@ -689,7 +702,7 @@ Fonte: Comex Stat/MDIC; BCB/PTAX.
 
 ### Importações por estado
 
-[![Painel do Brasil por estado no mapa do topo: um quadrado por UF, na cor da variação de 2025 sobre 2024, com as maiores altas e quedas em toneladas](dashboard/print-estados.png)](https://alicecullen-html.github.io/radar-fertilizantes-br/)
+[![Painel do Brasil por estado no mapa do topo: um quadrado por UF, na cor da variação de 2025 sobre 2024, com as maiores altas e quedas em toneladas](dashboard/print-estados.png)](https://radar.graaos.cloud/)
 
 O Comex Stat traz a UF de cada importação: a **UF de destino da mercadoria**, qualquer que seja
 a sede do importador, e não a UF do porto de chegada. Mato Grosso, sem porto, aparece entre os
@@ -709,7 +722,7 @@ Fonte: Comex Stat/MDIC.
 
 ## Brasil x mercado internacional (fase 6)
 
-[![Preço do KCl importado pelo Brasil contra o benchmark do Banco Mundial, de 2015 a 2026, com a mudança de base em 2020, e o spread na base comparável](dashboard/print-benchmark.png)](https://alicecullen-html.github.io/radar-fertilizantes-br/)
+[![Preço do KCl importado pelo Brasil contra o benchmark do Banco Mundial, de 2015 a 2026, com a mudança de base em 2020, e o spread na base comparável](dashboard/print-benchmark.png)](https://radar.graaos.cloud/)
 
 Compara, mês a mês, o preço implícito pago pelo Brasil com o preço internacional de
 referência (benchmark) da [Pink Sheet do Banco Mundial](https://www.worldbank.org/en/research/commodity-markets),
@@ -868,7 +881,7 @@ job. Os nomes estão em [`.env.example`](.env.example). Nenhum teste depende de 
 - [x] **Fase 1:** ingestão incremental via API do Comex Stat (`src/ingest.py`).
 - [x] **Fase 2:** `src/transform.py` com preço US$/t, shares com variação anual, HHI,
   sazonalidade e o `dashboard.json`.
-- [x] **Fase 3:** [dashboard estático](https://alicecullen-html.github.io/radar-fertilizantes-br/) no GitHub Pages, lendo `data/processed/dashboard.json`.
+- [x] **Fase 3:** [dashboard estático](https://radar.graaos.cloud/) na Cloudflare e no GitHub Pages, lendo `data/processed/dashboard.json`.
 - [x] Rotas origem → porto (diagrama de fluxo e frete por rota) e relação de troca soja x
   fertilizante no porto.
 - [x] **Fase 4:** [atualização automática mensal](#atualização-automática-fase-4) da
@@ -882,7 +895,7 @@ job. Os nomes estão em [`.env.example`](.env.example). Nenhum teste depende de 
 - [ ] **Fase 7:** logística portuária com dados da ANTAQ (fila, espera, terminais).
 - [ ] **Fase 8:** demanda e cobertura (CONAB).
 - [ ] **Fase 9:** projeção de curto prazo.
-- [ ] **Fase 10:** servidor MCP para consultar o radar no Claude Desktop.
+- [ ] **Fase 10:** servidor MCP para consultar o Graaos no Claude Desktop.
 
 ## Fonte dos dados
 

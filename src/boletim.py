@@ -59,8 +59,8 @@ NOTA_BENCHMARK = (
 )
 NOTA_MAP = "O MAP é comparado com o DAP do Banco Mundial, que não publica série de MAP."
 NOTA_PTAX = "CIF em reais pela PTAX venda média do mês (BCB, SGS 3698), e não pelo câmbio da data de cada declaração."
-REPOSITORIO = "https://github.com/AliceCullen-html/radar-fertilizantes-br"
-DASHBOARD = "https://alicecullen-html.github.io/radar-fertilizantes-br/"
+REPOSITORIO = "https://github.com/AliceCullen-html/graaos"
+DASHBOARD = "https://radar.graaos.cloud/"
 NOTA_TROCA = (
     "Relação de troca medida no porto: soja exportada (FOB) x fertilizante importado (CIF). Não é o"
     " preço pago pelo produtor, que inclui frete interno, impostos e margens."
@@ -530,7 +530,7 @@ def _fatos_benchmark(f: Fatos, bm: dict | None, mes: str) -> None:
 
 # --- Prompt -------------------------------------------------------------------------------
 
-SISTEMA = """Você é analista de inteligência de mercado e escreve o boletim mensal do Radar das importações brasileiras de fertilizantes, com dados públicos do Comex Stat/MDIC, do Banco Mundial (Pink Sheet) e do Banco Central (PTAX).
+SISTEMA = """Você é analista de inteligência de mercado e escreve o boletim mensal do Graaos · Fertilizantes, sobre as importações brasileiras de fertilizantes, com dados públicos do Comex Stat/MDIC, do Banco Mundial (Pink Sheet) e do Banco Central (PTAX).
 
 Você recebe um PACOTE DE FATOS em JSON: cada chave tem um valor já formatado e uma descrição. Escreva um boletim curto em português do Brasil a partir desses fatos.
 
@@ -1750,7 +1750,7 @@ def markdown(conteudo: dict, meta: dict) -> str:
     if meta["mock"]:
         linhas += ["> **Exemplo do modo --mock:** texto fixo de demonstração, sem IA.", ""]
     linhas += [
-        f"*Boletim de {meta['mes_referencia']} · importações brasileiras de fertilizantes · Fonte: {meta['fonte']}*",
+        f"*Graaos · Fertilizantes · boletim de {meta['mes_referencia']} · importações brasileiras de fertilizantes · Fonte: {meta['fonte']}*",
         "",
         f"**{conteudo['lead']}**",
         "",

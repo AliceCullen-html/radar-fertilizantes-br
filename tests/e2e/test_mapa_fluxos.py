@@ -620,7 +620,9 @@ def test_custo_por_nutriente_um_produto_por_nutriente_moeda_e_tracos(navegador, 
     esperado = pg.evaluate(f"({NUTRIENTES})(['ureia', 'map', 'kcl'])")
     valores = [f"US$ {_milhar(e['custo'])}/t de {simbolo}" if e["t"] and not e["pequena"] else "–" for e, simbolo in zip(esperado, ("N", "P₂O₅", "K₂O"))]
     # os números contam a partir de zero ao aparecer: espera o valor final
-    pg.wait_for_function(f"JSON.stringify([...document.querySelectorAll('#kpis-nutrientes .valor')].map((v) => v.textContent)) === {json.dumps(json.dumps(valores, ensure_ascii=False, separators=(",", ":")), ensure_ascii=False)}", timeout=5_000)
+    # (o literal sai fora da f-string: aspas iguais dentro dela só valem do Python 3.12 em diante)
+    alvo = json.dumps(json.dumps(valores, ensure_ascii=False, separators=(",", ":")), ensure_ascii=False)
+    pg.wait_for_function(f"JSON.stringify([...document.querySelectorAll('#kpis-nutrientes .valor')].map((v) => v.textContent)) === {alvo}", timeout=5_000)
     for (rotulo, _), e in zip(pg.evaluate(kpis), esperado):
         assert rotulo.startswith(e["nome"])
     pg.click("#unidade-nutrientes button:nth-child(2)")

@@ -3,17 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Radar das importações de fertilizantes</title>
-<meta name="description" content="Importações brasileiras de fertilizantes (N, P, K e NPK) desde 2015: volumes, origens, portos, rotas e frete, preços, comparação com o mercado internacional, relação de troca com a soja e concentração de fornecedores. Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX.">
+<title>Graaos · Fertilizantes</title>
+<meta name="description" content="Graaos · Fertilizantes: importações brasileiras de fertilizantes (N, P, K e NPK) desde 2015: volumes, origens, portos, rotas e frete, preços, comparação com o mercado internacional, relação de troca com a soja e concentração de fornecedores. Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX.">
 <meta name="color-scheme" content="light dark">
 <!-- Preenchido pelo workflow de deploy com a data do último commit que alterou os dados. -->
 <meta name="atualizado" content="">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Radar das importações de fertilizantes">
-<meta property="og:description" content="Volumes, rotas origem → porto, frete, preços, Brasil x mercado internacional, relação de troca com a soja e concentração das importações brasileiras de fertilizantes desde 2015. Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX.">
-<meta property="og:url" content="https://alicecullen-html.github.io/radar-fertilizantes-br/">
-<meta property="og:image" content="https://alicecullen-html.github.io/radar-fertilizantes-br/preview.png">
+<meta property="og:site_name" content="Graaos">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:title" content="Graaos · Fertilizantes">
+<meta property="og:description" content="Importações brasileiras de fertilizantes desde 2015: volumes, rotas origem → porto, frete, preços, Brasil x mercado internacional e relação de troca com a soja. Um módulo do Graaos, hub de inteligência de mercado do agro e da logística, com dados públicos. Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX.">
+<meta property="og:url" content="https://radar.graaos.cloud/">
+<meta property="og:image" content="https://radar.graaos.cloud/preview.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Graaos · Fertilizantes: mapa-múndi em pontos com as rotas das maiores origens das importações brasileiras de fertilizantes">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Graaos · Fertilizantes">
+<meta name="twitter:description" content="Importações brasileiras de fertilizantes desde 2015: volumes, rotas origem → porto, frete, preços, Brasil x mercado internacional e relação de troca com a soja. Um módulo do Graaos, hub de inteligência de mercado do agro e da logística, com dados públicos. Fonte: Comex Stat/MDIC; Banco Mundial (Pink Sheet); BCB/PTAX.">
+<meta name="twitter:image" content="https://radar.graaos.cloud/preview.png">
+<meta name="twitter:image:alt" content="Graaos · Fertilizantes: mapa-múndi em pontos com as rotas das maiores origens das importações brasileiras de fertilizantes">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='7' width='3' height='8' rx='1' fill='%232a78d6'/%3E%3Crect x='6' y='3' width='3' height='12' rx='1' fill='%23eb6834'/%3E%3Crect x='11' y='9' width='3' height='6' rx='1' fill='%231baf7a'/%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous" defer></script>
 <link rel="preload" href="assets/fontes/inter-tight-latin-300-normal.woff2" as="font" type="font/woff2" crossorigin>
@@ -31,7 +40,7 @@
 <div class="fundo-pontos" aria-hidden="true"></div>
 <header class="barra-topo sobre-hero" id="barra-topo">
   <span class="barra-progresso" aria-hidden="true"></span>
-  <a class="marca" href="#inicio" data-secao="inicio"><strong>Radar</strong><span>de fertilizantes</span></a>
+  <a class="marca" href="#inicio" data-secao="inicio"><strong>Graaos</strong><span>Fertilizantes</span></a>
   <nav class="nav-pilula" id="nav-secoes" aria-label="Seções">
     <span class="nav-indicador" aria-hidden="true"></span>
       <a href="#boletim" data-secao="boletim">Boletim</a>
@@ -53,7 +62,7 @@
   <canvas class="mapa-pontos" id="mapa-hero" aria-hidden="true"></canvas>
   <svg class="rotas-hero" id="rotas-hero" aria-hidden="true" focusable="false"></svg>
   <div class="hero-conteudo">
-    <p class="chip-legenda">Do país de origem ao porto de chegada.</p>
+    <p class="chip-legenda">Graaos · Fertilizantes</p>
     <div class="hero-texto">
       <p class="kicker" id="kicker-hero" aria-live="polite">Importações brasileiras de fertilizantes</p>
       <h1 id="titulo-hero">De onde vem o adubo do Brasil</h1>
@@ -476,7 +485,8 @@
     <span class="fonte" id="fonte-rodape">Fonte: Comex Stat/MDIC</span>
     <span id="rodape-datas"></span>
     <span>Base cartográfica: Natural Earth (domínio público). Fontes tipográficas Inter Tight e JetBrains Mono (SIL OFL 1.1).</span>
-    <span>Código e dados: <a href="https://github.com/AliceCullen-html/radar-fertilizantes-br">github.com/AliceCullen-html/radar-fertilizantes-br</a></span>
+    <span><strong>Graaos</strong> — hub de inteligência de mercado do agro e da logística, com dados públicos. Este é o módulo Fertilizantes.</span>
+    <span>Código e dados: <a href="https://github.com/AliceCullen-html/graaos">github.com/AliceCullen-html/graaos</a></span>
   </footer>
 </div>
 <div class="dica" id="dica" hidden></div>
@@ -2057,7 +2067,7 @@ function alternarTema() {
 const REPOSITORIO = (() => {
   const dono = location.hostname.match(/^([a-z0-9-]+)\.github\.io$/i);
   const repo = location.pathname.split("/")[1];
-  return dono && /^[\w.-]+$/.test(repo ?? "") ? `https://github.com/${dono[1]}/${repo}` : "https://github.com/AliceCullen-html/radar-fertilizantes-br";
+  return dono && /^[\w.-]+$/.test(repo ?? "") ? `https://github.com/${dono[1]}/${repo}` : "https://github.com/AliceCullen-html/graaos";
 })();
 async function carregarBoletim() {
   for (const url of ["boletim.json", "../boletins/latest.json"]) {

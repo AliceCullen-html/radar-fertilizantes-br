@@ -1,10 +1,20 @@
-# CLAUDE.md: radar-fertilizantes-br
+# CLAUDE.md: Graaos
 
-Radar das importações brasileiras de fertilizantes (capítulo 31, posições 3102 a 3105),
-feito só com dados abertos oficiais: Comex Stat/MDIC, Pink Sheet do Banco Mundial e PTAX do
-BCB. **O repositório é PÚBLICO.**
+Graaos — hub de inteligência de mercado do agro e da logística, com dados públicos. Repositório:
+https://github.com/AliceCullen-html/graaos (antes radar-fertilizantes-br; a pasta local e o
+pacote `src/` mantêm os nomes). **O repositório é PÚBLICO.**
+
+Módulos: **Fertilizantes**, o que existe hoje (no ar em https://radar.graaos.cloud/, e se
+apresenta como "Graaos · Fertilizantes"): importações brasileiras de fertilizantes (capítulo 31,
+posições 3102 a 3105), só com dados abertos oficiais: Comex Stat/MDIC, Pink Sheet do Banco
+Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
 
 ## Regras inegociáveis
+
+### Escopo do hub
+
+- O Graaos cobre granéis sólidos, grãos e logística. NÃO cobre granéis líquidos (óleos vegetais,
+  químicos, combustíveis): nada de módulo, série, gráfico ou texto sobre eles.
 
 ### Segurança (repositório público)
 
@@ -105,7 +115,8 @@ BCB. **O repositório é PÚBLICO.**
   `boletim.json` na raiz, que é onde o `index.html` os busca. O script termina com exit 1 se faltar
   o `index.html`, um dado ou um asset, ou se um JSON for inválido; não relaxar essas verificações
   nem montar o site de outro jeito em outro lugar. Sem segredos no `wrangler.jsonc` (nada de
-  `account_id` nem `vars`).
+  `account_id` nem `vars`). O `"name"` do `wrangler.jsonc` continua `radar-fertilizantes-br`: é o
+  nome do Worker na Cloudflare, de antes do rebranding para Graaos; trocar cria um Worker novo.
 - Fase 4: `.github/workflows/atualizacao.yml` roda nos dias 1 a 15 de cada mês. Se o mês
   anterior já está gravado (`--ultimo-gravado`), encerra sem chamar nenhuma fonte; senão faz a
   ingestão incremental das quatro séries (Pink Sheet e PTAX primeiro; o Comex Stat só até o
