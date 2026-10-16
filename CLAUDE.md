@@ -121,10 +121,10 @@ Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
   `boletim.json` na raiz, que é onde o `index.html` os busca. O script termina com exit 1 se faltar
   o `index.html`, um dado ou um asset, ou se um JSON for inválido; não relaxar essas verificações
   nem montar o site de outro jeito em outro lugar. Sem segredos no `wrangler.jsonc` (nada de
-  `account_id` nem `vars`). O `"name"` do `wrangler.jsonc` é `graaos`, o nome do Worker na
-  Cloudflare (renomeado de `radar-fertilizantes-br` no painel): os dois andam juntos. O Workers
-  Builds usa o nome do Worker conectado (Wrangler 3 ou mais novo), mas um `wrangler deploy` fora
-  dele usa este nome, e um nome que não existe lá cria um Worker novo.
+  `account_id` nem `vars`). O `"name"` do `wrangler.jsonc` continua `radar-fertilizantes-br`, o
+  nome de antes do rebranding para Graaos. O Workers Builds usa o nome do Worker conectado ao
+  repositório (`graaos`, no painel), mas com `"graaos"` no arquivo o build de produção falhou
+  (fe7cd4b, revertido): não trocar o nome sem conferir no painel da Cloudflare.
 - Fase 4: `.github/workflows/atualizacao.yml` roda nos dias 1 a 15 de cada mês. Se o mês
   anterior já está gravado (`--ultimo-gravado`), encerra sem chamar nenhuma fonte; senão faz a
   ingestão incremental das quatro séries (Pink Sheet e PTAX primeiro; o Comex Stat só até o

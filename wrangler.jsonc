@@ -1,13 +1,12 @@
 // Deploy do dashboard na Cloudflare (Workers com assets estáticos), sem nenhum segredo.
 // O build monta o site em ./site com `bash build_site.sh` (index.html, assets/, dashboard.json
-// e boletim.json na raiz) e o `npx wrangler deploy` publica essa pasta. O "name" é o do Worker na
-// Cloudflare: graaos (renomeado no painel; antes radar-fertilizantes-br). Os dois andam juntos: o
-// Workers Builds usa o nome do Worker conectado ao repositório, mas um `wrangler deploy` fora dele
-// publica no Worker com este nome (e um nome que não existe lá cria um Worker novo, fora do
-// domínio radar.graaos.cloud).
+// e boletim.json na raiz) e o `npx wrangler deploy` publica essa pasta. O "name" continua
+// radar-fertilizantes-br, o nome de antes do rebranding para Graaos. O Workers Builds usa o nome
+// do Worker conectado ao repositório (graaos, no painel), mas com "graaos" aqui o build de
+// produção falhou (fe7cd4b, revertido): não trocar este nome sem conferir no painel da Cloudflare.
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "graaos",
+  "name": "radar-fertilizantes-br",
   "compatibility_date": "2026-10-01",
   "assets": {
     "directory": "./site"
