@@ -1,0 +1,41 @@
+# Mantém ativo o projeto do Supabase da lista de espera (o plano gratuito pausa projetos parados).
+# Uma vez por dia chama a função public.ping(), que só devolve 'ok' e é liberada para anon, pela API
+# REST com a chave publishable. Essa chave é pública por definição e vem da variável de repositório
+# SUPABASE_PUBLISHABLE_KEY (Settings → Secrets and variables → Actions → Variables), nunca do
+# código. Sem nenhum segredo e só com permissão de leitura.
+name: Keepalive do Supabase
+
+on:
+  schedule:
+    - cron: "17 9 * * *" # todo dia às 09:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: https://recqdysmwfltkrhrhdjx.supabase.co
+      SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - name: POST /rest/v1/rpc/ping
+        run: |
+          if [ -z "${SUPABASE_PUBLISHABLE_KEY}" ]; then
+            echo "::error::Defina a variável de repositório SUPABASE_PUBLISHABLE_KEY (Settings → Secrets and variables → Actions → Variables)."
+            exit 1
+          fi
+          # a chave publishable vai só no cabeçalho apikey (não é um JWT para o Authorization)
+          resposta="$(curl --silent --show-error --fail-with-body --max-time 30 \
+            --retry 3 --retry-all-errors --retry-delay 10 \
+            -X POST "${SUPABASE_URL}/rest/v1/rpc/ping" \
+            -H "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
+            -H "Content-Type: application/json" \
+            --data '{}')"
+          echo "ping: ${resposta}"
+          case "${resposta}" in
+            *ok*) ;;
+            *) echo "::error::O ping respondeu sem 'ok'."; exit 1 ;;
+          esac
