@@ -2,7 +2,7 @@
 
 **Graaos — hub de inteligência de mercado do agro e da logística, com dados públicos.**
 
-[![CI](https://github.com/AliceCullen-html/graaos/actions/workflows/ci.yml/badge.svg)](https://github.com/AliceCullen-html/graaos/actions/workflows/ci.yml)
+[![CI](https://github.com/mvsantos-dev/graaos/actions/workflows/ci.yml/badge.svg)](https://github.com/mvsantos-dev/graaos/actions/workflows/ci.yml)
 
 **Fertilizantes, o primeiro módulo, está no ar: [radar.graaos.cloud](https://radar.graaos.cloud/)**
 
@@ -174,7 +174,8 @@ O Chart.js 4.5.1 vem do jsDelivr com versão fixa e verificação de integridade
 Para ver localmente, rode `python -m http.server` na raiz do repositório e abra
 <http://localhost:8000/dashboard/>.
 
-O workflow [`pages.yml`](.github/workflows/pages.yml) publica o dashboard no GitHub Pages a
+O workflow [`pages.yml`](.github/workflows/pages.yml) publica o dashboard no GitHub Pages, em
+<https://mvsantos-dev.github.io/Graaos/>, o espelho do site principal, a
 cada push na `main` que altere `dashboard/`, o `dashboard.json` ou o `boletins/latest.json`
 (publicado como `boletim.json`), ou manualmente, em
 Actions → Pages → Run workflow. Ele não usa nenhum segredo; o único pré-requisito é, em

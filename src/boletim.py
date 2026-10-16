@@ -59,7 +59,7 @@ NOTA_BENCHMARK = (
 )
 NOTA_MAP = "O MAP é comparado com o DAP do Banco Mundial, que não publica série de MAP."
 NOTA_PTAX = "CIF em reais pela PTAX venda média do mês (BCB, SGS 3698), e não pelo câmbio da data de cada declaração."
-REPOSITORIO = "https://github.com/AliceCullen-html/graaos"
+REPOSITORIO = "https://github.com/mvsantos-dev/graaos"
 DASHBOARD = "https://radar.graaos.cloud/"
 NOTA_TROCA = (
     "Relação de troca medida no porto: soja exportada (FOB) x fertilizante importado (CIF). Não é o"
