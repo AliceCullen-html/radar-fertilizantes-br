@@ -137,6 +137,11 @@
   const botaoVoltar = $("fluxos-voltar");
   const botaoPlay = $("fluxos-play");
   const botaoPausa = $("fluxos-pausa");
+  // dica do painel: em tela de toque, "Toque" no lugar de "Clique" e sem o atalho do Esc
+  const toque = matchMedia("(pointer: coarse)");
+  const mostrarDica = (texto) => {
+    $("fluxos-dica").textContent = toque.matches ? texto.replace(/(^|\. )Clique/g, "$1Toque").replace(/ Esc volta\.$/, "") : texto;
+  };
   const faixa = $("fluxos-ano");
   const saidaAno = $("fluxos-ano-valor");
   const marcas = $("fluxos-marcas");
@@ -1048,7 +1053,12 @@
     return alvos.length > 1 ? alvos : [alvos[0], centroIso("BRA")];
   }
   function cameraDoEstado() {
-    if (estado.sel) return enquadrar(caixaDe(alvosDaSelecao()), { minimo: geral.z, maximo: geral.z * 7 });
+    if (estado.sel) {
+      // porto sem rota acima do corte: o porto e o centro do Brasil, sem chegar perto demais da grade
+      const sel = estado.sel;
+      const semRota = sel.tipo === "porto" && !recorte().rotas.some((x) => x[1] === sel.i);
+      return enquadrar(caixaDe(alvosDaSelecao()), { minimo: geral.z, maximo: geral.z * (semRota ? 3.5 : 7) });
+    }
     if (visaoPortos()) {
       const portos = recorte().portos.slice(0, 10).map((p) => posPorto(p[0]));
       if (portos.length) return enquadrar(caixaDe(portos), { folga: 0.35, minimo: geral.z, maximo: geral.z * 5 });
@@ -1221,7 +1231,7 @@
     const porPais = estado.visao === "origens";
     $("fluxos-painel-kicker").textContent = `${NOME_LONGO[estado.grupo]} · ${ano}`;
     titulo.textContent = porPais ? "Principais origens" : "Principais portos";
-    $("fluxos-dica").textContent = porPais ? "Clique num país, no mapa ou na lista, para ver por quais portos ele entra." : "Clique num porto para ver de onde vem a carga.";
+    mostrarDica(porPais ? "Clique num país, no mapa ou na lista, para ver por quais portos ele entra." : "Clique num porto para ver de onde vem a carga.");
     $("fluxos-lista-titulo").textContent = "";
     cabecalhoLista("toneladas", "% do total · var. a/a");
     const n = quantasOrigens();
@@ -1256,7 +1266,7 @@
     const o = r.origens.find((x) => x[0] === sel.co);
     $("fluxos-painel-kicker").textContent = `Origem · ${NOME_LONGO[estado.grupo]} · ${ano}`;
     titulo.textContent = nomePais(sel.co);
-    $("fluxos-dica").textContent = "Clique num porto da lista para ver todas as origens dele. Esc volta.";
+    mostrarDica("Clique num porto da lista para ver todas as origens dele. Esc volta.");
     const linha = (rotulo, id) => el("div", {}, el("dt", {}, rotulo), el("dd", { id }));
     const rotuloShare = estado.grupo === "TOTAL" ? "Share no total" : `Share dos ${DESCRICAO_GRUPO[estado.grupo]}`;
     if (numeros.dataset.tipo !== "origem") {
@@ -1294,7 +1304,7 @@
     const tp = r.portos.find((x) => x[0] === sel.i)?.[1] ?? 0;
     $("fluxos-painel-kicker").textContent = `Porto · ${NOME_LONGO[estado.grupo]} · ${ano}`;
     titulo.textContent = `${p.nome} (${p.uf})`;
-    $("fluxos-dica").textContent = "Clique num país da lista para ver todos os portos dele. Esc volta.";
+    mostrarDica("Clique num país da lista para ver todos os portos dele. Esc volta.");
     const linha = (rotulo, id) => el("div", {}, el("dt", {}, rotulo), el("dd", { id }));
     if (numeros.dataset.tipo !== "porto") {
       numeros.replaceChildren(linha("Toneladas recebidas", "fx-pt"), linha("Share no total importado", "fx-pshare"), linha("Origens acima do corte", "fx-pn"));
@@ -1386,7 +1396,7 @@
     const { linhas, resto, r } = dadosComparacao();
     $("fluxos-painel-kicker").textContent = `${NOME_LONGO[estado.grupo]} · ${ano}`;
     titulo.textContent = "Comparar portos";
-    $("fluxos-dica").textContent = "Ordene pelos títulos das colunas. Clique num porto para ver de onde vem a carga.";
+    mostrarDica("Ordene pelos títulos das colunas. Clique num porto para ver de onde vem a carga.");
     $("fluxos-lista-titulo").textContent = "";
     montarCabecalhoComparacao();
     const legenda = $("fluxos-cmp-legenda");
