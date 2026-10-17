@@ -918,6 +918,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     linear-gradient(to left, color-mix(in srgb, var(--texto) 16%, transparent), transparent) right / 14px 100% no-repeat scroll;
 }
 @media (max-width: 600px) {
+  /* "Ver tabela" com área de toque confortável no celular. */
+  details.tabela summary { min-height: 44px; }
   .cartao .rolagem { -webkit-overflow-scrolling: touch; }
   /* separate: com collapse, as bordas da coluna parada se desencontram das linhas ao rolar */
   .cartao .rolagem table { border-collapse: separate; border-spacing: 0; }
