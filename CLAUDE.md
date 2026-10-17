@@ -96,7 +96,10 @@ Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
   leia com `src.benchmark.ler_pink()` e `ler_ptax()`.
 - Rotas (`rotas_ano.csv` e bloco "rotas" do dashboard.json): país de origem → URF por ano.
   Frete por rota só para rotas com ≥ 50 mil t no ano (`CORTE_ROTA_T`, proporcional em ano
-  parcial). O Sankey é SVG próprio, sem lib externa. Fluxo de entrada (anime.js, no script
+  parcial). O Sankey é SVG próprio, sem lib externa. No celular (caixa com menos de 560 px), os
+  nós vão para as bordas e os rótulos para dentro, sobre as fitas, com halo da cor do cartão
+  (classe `.dentro`); a tabela de frete por rota perde a posição e a barra e usa o nome curto da
+  URF. Fluxo de entrada (anime.js, no script
   principal): ao aparecer na tela e a cada troca de grupo ou ano, uma máscara com a linha do meio
   de cada fita se desenha (`svg.createDrawable`) e as fitas "escorrem" das origens para as URFs;
   tema e largura não repetem o fluxo; sem movimento, nada fica escondido; a impressão anula a
@@ -214,8 +217,10 @@ Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
   do mar quando cabe, sem sobreposição) com linha-guia (`.guia`); nos outros estados, o rótulo
   de porto vai na posição livre que cobre menos pontos do Brasil. Câmera: zoom e deslocamento
   juntos pelo caminho de van Wijk (o do `d3.interpolateZoom`); com ela andando, os rótulos
-  saem e, quando ela para, voltam em cascata (`.entra`). No celular, palco de pelo menos 300 px
-  e "Visão geral" compacto. Manter: resumo acima do mapa e ranking
+  saem e, quando ela para, voltam em cascata (`.entra`). No celular, palco de pelo menos 300 px,
+  "Visão geral" compacto (área de toque de 44 px por `::after`), pausa só com ícone ao lado dos
+  grupos e alvos de toque de 40 px ou mais; em tela de toque (`pointer: coarse`), as instruções
+  dizem "Toque" e não citam Tab nem Esc. Manter: resumo acima do mapa e ranking
   no painel; "reduzir movimento" sem câmera, entrada, cometas nem pulsos, e o botão "Pausar
   animação"; mapa com uma parada de Tab (setas entre os marcadores) e linhas do ranking como
   botões; foco nunca no <body> depois de selecionar; corte de rota do ano vindo de `corte_rota_t`; anúncios em `#fluxos-anuncio` (`aria-live`, nada durante o play);
@@ -231,7 +236,8 @@ Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
   que mostra tudo em 2,5 s se o JS não rodar. Nunca esconder conteúdo sem esse fallback.
   Animações ligadas à rolagem (`ligarRolagem`, `onScroll` com `sync`): saída do hero, fundo de
   pontos (`.fundo-pontos`, fixo atrás da `.pagina`, que tem `z-index: 1`), parallax dos títulos e
-  `clip-path` abrindo o palco do mapa. O fim da abertura usa `leave: "min+=…"`, para terminar na
+  `clip-path` abrindo o palco do mapa (no celular, até 560 px, a janela começa quase aberta e
+  termina de abrir quando o topo do palco chega a 82% da tela). O fim da abertura usa `leave: "min+=…"`, para terminar na
   rolagem máxima mesmo em tela alta (nada fica cortado no fim da página); a impressão
   (`@media print`) anula os estilos inline; "reduzir movimento" no meio desfaz tudo. Os cartões
   entram com os `.kpi`, termos, legendas e chips em cascata.
@@ -241,7 +247,9 @@ Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
   sem animação. Depois de visto, filtro, período e tema atualizam o MESMO gráfico no lugar
   (`chart.update()`, valores deslizando), sem destruir e recriar. Números dos cartões
   (`valorAnimado`, chave estável por cartão) contam do valor antigo até o novo e, na primeira
-  aparição (`contarAoAparecer`), a partir de zero. Sem movimento, nada disso anima.
+  aparição (`contarAoAparecer`), a partir de zero. Sem movimento, nada disso anima. No celular,
+  os gráficos são mais altos (320/280 px), com menos marcas nos eixos, os nomes longos do ranking
+  quebram em duas linhas e as tabelas rolam de lado dentro da caixa, com a primeira coluna parada.
   Ícones dos botões do hero se redesenham no hover/foco (`createDrawable` criado já desenhado:
   `createDrawable(el, 0, 1)`, porque o padrão `0 0` some com o traço) e o ícone do tema gira com
   `createSpring`.
