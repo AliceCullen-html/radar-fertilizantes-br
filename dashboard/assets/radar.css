@@ -1031,6 +1031,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .lista-espera { padding: 16px 14px; margin-top: 40px; }
   .le-grade { padding: 4px 0 0 4px; }
   .le-form { grid-template-columns: 1fr; }
+  .le-botao { width: 100%; } /* no celular, o botão na largura toda, ao alcance do polegar */
 }
 @media (prefers-reduced-motion: reduce) {
   .le-botao, .le-opcao, .le-campo input, .le-campo select { transition: none; }
