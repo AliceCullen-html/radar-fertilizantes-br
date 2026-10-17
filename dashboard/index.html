@@ -898,7 +898,9 @@ function dicaExterna(montar) {
 function eixos({ formatarY, empilhado = false, maxTicksX = 8, yMin, yMaxSugerido, indexAxisY = false, formatarX } = {}) {
   const grade = { color: cor("--grade"), lineWidth: 1, drawTicks: false };
   const borda = { color: cor("--eixo"), width: 1 };
-  const ticks = { color: cor("--texto-3"), padding: 6, font: { size: 11 } };
+  // No celular: menos marcas, com folga entre elas, e o eixo colado ao gráfico.
+  const fino = estreito();
+  const ticks = { color: cor("--texto-3"), padding: fino ? 4 : 6, font: { size: 11 } };
   if (indexAxisY) {
     return {
       x: { beginAtZero: true, grid: grade, border: { display: false }, ticks: { ...ticks, callback: formatarX, maxTicksLimit: 5 }, suggestedMax: yMaxSugerido },
@@ -906,19 +908,28 @@ function eixos({ formatarY, empilhado = false, maxTicksX = 8, yMin, yMaxSugerido
         grid: { display: false }, border: borda,
         ticks: {
           ...ticks, color: cor("--texto-2"), autoSkip: false,
-          // Em tela estreita, abrevia nomes longos para o eixo não cortar o começo do texto.
+          // Em tela estreita, nomes longos quebram em duas linhas (sem cortar o nome).
           callback(valor) {
             const nome = this.getLabelForValue(valor);
-            return estreito() && nome.length > 16 ? `${nome.slice(0, 15)}…` : nome;
+            return fino ? duasLinhas(nome) : nome;
           },
         },
       },
     };
   }
   return {
-    x: { stacked: empilhado, grid: { display: false }, border: borda, ticks: { ...ticks, maxRotation: 0, autoSkip: true, maxTicksLimit: maxTicksX } },
-    y: { stacked: empilhado, min: yMin, suggestedMax: yMaxSugerido, beginAtZero: yMin === undefined, grid: grade, border: { display: false }, ticks: { ...ticks, callback: formatarY, maxTicksLimit: 6 } },
+    x: { stacked: empilhado, grid: { display: false }, border: borda, ticks: { ...ticks, maxRotation: 0, autoSkip: true, autoSkipPadding: fino ? 14 : 3, maxTicksLimit: fino ? Math.min(maxTicksX, 5) : maxTicksX } },
+    y: { stacked: empilhado, min: yMin, suggestedMax: yMaxSugerido, beginAtZero: yMin === undefined, grid: grade, border: { display: false }, ticks: { ...ticks, callback: formatarY, maxTicksLimit: fino ? 5 : 6 } },
   };
+}
+// Nome longo em duas linhas, quebrado no espaço mais perto do meio (eixo de barras no celular).
+function duasLinhas(nome, max = 14) {
+  if (!nome || nome.length <= max) return nome;
+  const meio = nome.length / 2;
+  let corte = -1;
+  for (let i = 0; i < nome.length; i++) if (nome[i] === " " && (corte < 0 || Math.abs(i - meio) < Math.abs(corte - meio))) corte = i;
+  if (corte < 0) return abreviar(nome, max + 2);
+  return [abreviar(nome.slice(0, corte), max + 4), abreviar(nome.slice(corte + 1), max + 4)];
 }
 
 // --- Animação dos gráficos ------------------------------------------------------------------
@@ -1129,7 +1140,7 @@ function desenharRanking({ tipo, idCanvas, idCaixa, idNota, idTabela }) {
   const nomes = linhas.map((r) => (tipo === "origens" ? r[1] : nomeCurtoUrf(r[1])));
   const shares = linhas.map((r) => r[3]);
   texto(idNota, `${NOMES[g]} · ${rotuloAno(ano)} · share das toneladas, top ${linhas.length - (linhas.some((r) => r[1] === "Outros") ? 1 : 0)} e outros`);
-  document.getElementById(idCaixa).style.height = `${Math.max(160, linhas.length * 30 + 36)}px`;
+  document.getElementById(idCaixa).style.height = `${Math.max(160, linhas.length * (estreito() ? 34 : 30) + 36)}px`;
   const canvas = document.getElementById(idCanvas);
   canvas.setAttribute("aria-label", `${tipo === "origens" ? "Share por país de origem" : "Ranking de portos"} em ${rotuloAno(ano)}, ${NOMES[g]}. A tabela abaixo traz os valores.`);
   const anoAnterior = anoParcial(ano) ? `jan–${MESES[nMeses(ano) - 1]}/${ano - 1}` : String(ano - 1);
@@ -1217,10 +1228,15 @@ function desenharSankey(bloco, g, ano) {
     return;
   }
   const largura = Math.max(280, Math.round(caixa.clientWidth));
+  // Em caixa estreita (celular), os nós vão para as bordas e os rótulos para dentro, sobre as
+  // fitas (com halo da cor do cartão): as fitas ganham a largura toda e os nomes cabem inteiros.
   const curto = largura < 560;
+  caixa.classList.toggle("dentro", curto);
   const n = Math.max(bloco.origens.length, bloco.urfs.length);
-  const altura = Math.max(curto ? 280 : 320, n * (curto ? 38 : 46));
-  const esq = curto ? 84 : 176, dir = curto ? 98 : 214, larguraNo = 10, vao = curto ? 6 : 8;
+  const altura = Math.max(320, n * (curto ? 42 : 46));
+  const esq = curto ? 1 : 176, dir = curto ? 1 : 214, larguraNo = 10, vao = curto ? 7 : 8;
+  // Os nomes das URFs são mais longos que os dos países e cabem do lado direito.
+  const maxNome = !curto ? 24 : largura < 340 ? 13 : 16, maxNomeU = !curto ? 24 : largura < 340 ? 15 : 20;
   const total = bloco.origens.reduce((s, o) => s + o[2], 0);
   const escala = Math.min(...[bloco.origens, bloco.urfs].map((lado) => (altura - vao * (lado.length - 1)) / total));
   const posicoes = (lado) => {
@@ -1255,15 +1271,15 @@ function desenharSankey(bloco, g, ano) {
     centrais.push({ d: `M${x0},${ym0} C${xm},${ym0} ${xm},${ym1} ${x1},${ym1}`, h: f.h, o: f.o });
   }
   const camadaNos = svg("g", {});
-  const rotulo = (nome, t, x, y, ancora) => {
-    const no = svg("text", { x, y, "text-anchor": ancora, "dominant-baseline": "middle" }, abreviar(nome, curto ? 12 : 24));
-    if (!curto) no.append(svg("tspan", { class: "share" }, ` ${pct((100 * t) / total)}`));
+  const rotulo = (nome, t, x, y, ancora, max = maxNome) => {
+    const no = svg("text", { x, y, "text-anchor": ancora, "dominant-baseline": "middle" }, abreviar(nome, max));
+    no.append(svg("tspan", { class: "share" }, ` ${pct((100 * t) / total)}`));
     return no;
   };
   // Centro de cada rótulo, afastando os vizinhos de nós finos para não se sobreporem.
   const centros = (pos) => {
     const ys = pos.map((p) => p.y + p.h / 2);
-    const minimo = curto ? 13 : 15;
+    const minimo = curto ? 16 : 15;
     for (let k = 1; k < ys.length; k++) ys[k] = Math.max(ys[k], ys[k - 1] + minimo);
     const excesso = ys.length ? ys[ys.length - 1] - (altura - 6) : 0;
     if (excesso > 0) for (let k = ys.length - 1; k >= 0; k--) ys[k] = Math.min(ys[k] - excesso, k < ys.length - 1 ? ys[k + 1] - minimo : Infinity);
@@ -1274,7 +1290,7 @@ function desenharSankey(bloco, g, ano) {
   const lados = { nosO: [], rotulosO: [], nosU: [], rotulosU: [] };
   bloco.origens.forEach((o, i) => {
     const no = svg("rect", { x: esq, y: pO[i].y, width: larguraNo, height: pO[i].h, rx: 2, fill: o[1] === "Outros" ? "var(--outros)" : corBase });
-    const r = rotulo(nomeO(i), o[2], esq - 6, yO[i], "end");
+    const r = curto ? rotulo(nomeO(i), o[2], esq + larguraNo + 5, yO[i], "start") : rotulo(nomeO(i), o[2], esq - 6, yO[i], "end");
     alvos.set(no, { lado: "o", i }).set(r, { lado: "o", i });
     camadaNos.append(no, r);
     lados.nosO.push(no);
@@ -1282,7 +1298,7 @@ function desenharSankey(bloco, g, ano) {
   });
   bloco.urfs.forEach((u, i) => {
     const no = svg("rect", { x: x1, y: pU[i].y, width: larguraNo, height: pU[i].h, rx: 2, fill: u[1] === "Outros" ? "var(--outros)" : corBase });
-    const r = rotulo(nomeU(i), u[2], x1 + larguraNo + 6, yU[i], "start");
+    const r = curto ? rotulo(nomeU(i), u[2], x1 - 5, yU[i], "end", maxNomeU) : rotulo(nomeU(i), u[2], x1 + larguraNo + 6, yU[i], "start");
     alvos.set(no, { lado: "u", i }).set(r, { lado: "u", i });
     camadaNos.append(no, r);
     lados.nosU.push(no);
@@ -1408,16 +1424,19 @@ function tabelaRotas(bloco, g, ano) {
   texto("nota-frete-rotas", `Só rotas com volume relevante: pelo menos ${fmt0.format(corte)} t no ano${proporcional}, cerca de um navio Supramax. São ${bloco.n_relevantes} de ${bloco.n_rotas} rotas e ${pct(bloco.share_relevantes_pct)} das toneladas; frete médio delas: ${porTonelada(bloco.frete_relevantes)}. Mostrando as ${bloco.rotas.length} maiores; todas estão em data/processed/rotas_ano.csv.`);
   const maxFrete = Math.max(...bloco.rotas.map((r) => r[5] ?? 0), 1);
   const corBarra = comAlfa(cor(varGrupo(g)), 0.5);
-  const colunas = [["#"], ["Origem"], ["URF"], ["Toneladas", true], ["Share", true], ["Frete US$/t", true], [""], ["Frete no CIF", true], ["Meses", true]];
+  // No celular: sem a coluna de posição e sem a barra, com o nome curto da URF, e a origem
+  // parada à esquerda enquanto o resto rola de lado.
+  const fino = estreito();
+  const colunas = [...(fino ? [] : [["#"]]), ["Origem"], ["URF"], ["Toneladas", true], ["Share", true], ["Frete US$/t", true], ...(fino ? [] : [[""]]), ["Frete no CIF", true], ["Meses", true]];
   const thead = el("thead", {}, el("tr", {}, ...colunas.map(([t, num]) => el("th", num ? { classe: "num" } : {}, t))));
   const tbody = el("tbody", {}, ...bloco.rotas.map((r, i) => {
     const barra = el("span", { classe: "barra" });
     barra.style.width = `${Math.round((64 * (r[5] ?? 0)) / maxFrete)}px`;
     barra.style.background = corBarra;
     return el("tr", {},
-      el("td", {}, String(i + 1)), el("td", {}, r[0] ?? "–"), el("td", {}, r[2] ? nomeUrf(r[2]) : "–"),
+      ...(fino ? [] : [el("td", {}, String(i + 1))]), el("td", {}, r[0] ?? "–"), el("td", {}, r[2] ? (fino ? nomeCurtoUrf(r[2]) : nomeUrf(r[2])) : "–"),
       el("td", { classe: "num" }, fmt0.format(r[3])), el("td", { classe: "num" }, pct(r[4])),
-      el("td", { classe: "num" }, nulo(r[5]) ? "–" : fmt0.format(r[5])), el("td", {}, barra),
+      el("td", { classe: "num" }, nulo(r[5]) ? "–" : fmt0.format(r[5])), ...(fino ? [] : [el("td", {}, barra)]),
       el("td", { classe: "num" }, pct(r[6])), el("td", { classe: "num" }, `${r[7]}/${nMeses(ano)}`));
   }));
   document.getElementById("tabela-rotas").replaceChildren(el("table", {}, thead, tbody));
