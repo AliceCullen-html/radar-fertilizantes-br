@@ -519,7 +519,7 @@
 .hero-rodape .ponto-outros { background: var(--hero-ponto); outline: 1px solid rgba(255, 255, 255, 0.25); outline-offset: -1px; }
 .hero-rodape .ponto-brasil { background: var(--hero-ponto-destaque); }
 .hero-rodape .legenda-mapa i.linha-rota { width: 16px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--hero-rota)); }
-.lista-metodo { margin: 12px 0 0; padding: 0 0 0 18px; color: var(--texto-2); display: grid; gap: 8px; max-width: 90ch; }
+.lista-metodo { margin: 12px 0 0; padding: 0 0 0 18px; color: var(--texto-2); display: grid; gap: 8px; max-width: 90ch; overflow-wrap: anywhere; }
 .lista-metodo li::marker { color: var(--titulo); }
 .titulo-bloco:focus { outline: none; }
 
@@ -610,15 +610,17 @@
 }
 /* rótulos na fonte do site, sem contorno: só um halo difuso da cor do palco (#fluxos-halo) */
 .fluxos svg .rotulo { pointer-events: none; filter: url(#fluxos-halo); font-variant-numeric: tabular-nums; }
-.fluxos svg .halo-cor { flood-color: #0a0e38; flood-opacity: 0.72; }
+.fluxos svg .halo-cor { flood-color: #070a2e; flood-opacity: 0.9; }
 .fluxos svg .rotulo .nome { fill: var(--fluxo-texto); font: 600 13px var(--fonte); letter-spacing: -0.005em; }
 .fluxos svg .rotulo .valor { fill: var(--fluxo-texto-2); font: 400 11.5px var(--fonte); letter-spacing: 0.005em; }
 .fluxos svg .hub .rotulo .nome { fill: #ffffff; }
+/* linha-guia dos portos em coluna (país aberto): fina, na cor do texto secundário */
+.fluxos svg .guia { fill: none; stroke: var(--fluxo-texto-2); stroke-width: 1; stroke-opacity: 0.6; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .fluxos svg.com-destaque .fluxo:not(.destacado) { opacity: 0.1; }
 .fluxos svg.com-destaque .marcador:not(.destacado) .corpo { opacity: 0.3; }
-.fluxos svg.com-destaque .etiqueta:not(.destacado) .rotulo { opacity: 0.3; }
+.fluxos svg.com-destaque .etiqueta:not(.destacado) :is(.rotulo, .guia) { opacity: 0.3; }
 .fluxos svg.com-destaque .cometa:not(.destacado) { opacity: 0.08; }
-.fluxos svg .cometa, .fluxos svg .etiqueta .rotulo { transition: opacity 0.35s var(--facil); }
+.fluxos svg .cometa, .fluxos svg .etiqueta :is(.rotulo, .guia) { transition: opacity 0.35s var(--facil); }
 .fluxos-palco.parado svg .anel { animation-play-state: paused; }
 .fluxos-palco.pausado svg .anel { animation: none; }
 /* entradas das seções (hero.js); sem o JS, o que estava escondido aparece sozinho em 2,5 s */
@@ -782,6 +784,10 @@
   #fluxos-total { font-size: 38px; }
 }
 @media (max-width: 560px) {
+  /* no celular, mais altura para os rótulos de um país aberto; o "Visão geral" fica compacto */
+  .fluxos { --altura-palco: clamp(300px, 86vw, 420px); }
+  .fluxos-voltar { top: 8px; left: 8px; min-height: 30px; gap: 6px; padding: 0 10px 0 3px; font-size: 11px; }
+  .fluxos-voltar .icone { width: 24px; height: 24px; }
   .fluxos-tempo { grid-template-columns: auto minmax(0, 1fr); }
   .fluxos-ano-valor { grid-column: 1 / -1; grid-row: 1; margin: 0; font-size: 24px; }
   .fluxos-marcas li:nth-child(even) .ano { visibility: hidden; }

@@ -151,10 +151,11 @@
     el("text", { classe: "rotulo", x: "-11", y: "4", "text-anchor": "end" }, el("tspan", { classe: "nome" }, "Brasil")));
   hub.style.opacity = "0";
   // Halo dos rótulos: uma sombra difusa da cor do palco, em vez de contorno. Some sobre o fundo e
-  // só aparece onde o texto passa por cima de um arco ou de pontos (cor e força no CSS).
-  defs.append(el("filter", { id: "fluxos-halo", x: "-30%", y: "-60%", width: "160%", height: "220%", "color-interpolation-filters": "sRGB" },
-    el("feMorphology", { in: "SourceAlpha", operator: "dilate", radius: "1.2", result: "grosso" }),
-    el("feGaussianBlur", { in: "grosso", stdDeviation: "2.4", result: "difuso" }),
+  // só aparece onde o texto passa por cima de um arco ou de pontos (cor e força no CSS); larga o
+  // bastante para o texto ler sobre os pontos do Brasil e sobre os arcos grossos.
+  defs.append(el("filter", { id: "fluxos-halo", x: "-40%", y: "-90%", width: "180%", height: "280%", "color-interpolation-filters": "sRGB" },
+    el("feMorphology", { in: "SourceAlpha", operator: "dilate", radius: "2.2", result: "grosso" }),
+    el("feGaussianBlur", { in: "grosso", stdDeviation: "2.6", result: "difuso" }),
     el("feFlood", { classe: "halo-cor" }),
     el("feComposite", { in2: "difuso", operator: "in", result: "sombra" }),
     el("feMerge", {}, el("feMergeNode", { in: "sombra" }), el("feMergeNode", { in: "SourceGraphic" }))));
@@ -174,10 +175,13 @@
   let geral = { x: 0, y: 0, z: 1 };
   let W = 0, H = 0, dpr = 1;
   const layout = { sobreposto: true, larguraPainel: 0 };
-  const anim = { entrada: 0, brasil: 0, fase: 0, onda: 1, hub: 0 };
+  // foco: 1 com um país ou porto aberto, ou na visão dos portos (o Brasil esmaece sob os rótulos)
+  const anim = { entrada: 0, brasil: 0, fase: 0, onda: 1, hub: 0, foco: 0 };
   let iniciado = false, visivel = false, quadroPedido = 0, cameraAnimando = false, pausado = false;
   const intensidade = new Map(); // ISO3 -> {v}: brilho do país (0 a 1), interpolado
-  const marcadores = new Map(); // chave -> {g, corpo, etiqueta, rotulo, dados, raio, naTela}
+  const marcadores = new Map(); // chave -> {g, corpo, etiqueta, entra, guia, rotulo, dados, raio, naTela, mostrado}
+  let ultimaOrdem = []; // marcadores na ordem da última disposição dos rótulos
+  let revelando = false; // a câmera parou e os rótulos vão entrar em cascata
   const arcos = new Map(); // chave -> {g, path, grad, dados}
   const cometas = new Map(); // chave do arco -> {g, trilha, anims}
   let focoMapa = null; // chave do marcador que recebe o Tab (os outros: setas)
@@ -335,12 +339,14 @@
         ctx.fillRect(x - meio, y - meio, lado, lado);
       }
     });
-    // Brasil: destino, em branco
+    // Brasil: destino, em branco; perto da costa (país ou porto aberto, visão dos portos), mais
+    // apagado, para os rótulos dos portos lerem por cima
     if (anim.brasil > 0 && pontos.brasil >= 0) {
       ctx.fillStyle = "#ffffff";
+      const alfa = anim.brasil * (0.92 - 0.6 * anim.foco);
       for (const j of pontos.porPais[pontos.brasil]) {
         const [x, y, k] = posicaoPonto(j, e);
-        ctx.globalAlpha = Math.max(0.16 * k, anim.brasil * 0.92);
+        ctx.globalAlpha = Math.max(0.16 * k, alfa);
         ctx.fillRect(x - meio, y - meio, lado, lado);
       }
     }
@@ -453,7 +459,12 @@
     corpo.append(el("circle", { classe: "foco", r: "12" }), el("circle", { classe: "alvo", r: "16" }));
     g.append(corpo);
     const rotulo = el("text", { classe: "rotulo" }, el("tspan", { classe: "nome" }), el("tspan", { classe: "valor" }));
-    const etiqueta = el("g", { classe: "etiqueta" }, rotulo);
+    // etiqueta: posição (transform); entra: opacidade e deslize da entrada (anime.js);
+    // guia: a linha até o rótulo quando ele vai para a coluna dos portos
+    const guia = el("path", { classe: "guia" });
+    rotulo.style.display = "none"; // aparece quando a disposição dos rótulos achar lugar para ele
+    const entra = el("g", { classe: "entra" }, guia, rotulo);
+    const etiqueta = el("g", { classe: "etiqueta" }, entra);
     camadaRotulos.append(etiqueta);
     const selecionar = () => (g.__item.tipo === "origem" ? selecionarOrigem(g.__item.co) : selecionarPorto(g.__item.i));
     g.addEventListener("click", () => { pararPlay(); selecionar(); });
@@ -473,7 +484,7 @@
     g.addEventListener("pointerleave", () => destacar(null));
     g.addEventListener("focus", () => { focoMapa = g.__item.chave; aplicarTabindex(); destacar(g.__item.chave); });
     g.addEventListener("blur", () => destacar(null));
-    return { g, corpo, etiqueta, rotulo };
+    return { g, corpo, etiqueta, entra, guia, rotulo };
   }
 
   // tamanho: área proporcional às toneladas (do país ou porto; na seleção, da rota)
@@ -636,16 +647,25 @@
       const r = m.raio ?? 4;
       if (o >= 0.5) obstaculos.push({ m, x0: s.x - r, x1: s.x + r, y0: s.y - r, y1: s.y + r });
     }
-    // 2º passe: rótulos, dos mais importantes aos menores, na 1ª de 4 posições livre
+    // Com a câmera andando, os rótulos ficam escondidos e esperam: a disposição se refaz quando
+    // ela para (revelarRotulos), em vez de saltar a cada quadro.
+    if (cameraAnimando) { aplicarTabindex(); posicionarHub(); return; }
+    // 2º passe: rótulos, dos mais importantes aos menores. Os portos de um país aberto vão para
+    // uma coluna ao lado deles, com linha-guia; os outros, na 1ª de 4 posições livre (um porto, na
+    // livre que cobre menos pontos do Brasil).
     const peso = (m) => m.dados.rota ?? m.dados.t;
     const ordem = [...marcadores.values()].sort((a, b) => prioridade(b) - prioridade(a) || peso(b) - peso(a));
     const ocupados = [];
+    const mostrar = (m) => (visiveis.has(m.dados.chave) || m.g === document.activeElement) && m.naTela;
+    const naColuna = sel?.tipo === "origem" ? colunaDePortos(ordem.filter((m) => m.dados.tipo === "porto" && mostrar(m)), ocupados, direita) : new Set();
+    const terra = pontosDoBrasilNaTela();
     for (const m of ordem) {
+      if (naColuna.has(m)) continue;
+      m.guia.removeAttribute("d");
       const nome = m.rotulo.querySelector(".nome"), valor = m.rotulo.querySelector(".valor");
       const comValor = !(W < 600 && !sel && prioridade(m) < 4); // no celular, a visão geral mostra só o nome
       valor.style.display = comValor ? "" : "none";
-      const mostrar = (visiveis.has(m.dados.chave) || m.g === document.activeElement) && m.naTela;
-      if (!mostrar) { m.rotulo.style.display = "none"; continue; }
+      if (!mostrar(m)) { m.rotulo.style.display = "none"; continue; }
       const s = m.s, r = (m.raio ?? 4) + 5;
       const largura = Math.max(nome.textContent.length * 7.2, comValor ? valor.textContent.length * 6 : 0) + 6;
       const alto = comValor ? 28 : 16;
@@ -657,7 +677,10 @@
       ];
       const dentro = (c) => c.x0 >= 2 && c.x1 <= direita - 2 && c.y0 >= 2 && c.y1 <= H - 2;
       const livre = (c) => !ocupados.some((o) => sobrepoe(c, o)) && !obstaculos.some((o) => o.m !== m && sobrepoe(c, o));
-      let escolhida = opcoes.find((op) => dentro(op.caixa) && livre(op.caixa));
+      const livres = opcoes.filter((op) => dentro(op.caixa) && livre(op.caixa));
+      let escolhida = m.dados.tipo === "porto" && livres.length > 1
+        ? livres.map((op) => [op, sobreTerra(op.caixa, terra)]).sort((a, b) => a[1] - b[1])[0][0] // a ordem desempata
+        : livres[0];
       if (!escolhida && prioridade(m) > 0) {
         // os mais importantes sempre aparecem: na posição de menor sobreposição
         const custo = (op) => [...ocupados, ...obstaculos.filter((o) => o.m !== m)].reduce((soma, o) => soma + areaSobreposta(op.caixa, o), 0) + (dentro(op.caixa) ? 0 : 1e6);
@@ -671,8 +694,115 @@
       valor.setAttribute("y", String(escolhida.yv));
       ocupados.push(escolhida.caixa);
     }
+    ultimaOrdem = ordem;
+    aparecerNovos(ordem);
     aplicarTabindex();
     posicionarHub();
+  }
+
+  // Portos de um país aberto, em coluna: cada rótulo na altura do seu porto (empurrando para
+  // baixo o que encostaria no de cima), do lado do mar quando cabe, ligado ao porto por uma
+  // linha-guia. Devolve os marcadores já resolvidos (com menos de 2 portos, nenhum: ficam na
+  // posição normal).
+  function colunaDePortos(ms, ocupados, direita) {
+    const resolvidos = new Set();
+    if (ms.length < 2) return resolvidos;
+    const estreito = W < 600;
+    const alto = 28, folga = 4, distancia = estreito ? 18 : 30;
+    const itens = ms.map((m) => {
+      const nome = m.rotulo.querySelector(".nome"), valor = m.rotulo.querySelector(".valor");
+      if (estreito) valor.textContent = toneladas(m.dados.rota ?? m.dados.t); // no celular, sem o "nesta rota"
+      valor.style.display = "";
+      return { m, nome, valor, largura: Math.max(nome.textContent.length * 7.2, valor.textContent.length * 6) + 6 };
+    });
+    // ms vem do maior para o menor: o que não cabe na altura fica sem rótulo
+    for (const it of itens.splice(Math.max(2, Math.floor((H - 8) / (alto + folga))))) {
+      it.m.rotulo.style.display = "none";
+      it.m.guia.removeAttribute("d");
+      resolvidos.add(it.m);
+    }
+    itens.sort((a, b) => a.m.s.y - b.m.s.y);
+    const x0 = Math.min(...itens.map((i) => i.m.s.x - (i.m.raio ?? 4)));
+    const x1 = Math.max(...itens.map((i) => i.m.s.x + (i.m.raio ?? 4)));
+    const largura = Math.max(...itens.map((i) => i.largura));
+    let lado = 1, coluna = x1 + distancia;
+    if (coluna + largura > direita - 4) {
+      lado = -1;
+      coluna = x0 - distancia;
+      if (coluna - largura < 4) return new Set(); // não cabe dos dois lados: posição normal
+    }
+    let limite = 4;
+    for (const it of itens) { it.topo = Math.max(it.m.s.y - alto / 2, limite); limite = it.topo + alto + folga; }
+    const excesso = limite - folga - (H - 4);
+    if (excesso > 0) {
+      limite = 4;
+      for (const it of itens) { it.topo = Math.max(it.topo - excesso, limite); limite = it.topo + alto + folga; }
+    }
+    for (const it of itens) {
+      const { m, nome, valor } = it;
+      const s = m.s, r = (m.raio ?? 4) + 3;
+      const x = coluna - s.x, y = it.topo - s.y, fim = x - lado * 5;
+      m.rotulo.style.display = "";
+      m.rotulo.setAttribute("text-anchor", lado > 0 ? "start" : "end");
+      for (const t of [nome, valor]) t.setAttribute("x", x.toFixed(1));
+      nome.setAttribute("y", (y + 12).toFixed(1));
+      valor.setAttribute("y", (y + 25).toFixed(1));
+      m.guia.setAttribute("d", `M${(lado * r).toFixed(1)} 0L${(fim - lado * 10).toFixed(1)} ${(y + 8).toFixed(1)}H${fim.toFixed(1)}`);
+      ocupados.push(lado > 0 ? { x0: coluna - 2, x1: coluna + it.largura, y0: it.topo, y1: it.topo + alto }
+        : { x0: coluna - it.largura, x1: coluna + 2, y0: it.topo, y1: it.topo + alto });
+      resolvidos.add(m);
+    }
+    return resolvidos;
+  }
+
+  // pontos do Brasil na tela, para os rótulos dos portos evitarem a terra
+  function pontosDoBrasilNaTela() {
+    if (!pontos || pontos.brasil < 0) return null;
+    const lista = pontos.porPais[pontos.brasil];
+    const xy = new Float32Array(lista.length * 2);
+    lista.forEach((j, k) => { const s = tela(pontos.gx[j], pontos.gy[j]); xy[2 * k] = s.x; xy[2 * k + 1] = s.y; });
+    return xy;
+  }
+  function sobreTerra(c, xy) {
+    let n = 0;
+    if (xy) for (let k = 0; k < xy.length; k += 2) if (xy[k] >= c.x0 && xy[k] <= c.x1 && xy[k + 1] >= c.y0 && xy[k + 1] <= c.y1) n++;
+    return n;
+  }
+
+  // Rótulo que aparece fora da revelação em cascata (destaque, ano novo, foco): entra rápido.
+  function aparecerNovos(ordem) {
+    for (const m of ordem) {
+      const agora = m.rotulo.style.display !== "none";
+      if (agora && !m.mostrado && !revelando) {
+        if (semMovimento()) m.entra.style.removeProperty("opacity");
+        else A.animate(m.entra, { opacity: [0, 1], duration: 240, ease: "outQuad" });
+      }
+      m.mostrado = agora;
+    }
+  }
+
+  // Câmera saindo: os rótulos somem rápido. Câmera parada: voltam em cascata, dos mais
+  // importantes aos menores, e as linhas-guia se desenham do porto até o rótulo.
+  function esconderRotulos() {
+    if (semMovimento()) return;
+    const alvos = [...marcadores.values()].filter((m) => m.mostrado).map((m) => m.entra);
+    for (const m of marcadores.values()) m.mostrado = false;
+    if (alvos.length) A.animate(alvos, { opacity: 0, duration: 160, ease: "outQuad" });
+  }
+  function revelarRotulos() {
+    const alvos = ultimaOrdem.filter((m) => marcadores.get(m.dados.chave) === m && m.rotulo.style.display !== "none");
+    for (const m of alvos) m.mostrado = true;
+    if (semMovimento()) { for (const m of alvos) m.entra.style.removeProperty("opacity"); return; }
+    if (!alvos.length) return;
+    A.animate(alvos.map((m) => m.entra), { opacity: [0, 1], translateY: [6, 0], duration: 480, delay: A.stagger(45), ease: "outQuad" });
+    alvos.forEach((m, k) => desenharGuia(m, k * 45));
+  }
+  function desenharGuia(m, atraso) {
+    if (!m.guia.getAttribute("d")) return;
+    const comprimento = m.guia.getTotalLength();
+    m.guia.setAttribute("stroke-dasharray", `${comprimento.toFixed(1)} ${comprimento.toFixed(1)}`);
+    A.animate(m.guia, { strokeDashoffset: [comprimento, 0], duration: 520, delay: atraso, ease: "inOutQuad",
+      onComplete: () => { m.guia.removeAttribute("stroke-dasharray"); m.guia.removeAttribute("stroke-dashoffset"); m.guia.style.removeProperty("stroke-dashoffset"); } });
   }
 
   function posicionarHub() {
@@ -830,29 +960,74 @@
       const { translateX, translateY } = A.svg.createMotionPath(a.path);
       const anims = [
         A.animate(trilha, { strokeDashoffset: [rastro, rastro - comprimento], ...comum }),
-        A.animate(cabeca, { translateX, translateY, ...comum, onBegin: () => g.style.removeProperty("opacity") }),
+        // o cometa acende devagar quando sai (depois, a opacidade volta para o CSS do destaque)
+        A.animate(cabeca, { translateX, translateY, ...comum,
+          onBegin: () => A.animate(g, { opacity: [0, 1], duration: 500, ease: "outQuad", onComplete: () => g.style.removeProperty("opacity") }) }),
       ];
       cometas.set(a.dados.chave, { g, trilha, anims, dados: a.dados });
     });
   }
 
   // --- Câmera --------------------------------------------------------------------------------
+  // Zoom e deslocamento juntos, pelo caminho mais suave (van Wijk e Nuij, o mesmo do
+  // d3.interpolateZoom): para ir longe, a câmera se afasta no meio e se aproxima no fim, e o zoom
+  // anda em escala logarítmica. S é o comprimento do caminho (a duração cresce com ele).
+  const RHO = Math.SQRT2;
+  function caminhoDaCamera(de, para) {
+    const w0 = W / de.z, w1 = W / para.z, dx = para.x - de.x, dy = para.y - de.y, d2 = dx * dx + dy * dy;
+    if (d2 < 1e-9) {
+      const S = Math.log(w1 / w0) / RHO;
+      return { S: Math.abs(S), em: (t) => ({ x: de.x + t * dx, y: de.y + t * dy, z: W / (w0 * Math.exp(RHO * t * S)) }) };
+    }
+    const d1 = Math.sqrt(d2);
+    const b0 = (w1 * w1 - w0 * w0 + 4 * d2) / (4 * w0 * d1), b1 = (w1 * w1 - w0 * w0 - 4 * d2) / (4 * w1 * d1);
+    const r0 = Math.log(Math.sqrt(b0 * b0 + 1) - b0), r1 = Math.log(Math.sqrt(b1 * b1 + 1) - b1);
+    const S = (r1 - r0) / RHO, c0 = Math.cosh(r0), s0 = Math.sinh(r0);
+    return { S: Math.abs(S), em: (t) => {
+      const s = t * S, u = (w0 / (2 * d1)) * (c0 * Math.tanh(RHO * s + r0) - s0);
+      return { x: de.x + u * dx, y: de.y + u * dy, z: (W * Math.cosh(RHO * s + r0)) / (w0 * c0) };
+    } };
+  }
+
+  // antes de refazer marcadores e arcos para a câmera nova: rótulos fora, câmera "andando" (a
+  // disposição deles espera o fim do movimento)
+  function prepararCamera() {
+    if (semMovimento()) return;
+    esconderRotulos();
+    cameraAnimando = true;
+    pararNavios();
+  }
+
   let animCamera = null;
   function moverCamera(alvo, aoTerminar) {
     animCamera?.pause();
     cameraAnimando = true;
     pararNavios();
+    esconderRotulos();
+    const quadro = () => { reposicionarArcos(); posicionarMarcadores(); pedirQuadro(); };
     const fim = () => {
       cameraAnimando = false;
       reposicionarArcos();
+      revelando = true;
       posicionarMarcadores();
+      revelando = false;
+      revelarRotulos();
       soltarNavios();
       aoTerminar?.();
     };
-    animCamera = animar(cam, {
-      x: alvo.x, y: alvo.y, z: alvo.z, duration: 1200, ease: A ? A.cubicBezier(0.65, 0, 0.35, 1) : "inOutCubic",
-      onUpdate: () => { reposicionarArcos(); posicionarMarcadores(); pedirQuadro(); },
-      onComplete: fim,
+    const caminho = semMovimento() ? null : caminhoDaCamera({ ...cam }, alvo);
+    if (!caminho || !Number.isFinite(caminho.S) || caminho.S < 1e-3) {
+      animCamera = null;
+      Object.assign(cam, alvo);
+      quadro();
+      fim();
+      return;
+    }
+    const progresso = { t: 0 };
+    animCamera = A.animate(progresso, {
+      t: 1, duration: clamp(caminho.S * 1050, 900, 1800), ease: A.cubicBezier(0.45, 0, 0.25, 1),
+      onUpdate: () => { Object.assign(cam, caminho.em(progresso.t)); quadro(); },
+      onComplete: () => { Object.assign(cam, alvo); fim(); },
     });
   }
 
@@ -889,9 +1064,17 @@
     animar(anim, { hub: visivelHub ? 1 : 0, duration: 500, ease: "outQuad", onUpdate: posicionarHub });
   }
 
+  // Brasil esmaecido perto da costa (país ou porto aberto, visão dos portos)
+  function atualizarFoco(instantaneo = false) {
+    const alvo = estado.sel || visaoPortos() ? 1 : 0;
+    if (instantaneo || semMovimento()) { anim.foco = alvo; pedirQuadro(); return; }
+    animar(anim, { foco: alvo, duration: 700, ease: "inOutQuad", onUpdate: pedirQuadro });
+  }
+
   // --- Seleção ---------------------------------------------------------------------------------
   function aoSelecionar(instantaneo) {
     const doPainel = painel.contains(document.activeElement);
+    if (!instantaneo) prepararCamera();
     preencherPainel();
     sincronizarMarcadores();
     destacar(null);
@@ -899,6 +1082,7 @@
     atualizarIntensidades();
     atualizarLegenda();
     mostrarHub(false);
+    atualizarFoco(instantaneo);
     ajustarPainel();
     const alvo = cameraDoEstado();
     if (instantaneo) { animCamera?.pause(); cameraAnimando = false; Object.assign(cam, alvo); reposicionarArcos(); posicionarMarcadores(); soltarNavios(); pedirQuadro(); }
@@ -937,6 +1121,7 @@
     if (!estado.sel) return;
     const anterior = chaveDaSelecao();
     const focoFora = painel.contains(document.activeElement) || document.activeElement === botaoVoltar;
+    prepararCamera();
     estado.sel = null;
     gravarUrl();
     destacar(null);
@@ -946,6 +1131,7 @@
     atualizarIntensidades();
     atualizarLegenda();
     mostrarHub(estado.visao === "origens");
+    atualizarFoco();
     ajustarPainel();
     moverCamera(cameraDoEstado());
     // devolve o foco à linha do item que estava aberto (ou ao título), antes de esconder o botão
@@ -961,6 +1147,7 @@
     gravarUrl();
     marcarSegmentado(abas, "visao", v, false);
     if (estado.sel) return;
+    prepararCamera();
     ajustarPainel();
     preencherPainel();
     sincronizarMarcadores();
@@ -968,6 +1155,7 @@
     atualizarIntensidades();
     atualizarLegenda();
     mostrarHub(v === "origens");
+    atualizarFoco();
     moverCamera(cameraDoEstado());
   }
 
@@ -1585,6 +1773,7 @@
   function entrar() {
     iniciado = true;
     carregando.remove();
+    atualizarFoco(true); // visão dos portos vinda da URL: o Brasil já entra esmaecido
     ajustarPainel();
     atualizarIntensidades(true);
     preencherPainel();
@@ -1705,9 +1894,12 @@
       pulso?.pause();
       pulso = null;
       pararNavios();
+      if (cameraAnimando) { animCamera?.pause(); cameraAnimando = false; Object.assign(cam, cameraDoEstado()); reposicionarArcos(); }
       anim.entrada = 1;
       anim.brasil = 1;
       anim.hub = iniciado && !estado.sel && estado.visao === "origens" ? 1 : 0;
+      anim.foco = estado.sel || visaoPortos() ? 1 : 0;
+      for (const m of marcadores.values()) m.entra.style.removeProperty("opacity");
       posicionarMarcadores();
       pedirQuadro();
     } else {

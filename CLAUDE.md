@@ -209,7 +209,13 @@ Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
   canvas; arcos, cometas, marcadores e rótulos em SVG. O palco do mapa é noturno nos dois temas e
   os arcos usam versões claras das cores fixas dos grupos. Rótulos do mapa na fonte do site
   (Inter Tight, números tabulares), sem contorno (`stroke`): só o halo difuso `#fluxos-halo`
-  (filtro SVG da cor do palco). Manter: resumo acima do mapa e ranking
+  (filtro SVG da cor do palco). Perto da costa (país ou porto aberto, visão dos portos), o
+  Brasil esmaece; com um país aberto, os portos ganham rótulo numa coluna ao lado deles (do lado
+  do mar quando cabe, sem sobreposição) com linha-guia (`.guia`); nos outros estados, o rótulo
+  de porto vai na posição livre que cobre menos pontos do Brasil. Câmera: zoom e deslocamento
+  juntos pelo caminho de van Wijk (o do `d3.interpolateZoom`); com ela andando, os rótulos
+  saem e, quando ela para, voltam em cascata (`.entra`). No celular, palco de pelo menos 300 px
+  e "Visão geral" compacto. Manter: resumo acima do mapa e ranking
   no painel; "reduzir movimento" sem câmera, entrada, cometas nem pulsos, e o botão "Pausar
   animação"; mapa com uma parada de Tab (setas entre os marcadores) e linhas do ranking como
   botões; foco nunca no <body> depois de selecionar; corte de rota do ano vindo de `corte_rota_t`; anúncios em `#fluxos-anuncio` (`aria-live`, nada durante o play);
