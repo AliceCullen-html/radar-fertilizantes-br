@@ -806,6 +806,7 @@
   .fluxos-total .unidade { font-size: 11px; }
   .fluxos-resumo-texto { padding-bottom: 0; font-size: 14px; line-height: 1.4; }
   .fluxos-legenda { gap: 4px 12px; padding-top: 7px; font-size: 10px; }
+  .fluxos-legenda li { white-space: normal; } /* "porto de chegada (tamanho: …)" quebra em vez de vazar do cartão */
   /* ano à esquerda, play à direita e a linha do tempo inteira embaixo */
   .fluxos-tempo { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "ano play" "linha linha"; align-items: center; gap: 6px 12px; margin-top: 12px; }
   .fluxos-tempo .botao-contorno { grid-area: play; margin: 0; }
