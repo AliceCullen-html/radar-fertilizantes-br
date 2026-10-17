@@ -250,10 +250,12 @@ Mundial e PTAX do BCB. **Logística portuária** e **Grãos**: planejados.
   ano completo, o mesmo do chip do Brasil). Rotas: as 6 maiores origens (4 no celular; rótulos
   só para as 3 maiores com o mapa ao lado do título, sem se sobrepor); entrada com
   `createDrawable`, ponta de luz por `createMotionPath` e `scrambleText`; depois cometas (cauda,
-  rastro e cabeça, levados por um único `animate` da frente) que param fora da tela. Luz do
+  rastro e cabeça, levados por um único `animate` da frente) que param fora da tela. O chip do
+  Brasil encurta em tela estreita (sem "importadas") e nunca passa da borda. Luz do
   cursor nos pontos e destaque do continente sob o ponteiro (com dica); o clique abre o painel
   do continente no lugar do título (`.hero-texto` e `.painel-continente` dividem a célula da
-  grade; no celular o painel começa abaixo do mapa, por `--margem-painel`), com ping de radar,
+  grade; com o mapa em cima, abaixo de 1100 px, o painel e o título começam abaixo do mapa, por
+  `--margem-painel`, e em tela baixa o hero cresce em vez de pôr o texto sobre o mapa), com ping de radar,
   varredura e as rotas do continente. Teclado: botão "Explorar por continente", abas e Esc (o
   foco volta ao botão). Sem movimento: sem onda, luz, ping, varredura, cometas nem contagem.
   `window.radarMapaHero` existe só para os testes de navegador. O Brasil é uma região à parte
