@@ -10,6 +10,7 @@ Sem o Playwright ou sem RADAR_E2E_LIBS, o teste é pulado (como no CI).
 
 import functools
 import http.server
+import itertools
 import json
 import math
 import os
@@ -374,6 +375,84 @@ def test_rotulos_do_mapa_na_fonte_do_site_e_sem_contorno(navegador, servidor):
     for e in estilos:
         assert e["stroke"] == "none" and "fluxos-halo" in e["filtro"]
         assert e["nome"].startswith('"Inter Tight"') and e["valor"].startswith('"Inter Tight"')
+    assert erros == []
+    ctx.close()
+
+
+ROTULOS_DA_COLUNA = """() => { const p = document.getElementById('fluxos-palco').getBoundingClientRect();
+  const caixas = [...document.querySelectorAll('#fluxos-svg .etiqueta')]
+    .filter((e) => e.querySelector('.rotulo').style.display !== 'none' && e.querySelector('.guia').getAttribute('d'))
+    .map((e) => { const b = e.querySelector('.rotulo').getBoundingClientRect();
+      return { nome: e.querySelector('.nome').textContent, x0: b.left - p.left, x1: b.right - p.left, y0: b.top - p.top, y1: b.bottom - p.top,
+        opacidade: getComputedStyle(e.querySelector('.entra')).opacity }; });
+  return { palco: [p.width, p.height], caixas }; }"""
+ROTULOS_VISIVEIS = """() => [...document.querySelectorAll('#fluxos-svg .etiqueta')].filter((e) => e.querySelector('.rotulo').style.display !== 'none'
+  && parseFloat(getComputedStyle(e.querySelector('.entra')).opacity) > 0.05).length"""
+
+
+def _abrir_maior_origem(pg):
+    dados = pg.evaluate("radarDados.mapa")
+    ano = pg.evaluate("Number(document.getElementById('fluxos-ano-valor').firstChild.textContent)")
+    nome = dados["paises"][dados["dados"][str(ano)]["TOTAL"]["origens"][0][0]][0]
+    pg.evaluate(CLIQUE, f"#fluxos-svg .marcador.origem[aria-label^='{nome}:']")
+    return nome
+
+
+@pytest.mark.parametrize("largura", [1440, 390])
+def test_portos_de_um_pais_aberto_em_coluna_com_linha_guia(navegador, servidor, largura):
+    ctx, pg, erros = _abrir(navegador, servidor, largura, "dark")
+    _abrir_maior_origem(pg)
+    pg.wait_for_timeout(2800)  # a câmera para e os rótulos entram em sequência
+    r = pg.evaluate(ROTULOS_DA_COLUNA)
+    assert len(r["caixas"]) >= 3, "os portos do país aberto ganham rótulo com linha-guia, também no celular"
+    w, h = r["palco"]
+    for c in r["caixas"]:
+        assert c["x0"] >= 0 and c["x1"] <= w and c["y0"] >= 0 and c["y1"] <= h, f"{c['nome']} fora do palco"
+        assert c["opacidade"] == "1", f"{c['nome']} não terminou de entrar"
+    for a, b in itertools.combinations(r["caixas"], 2):
+        assert not (a["x0"] < b["x1"] and a["x1"] > b["x0"] and a["y0"] < b["y1"] and a["y1"] > b["y0"]), f"{a['nome']} cobre {b['nome']}"
+    assert erros == []
+    ctx.close()
+
+
+def test_rotulos_esperam_a_camera_e_sem_movimento_ficam_no_lugar(navegador, servidor):
+    ctx, pg, erros = _abrir(navegador, servidor, 1440, "light")
+    assert pg.evaluate(ROTULOS_VISIVEIS) >= 3
+    _abrir_maior_origem(pg)
+    pg.wait_for_timeout(450)
+    assert pg.evaluate(ROTULOS_VISIVEIS) == 0, "com a câmera andando, os rótulos saem"
+    pg.wait_for_timeout(2400)
+    assert pg.evaluate(ROTULOS_VISIVEIS) >= 3, "e voltam quando ela para"
+    pg.keyboard.press("Escape")
+    pg.wait_for_timeout(450)
+    assert pg.evaluate(ROTULOS_VISIVEIS) == 0
+    pg.wait_for_timeout(2400)
+    assert pg.evaluate(ROTULOS_VISIVEIS) >= 3
+    assert erros == []
+    ctx.close()
+    # sem movimento, não há câmera: os rótulos aparecem já no lugar
+    ctx, pg, erros = _abrir(navegador, servidor, 1440, "light", reduzido=True)
+    _abrir_maior_origem(pg)
+    pg.wait_for_timeout(200)
+    assert pg.evaluate(ROTULOS_VISIVEIS) >= 3
+    assert erros == []
+    ctx.close()
+
+
+def test_mapa_no_celular_palco_alto_e_visao_geral_compacta(navegador, servidor):
+    ctx, pg, erros = _abrir(navegador, servidor, 390, "light")
+    _abrir_maior_origem(pg)
+    pg.wait_for_timeout(1800)
+    r = pg.evaluate("""() => { const p = document.getElementById('fluxos-palco').getBoundingClientRect(), b = document.getElementById('fluxos-voltar').getBoundingClientRect();
+      return { palco: p.height, botao: [b.left - p.left, b.top - p.top, b.width, b.height] }; }""")
+    x, y, largura, altura = r["botao"]
+    assert r["palco"] >= 300, "no celular, o palco tem altura para os rótulos de um país aberto"
+    assert x >= 0 and y >= 0 and altura <= 34 and largura < 150, "o botão Visão geral fica compacto, dentro do palco"
+    assert erros == []
+    ctx.close()
+    # nem a 320 px a página rola de lado (a lista do Método quebra os nomes de arquivo longos)
+    ctx, pg, erros = _abrir(navegador, servidor, 320, "light")
+    assert pg.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth") == 0
     assert erros == []
     ctx.close()
 

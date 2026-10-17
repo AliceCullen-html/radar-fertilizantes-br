@@ -235,10 +235,12 @@ onde vem o adubo e em que porto ele chega, por grupo e por ano:
   rotas que chegam ao porto) e as três maiores origens. Os títulos das colunas ordenam a lista
   (toneladas, variação ou frete); o clique num porto abre as origens dele. Com o Reproduzir, os
   portos trocam de posição ano a ano.
-- **Origem.** O clique num país (ou Enter, no mapa ou no ranking) aproxima a câmera, acende o
-  país numa onda a partir do centro e abre os arcos até cada porto de chegada, com a tonelagem
-  da rota no rótulo de cada porto. O painel mostra toneladas, participação no grupo, frete e CIF
-  em US$/t, variação e a lista de portos.
+- **Origem.** O clique num país (ou Enter, no mapa ou no ranking) leva a câmera até ele num só
+  movimento de zoom e deslocamento, acende o país numa onda a partir do centro e abre os arcos
+  até cada porto de chegada. O Brasil esmaece, e os portos ganham rótulo numa coluna ao lado
+  deles (do lado do mar quando cabe), com a tonelagem da rota e uma linha até cada porto; os
+  rótulos entram em sequência quando a câmera para. O painel mostra toneladas, participação no
+  grupo, frete e CIF em US$/t, variação e a lista de portos.
 - **Porto.** O clique num porto (no mapa, na aba Portos ou na lista de uma origem) inverte a
   visão: os arcos vêm de cada origem até ele.
 - **Linha do tempo.** Uma coluna por ano com o total do grupo (o ano parcial fica hachurado) e o
