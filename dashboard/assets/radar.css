@@ -757,6 +757,8 @@
   .cmp-cabecalho, .cmp-linha { grid-template-columns: 14px minmax(0, 1fr) 72px 62px; column-gap: 6px; }
   .cmp-cabecalho .nome { display: none; }
   .cmp-cabecalho .ordem.t { grid-column: 2; }
+  .cmp-cabecalho { align-items: center; padding-bottom: 2px; }
+  .cmp-cabecalho button { align-items: center; min-height: 40px; }
   .cmp-linha .nome { grid-column: 2 / -1; grid-row: 1; }
   .cmp-linha .t { grid-column: 2; grid-row: 2; }
   .cmp-linha .t small { display: inline; margin-left: 6px; }
@@ -810,11 +812,44 @@
 @media (max-width: 560px) {
   /* no celular, mais altura para os rótulos de um país aberto; o "Visão geral" fica compacto */
   .fluxos { --altura-palco: clamp(300px, 86vw, 420px); }
-  .fluxos-voltar { top: 8px; left: 8px; min-height: 30px; gap: 6px; padding: 0 10px 0 3px; font-size: 11px; }
-  .fluxos-voltar .icone { width: 24px; height: 24px; }
-  .fluxos-tempo { grid-template-columns: auto minmax(0, 1fr); }
-  .fluxos-ano-valor { grid-column: 1 / -1; grid-row: 1; margin: 0; font-size: 24px; }
+  .fluxos-voltar { top: 8px; left: 8px; min-height: 32px; gap: 6px; padding: 0 11px 0 3px; font-size: 11.5px; }
+  .fluxos-voltar .icone { width: 26px; height: 26px; }
+  .fluxos-voltar::after { content: ""; position: absolute; inset: -6px; } /* área de toque de 44 px, sem crescer sobre o mapa */
+  /* grupo e pausa numa linha só; a pausa vira um botão de ícone (o nome continua para o leitor de tela) */
+  .fluxos-controles { flex-wrap: nowrap; gap: 8px; margin-bottom: 10px; }
+  .fluxos-controles .segmentado { min-width: 0; }
+  .fluxos .segmentado button { min-width: 40px; min-height: 40px; padding: 0 13px; }
+  .fluxos .segmentado .indicador { height: 40px; }
+  .fluxos .segmentado.pequeno button { min-height: 40px; padding: 0 12px; font-size: 11.5px; }
+  .fluxos .segmentado.pequeno .indicador { height: 40px; }
+  .fluxos-pausa { flex: none; justify-content: center; width: 44px; min-height: 44px; padding: 0; }
+  .fluxos-pausa > span:last-child { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  /* resumo mais curto: o mapa sobe */
+  .fluxos-resumo { gap: 4px; margin-bottom: 10px; padding: 12px 14px; }
+  #fluxos-total { font-size: 34px; }
+  .fluxos-total .unidade { font-size: 11px; }
+  .fluxos-resumo-texto { padding-bottom: 0; font-size: 14px; line-height: 1.4; }
+  .fluxos-legenda { gap: 4px 12px; padding-top: 7px; font-size: 10px; }
+  .fluxos-legenda li { white-space: normal; } /* "porto de chegada (tamanho: …)" quebra em vez de vazar do cartão */
+  /* ano à esquerda, play à direita e a linha do tempo inteira embaixo */
+  .fluxos-tempo { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "ano play" "linha linha"; align-items: center; gap: 6px 12px; margin-top: 12px; }
+  .fluxos-tempo .botao-contorno { grid-area: play; margin: 0; }
+  .fluxos-linha-tempo { grid-area: linha; }
+  .fluxos-ano-valor { grid-area: ano; margin: 0; font-size: 26px; }
+  .fluxos-ano-valor small { display: inline; margin: 0 0 0 8px; }
+  .fluxos-ano input { height: 40px; margin: 0; }
   .fluxos-marcas li:nth-child(even) .ano { visibility: hidden; }
+  /* painel e ranking: linhas mais altas para o dedo */
+  .fluxos-painel { padding: 14px 12px 12px; }
+  .fluxos-painel h3 { font-size: 24px; }
+  .fluxos-lista .linha { min-height: 44px; padding: 6px 8px; }
+  .fluxos-cabecalho-lista { margin-right: 8px; }
+}
+/* texto da instrução: "toque" em tela de toque, "clique" (e o teclado) no resto */
+#fluxos .so-toque { display: none; }
+@media (pointer: coarse) {
+  #fluxos .so-ponteiro { display: none; }
+  #fluxos .so-toque { display: inline; }
 }
 @media (prefers-reduced-motion: reduce) {
   .fluxos svg .anel { transform: scale(1.5); }

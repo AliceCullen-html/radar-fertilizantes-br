@@ -264,9 +264,11 @@
       aRolagem(t, { translateY: [26, -26] }, { target: t, enter: "end start", leave: "start end", sync: 0.25 });
     }
     // "min+=": no fim da página, o palco que não chega a 60% da tela termina de abrir na rolagem máxima
+    // no celular, a janela começa quase aberta e termina de abrir logo que o palco entra na tela
     const palcoFluxos = document.getElementById("fluxos-palco");
-    aRolagem(palcoFluxos, { clipPath: ["inset(16% 24% 16% 24% round 28px)", "inset(0% 0% 0% 0% round 8px)"] },
-      { target: palcoFluxos, enter: "end start", leave: "min+=60% start", sync: 0.2 });
+    const celular = matchMedia("(max-width: 560px)").matches;
+    aRolagem(palcoFluxos, { clipPath: [celular ? "inset(5% 7% 5% 7% round 18px)" : "inset(16% 24% 16% 24% round 28px)", "inset(0% 0% 0% 0% round 8px)"] },
+      { target: palcoFluxos, enter: "end start", leave: celular ? "min+=82% start" : "min+=60% start", sync: 0.2 });
     // ligar "reduzir movimento" no meio desfaz tudo (estado final, sem movimento)
     reduzido.addEventListener?.("change", () => {
       if (!reduzido.matches) return;
