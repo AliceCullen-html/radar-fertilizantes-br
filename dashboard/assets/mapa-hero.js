@@ -1248,6 +1248,9 @@
     chip.style.left = `${Math.round(x)}px`;
     chip.style.top = `${Math.round(y)}px`;
     chip.hidden = false;
+    // nunca além da borda da tela: se não couber ao lado do ponto, recua (o translate soma 14 px)
+    const sobra = largura - 8 - (x + 14 + chip.offsetWidth);
+    if (sobra < 0) chip.style.left = `${Math.max(8 - 14, Math.round(x + sobra))}px`;
   }
 
   function preencher(d) {
@@ -1271,7 +1274,9 @@
       nome.textContent = "Brasil";
       const ir = Object.assign(document.createElement("span"), { className: "ir", textContent: "→" });
       ir.setAttribute("aria-hidden", "true");
-      chipBrasil.replaceChildren(nome, ` · ${texto}`, ...(porEstado ? [ir] : []));
+      // "importadas" some em tela estreita (CSS), para o chip caber ao lado do Brasil
+      const longo = Object.assign(document.createElement("span"), { className: "longo", textContent: "importadas " });
+      chipBrasil.replaceChildren(nome, ` · ${toneladas(d.anual.TOTAL.t[i])} `, longo, `em ${ano}`, ...(porEstado ? [ir] : []));
       chipBrasil.disabled = !porEstado;
       chipBrasil.setAttribute("aria-label", porEstado ? `Brasil: ${texto}. Ver por estado` : `Brasil: ${texto}`);
     }

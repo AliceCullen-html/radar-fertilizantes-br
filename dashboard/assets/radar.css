@@ -430,7 +430,9 @@
   content: ""; flex: none; width: 9px; height: 7px; background: currentColor;
 }
 .hero-texto { align-self: end; max-width: min(600px, 44%); }
-@media (max-width: 1099px) { .hero-texto { max-width: 680px; } }
+/* Mapa em cima do texto (abaixo de 1100 px): o título começa abaixo do mapa, como o painel
+   (--margem-painel, do mapa-hero.js). Em tela baixa o hero cresce em vez de pôr o texto sobre o mapa. */
+@media (max-width: 1099px) { .hero-texto { max-width: 680px; margin-top: var(--margem-painel, 0px); } }
 .kicker { display: flex; align-items: center; gap: 9px; margin: 0; font: 400 12px/1.4 var(--mono); letter-spacing: 0.01em; }
 .kicker::before { width: 7px; height: 7px; }
 .hero .kicker { color: var(--hero-texto-2); }
@@ -499,12 +501,34 @@
   .bloco { padding-top: 56px; }
   .pagina { padding: 0 16px 16px; }
 }
+@media (max-width: 560px) {
+  /* menu no celular: alvos de toque maiores, o botão do tema da altura da pílula */
+  .barra-topo, .barra-topo:not(.sobre-hero) { padding: 8px 12px; gap: 8px; }
+  .nav-pilula a { min-height: 34px; padding: 0 12px; }
+  .nav-indicador { height: 34px; }
+  .botao-tema { min-height: 44px; min-width: 44px; justify-content: center; }
+  /* botões do hero numa coluna, da mesma largura */
+  .hero .botoes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 22px; }
+  .hero .botao-contorno { min-height: 44px; }
+  .hero-rodape-mapa { margin-left: 0; justify-content: flex-start; }
+  /* filtros do topo: cada um numa linha, e as pílulas numa faixa que rola de lado até a borda da tela */
+  .filtros { gap: 14px; padding-top: 28px; }
+  .filtros > .filtro { width: 100%; }
+  .filtros .chips {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+    margin-inline: -16px; padding: 2px 16px 4px; scroll-padding-inline: 16px;
+  }
+  .filtros .chips::-webkit-scrollbar { display: none; }
+  .filtros .chip { flex: none; }
+}
 @media (max-width: 480px) {
   .hero h1 { font-size: clamp(42px, 12.5vw, 60px); }
   .hero .lead { font-size: 14px; }
   .botao-contorno { font-size: 12px; }
   .hero-rodape { font-size: 10.5px; }
 }
+/* o chip do Brasil encurta em tela estreita ("45,5 mi t em 2025"); o nome acessível segue completo */
+@media (max-width: 420px) { .chip-mapa .longo { display: none; } }
 @media (prefers-reduced-motion: reduce) {
   .nav-indicador, .nav-pilula a, .nav-pilula a.nav-alertas, .marca, .botao-tema, .botao-contorno { transition: none; }
 }
